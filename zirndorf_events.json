@@ -1,0 +1,482 @@
+{
+  "generated": "2026-09-18",
+  "source_note": "Primärquelle: offizieller Städtischer Veranstaltungskalender (zirndorf.de) – vollständige Liste, wie dort am 18.09.2026 veröffentlicht. Ergänzt um Sitzungstermine (sitzung.zirndorf.de, siehe limitations_note), die offizielle Kirchweih-Seite (zirndorf.de/kirchweih) und, für Ortsteil-Kirchweihen, die im städtischen Kalender NICHT separat geführt werden, festivalsindeutschland.de. Koordinaten stammen aus Google Places (über das interne places_search-Tool); für Paul-Metz-Halle wurde die vom Nutzer vorgegebene Koordinate (49.436645881624074, 10.95525712249997) übernommen.",
+  "limitations_note": "1) Der städtische Kalender ist lückenhaft für Jan/Feb 2027 und Jun-Okt 2027 – nicht weil dort nichts stattfindet, sondern weil das Kulturamt diese Termine noch nicht veröffentlicht hat. 2) sitzung.zirndorf.de ist eine zustandsbehaftete ASP-Anwendung; automatisiertes Abrufen einzelner Monate außerhalb des aktuellen Monats hat NICHT funktioniert (Session-Handling). Nur 4 Sitzungstermine (Sep/Okt 2026) enthalten. 3) Das offizielle Kirchweihprogramm-PDF (Stadtkärwa 2026) ist per robots.txt für automatisierten Abruf gesperrt (ebenso die Paul-Metz-Halle-Broschüre). Die Stadtkärwa- und Weinzierlein-Timetables stammen daher aus der redaktionellen Zusammenfassung von festivalsindeutschland.de (paraphrasiert, keine wörtliche Wiedergabe des Plakats) und enthalten nur die dort genannten Uhrzeiten (meist nur Freitag 17/18 Uhr) – für Samstag/Sonntag/Montag/Dienstag ist nur der Tagesablauf, keine Uhrzeit bekannt. 4) Für Kärwa Lind, Wintersdorf und Weiherhof liegt gar kein Detailprogramm vor (nur Datum), daher kein timetable-Feld. 5) Alle Ortsteil-Koordinaten (Lind, Wintersdorf, Weinzierlein, Weiherhof) sind der jeweilige Ortskern laut Google Places, NICHT der exakte Festplatz/Festzelt-Standort – der wird von den Kirchweihvereinen nirgends mit Adresse veröffentlicht.",
+  "events": [
+    {
+      "name": "Ratsch Café (Seniorenbeirat)",
+      "startTime": "2026-09-23T14:00:00+02:00",
+      "endTime": "2026-09-23T16:00:00+02:00",
+      "location": {
+        "address": "Pfarrhof 3, 90513 Zirndorf, Germany (Evang. Gemeindehaus St. Rochus; Koordinate = Kirche St. Rochus, nächstgelegener bekannter Punkt)",
+        "latitude": 49.4424798,
+        "longitude": 10.9551828
+      }
+    },
+    {
+      "name": "Gemeinsamer Nachmittag im Rahmen der Demenzwoche 2026 (Paul-Metz-Halle)",
+      "startTime": "2026-09-24T13:30:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Ältere Verkehrsteilnehmer – Sicher auf dem Zweirad unterwegs",
+      "startTime": "2026-09-30T15:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Jakob-Wassermann-Straße 1, 90513 Zirndorf, Germany",
+        "latitude": 49.4413705,
+        "longitude": 10.943799
+      }
+    },
+    {
+      "name": "Bürgerversammlung für die Stadtteile Wintersdorf, Weinzierlein, Leichendorf, Bronnamberg",
+      "startTime": "2026-10-06T19:00:00+02:00",
+      "endTime": "2026-10-06T22:00:00+02:00",
+      "location": {
+        "address": "Frankenstraße 10, 90513 Zirndorf, Germany",
+        "latitude": 49.4302408,
+        "longitude": 10.9126224
+      }
+    },
+    {
+      "name": "4. Seniorentanznachmittag 2026 (Paul-Metz-Halle)",
+      "startTime": "2026-10-07T14:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Bürgerversammlung für die Kernstadt Zirndorf",
+      "startTime": "2026-10-07T19:00:00+02:00",
+      "endTime": "2026-10-07T22:00:00+02:00",
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "DigitalCafé (vhs kreativ)",
+      "startTime": "2026-10-08T15:30:00+02:00",
+      "endTime": "2026-10-08T17:00:00+02:00",
+      "location": {
+        "address": "Volkhardtstraße 3, 90513 Zirndorf, Germany",
+        "latitude": 49.4401285,
+        "longitude": 10.9555745
+      }
+    },
+    {
+      "name": "Rosenball der Stadt Zirndorf (Paul-Metz-Halle)",
+      "startTime": "2026-10-10T20:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Bürgerversammlung für die Stadtteile Lind und Anwanden",
+      "startTime": "2026-10-12T19:00:00+02:00",
+      "endTime": "2026-10-12T22:00:00+02:00",
+      "location": {
+        "address": "Lindenstraße 51, 90513 Zirndorf-Lind, Germany",
+        "latitude": 49.4221326,
+        "longitude": 10.9374028
+      }
+    },
+    {
+      "name": "Bürgerversammlung für die Stadtteile Weiherhof und Banderbach",
+      "startTime": "2026-10-14T19:00:00+02:00",
+      "endTime": "2026-10-14T22:00:00+02:00",
+      "location": {
+        "address": "Banderbacher Str. 301, 90513 Zirndorf, Germany",
+        "latitude": 49.4564193,
+        "longitude": 10.915487
+      }
+    },
+    {
+      "name": "Stadtführung: Zirndorfer Handel und Wandel",
+      "startTime": "2026-10-18T11:00:00+02:00",
+      "endTime": "2026-10-18T12:30:00+02:00",
+      "location": {
+        "address": "Spitalstraße 2, 90513 Zirndorf, Germany",
+        "latitude": 49.4412768,
+        "longitude": 10.955995
+      }
+    },
+    {
+      "name": "Herbstmarkt – Spiel und Spaß im und vor dem Zirndorfer Museum",
+      "startTime": "2026-10-18T11:00:00+02:00",
+      "endTime": "2026-10-18T17:00:00+02:00",
+      "location": {
+        "address": "Spitalstraße 2, 90513 Zirndorf, Germany",
+        "latitude": 49.4412768,
+        "longitude": 10.955995
+      }
+    },
+    {
+      "name": "Zirndorfer Herbstmarkt (Innenstadt)",
+      "startTime": "2026-10-18T13:00:00+02:00",
+      "endTime": "2026-10-18T18:00:00+02:00",
+      "location": {
+        "address": "Marktplatz, 90513 Zirndorf, Germany",
+        "latitude": 49.4414119,
+        "longitude": 10.9570986,
+        "note": "Kalendereintrag nennt nur 'Zirndorf, Innenstadt', kein exakter Punkt"
+      }
+    },
+    {
+      "name": "Linedance Country Event (Paul-Metz-Halle)",
+      "startTime": "2026-10-24T19:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Museumsführung: Zirndorfer Blechgeschichte(n)",
+      "startTime": "2026-11-08T14:00:00+01:00",
+      "endTime": "2026-11-08T15:30:00+01:00",
+      "location": {
+        "address": "Spitalstraße 2, 90513 Zirndorf, Germany",
+        "latitude": 49.4412768,
+        "longitude": 10.955995
+      }
+    },
+    {
+      "name": "5. Seniorentanznachmittag 2026 (Paul-Metz-Halle)",
+      "startTime": "2026-11-11T14:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "DigitalCafé (vhs kreativ)",
+      "startTime": "2026-11-19T15:30:00+01:00",
+      "endTime": "2026-11-19T17:00:00+01:00",
+      "location": {
+        "address": "Volkhardtstraße 3, 90513 Zirndorf, Germany",
+        "latitude": 49.4401285,
+        "longitude": 10.9555745
+      }
+    },
+    {
+      "name": "Klaus Karl-Kraus – Budderblädzli, Bunsch und Bäggli (Paul-Metz-Halle)",
+      "startTime": "2026-11-21T20:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Luise Kinseher (Paul-Metz-Halle)",
+      "startTime": "2026-11-28T20:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "David Lugert (Paul-Metz-Halle)",
+      "startTime": "2026-12-04T20:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "DigitalCafé (vhs kreativ)",
+      "startTime": "2026-12-10T15:30:00+01:00",
+      "endTime": "2026-12-10T17:00:00+01:00",
+      "location": {
+        "address": "Volkhardtstraße 3, 90513 Zirndorf, Germany",
+        "latitude": 49.4401285,
+        "longitude": 10.9555745
+      }
+    },
+    {
+      "name": "Das Dschungelbuch (Paul-Metz-Halle)",
+      "startTime": "2026-12-17T15:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Helmut Binser „BUMM“ (Paul-Metz-Halle)",
+      "startTime": "2027-03-13T00:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "note": "keine Uhrzeit im Kalender angegeben"
+      }
+    },
+    {
+      "name": "Bayerischer Rundfunk Brettl-Spitzen live (Paul-Metz-Halle)",
+      "startTime": "2027-04-24T00:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "note": "keine Uhrzeit im Kalender angegeben"
+      }
+    },
+    {
+      "name": "Stephan Bauer „Vor der Ehe wollt ich ewig leben“ (Paul-Metz-Halle)",
+      "startTime": "2027-05-07T00:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "note": "keine Uhrzeit im Kalender angegeben"
+      }
+    },
+    {
+      "name": "Willy Astor „Reimart und Lachkunde – Prädikat Wortvoll“ (Paul-Metz-Halle)",
+      "startTime": "2027-11-20T20:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Claudia Koreck Weihnachtsprogramm (Paul-Metz-Halle)",
+      "startTime": "2027-12-10T20:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Bäderausschuss (Stadtratsgremium)",
+      "startTime": "2026-09-17T18:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Fürther Straße 8, 90513 Zirndorf, Germany",
+        "latitude": 49.4420785,
+        "longitude": 10.9576928,
+        "note": "Großer Sitzungssaal"
+      }
+    },
+    {
+      "name": "Stadtrat Zirndorf (Sitzung)",
+      "startTime": "2026-09-23T18:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "note": "großer Saal"
+      }
+    },
+    {
+      "name": "Haupt- und Finanzausschuss (Sitzung)",
+      "startTime": "2026-09-30T18:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Fürther Straße 8, 90513 Zirndorf, Germany",
+        "latitude": 49.4420785,
+        "longitude": 10.9576928,
+        "note": "Großer Sitzungssaal"
+      }
+    },
+    {
+      "name": "Stadtrat Zirndorf (Sitzung)",
+      "startTime": "2026-10-20T18:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "note": "großer Saal"
+      }
+    },
+    {
+      "name": "Die Schöne und das Biest – Das Musical (Theater Liberi, Paul-Metz-Halle) [nicht im städtischen Kalender, Quelle: eventim/songkick]",
+      "startTime": "2027-01-28T16:00:00+01:00",
+      "endTime": null,
+      "location": {
+        "address": "Volkhardtstraße 33, 90513 Zirndorf, Germany",
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997
+      }
+    },
+    {
+      "name": "Kärwa Lind-Zirndorf (Kärwa-Saison-Opening) [Ortsteil, nicht im städt. Kalender]",
+      "startTime": "2026-05-13T00:00:00+02:00",
+      "endTime": "2026-05-14T23:59:00+02:00",
+      "location": {
+        "address": "Lind, 90513 Zirndorf, Germany (Ortsteil-Zentrum, kein exakter Festplatz bekannt)",
+        "latitude": 49.4206925,
+        "longitude": 10.934746
+      }
+    },
+    {
+      "name": "Pain & Gain Festival Zirndorf (ASV Zirndorf, Underground-Metal) [nicht im städt. Kalender]",
+      "startTime": "2026-05-30T15:00:00+02:00",
+      "endTime": null,
+      "location": {
+        "address": "Schwabacher Str. 51, 90513 Zirndorf, Germany",
+        "latitude": 49.4366836,
+        "longitude": 10.9454927
+      },
+      "timetable": [
+        {
+          "description": "Einlass",
+          "startTime": "2026-05-30T14:30:00+02:00",
+          "endTime": "2026-05-30T15:00:00+02:00"
+        }
+      ]
+    },
+    {
+      "name": "Zirndorfer Fischerfest (1. Fischereiverein, Garten des Fischerheims am Bibertufer) [nicht im städt. Kalender]",
+      "startTime": "2026-07-03T00:00:00+02:00",
+      "endTime": "2026-07-05T23:59:00+02:00",
+      "location": {
+        "address": "Volkhardtstraße 35, 90513 Zirndorf, Germany",
+        "latitude": 49.436589,
+        "longitude": 10.9542288
+      }
+    },
+    {
+      "name": "Kirchweih Wintersdorf [Ortsteil, nicht im städt. Kalender]",
+      "startTime": "2026-07-10T00:00:00+02:00",
+      "endTime": "2026-07-13T23:59:00+02:00",
+      "location": {
+        "address": "Wintersdorf, 90513 Zirndorf, Germany (Ortsteil-Zentrum, kein exakter Festplatz bekannt)",
+        "latitude": 49.4270516,
+        "longitude": 10.9084939
+      }
+    },
+    {
+      "name": "Zirndorfer Stadt- und Brauereihoffest [nicht im städt. Kalender]",
+      "startTime": "2026-07-24T00:00:00+02:00",
+      "endTime": "2026-07-26T23:59:00+02:00",
+      "location": {
+        "address": "Rote Str. 8-10, 90513 Zirndorf, Germany",
+        "latitude": 49.4428526,
+        "longitude": 10.9552309,
+        "note": "Brauereihof in der Roten Straße; städtisches Gebiet zusätzlich einbezogen"
+      }
+    },
+    {
+      "name": "Kirchweih Weinzierlein [Ortsteil, nicht im städt. Kalender]",
+      "startTime": "2026-08-07T00:00:00+02:00",
+      "endTime": "2026-08-10T23:59:00+02:00",
+      "location": {
+        "address": "Weinzierlein, 90513 Zirndorf, Germany (Ortsteil-Zentrum, kein exakter Festplatz bekannt)",
+        "latitude": 49.4242636,
+        "longitude": 10.8972677
+      },
+      "timetable": [
+        {
+          "description": "Freitag – Eröffnung: Bieranstich, Stimmungsband im Festzelt (Quelle: festivalsindeutschland.de, keine Uhrzeit angegeben)",
+          "startTime": "2026-08-07T00:00:00+02:00",
+          "endTime": null
+        },
+        {
+          "description": "Samstag – Kärwabaum-Aufstellen mit Dorfgemeinschaft, abends Tanzabend im Festzelt",
+          "startTime": "2026-08-08T00:00:00+02:00",
+          "endTime": null
+        },
+        {
+          "description": "Sonntag – Festgottesdienst, Frühschoppen, Festumzug der Trachtenpaare, Mittagessen",
+          "startTime": "2026-08-09T00:00:00+02:00",
+          "endTime": null
+        },
+        {
+          "description": "Montag – Kehraus: Frühschoppen, Versteigerung des Kärwabaums, abschließender Tanzabend",
+          "startTime": "2026-08-10T00:00:00+02:00",
+          "endTime": null
+        }
+      ]
+    },
+    {
+      "name": "Zirndorfer Kirchweih (Stadtkärwa) – offiziell bestätigt (zirndorf.de/kirchweih)",
+      "startTime": "2026-08-21T00:00:00+02:00",
+      "endTime": "2026-08-25T23:59:00+02:00",
+      "location": {
+        "address": "Marktplatz bis Schulsportplatz, 90513 Zirndorf, Germany (gesamte Festmeile, kein Einzelpunkt)",
+        "latitude": 49.4414119,
+        "longitude": 10.9570986
+      },
+      "timetable": [
+        {
+          "description": "Freitag, Eröffnung – 17:00 Aufstellen des Kärwabaums am Marktplatz mit der Stadtjugendkapelle Zirndorf, ab 18:00 Festzeltbetrieb mit Live-Musik",
+          "startTime": "2026-08-21T17:00:00+02:00",
+          "endTime": null
+        },
+        {
+          "description": "Samstag – Festzeltabend mit Tanzmusik, Schaustellerbetrieb auf der gesamten Festmeile (Marktplatz bis Schulsportplatz)",
+          "startTime": "2026-08-22T00:00:00+02:00",
+          "endTime": null
+        },
+        {
+          "description": "Sonntag, Familientag – Festgottesdienst, Frühschoppen im Festzelt, Familientag mit ermäßigten Fahrgeschäften",
+          "startTime": "2026-08-23T00:00:00+02:00",
+          "endTime": null
+        },
+        {
+          "description": "Montag (Bartholomäi) – Brauchtumstag mit Kerwabuam/Kerwamadla in fränkischer Tracht, Festzeltabend",
+          "startTime": "2026-08-24T00:00:00+02:00",
+          "endTime": null
+        },
+        {
+          "description": "Dienstag, Ausklang – Frühschoppen und letzter Festzeltabend",
+          "startTime": "2026-08-25T00:00:00+02:00",
+          "endTime": null
+        }
+      ]
+    },
+    {
+      "name": "Kirchweih Weiherhof [Ortsteil, nicht im städt. Kalender]",
+      "startTime": "2026-09-04T00:00:00+02:00",
+      "endTime": "2026-09-07T23:59:00+02:00",
+      "location": {
+        "address": "Weiherhof, 90513 Zirndorf, Germany (Ortsteil-Zentrum, kein exakter Festplatz bekannt)",
+        "latitude": 49.4567254,
+        "longitude": 10.9276909
+      }
+    },
+    {
+      "name": "Weinfest Lions Club Zirndorf (Zimmermannspark, Charity) [nicht im städt. Kalender]",
+      "startTime": "2026-09-11T00:00:00+02:00",
+      "endTime": "2026-09-12T23:59:00+02:00",
+      "location": {
+        "address": "Grillenbergerstraße 12, 90513 Zirndorf, Germany",
+        "latitude": 49.4434296,
+        "longitude": 10.9633645
+      }
+    }
+  ]
+}
