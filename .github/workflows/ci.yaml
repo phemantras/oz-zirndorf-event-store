@@ -71,3 +71,29 @@ jobs:
           go-version-file: go.mod
       - name: PostgreSQL tests
         run: go test -race -count=1 -p 1 -v ./internal/adapter/postgres/... ./cmd/eventstore/...
+
+  docker:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      # Images are never pushed from CI, Railway builds its own.
+      - name: docker build
+        run: docker build -t eventstore:ci .
+      # Without configuration the binary must start and exit with code 1 and
+      # its config error; this catches a broken ENTRYPOINT or non-static binary.
+      - name: Start check
+        run: |
+          set +e
+          output=$(docker run --rm eventstore:ci 2>&1)
+          status=$?
+          set -e
+          echo "$output"
+          if [ "$status" -ne 1 ]; then
+            echo "exit code = $status, want 1"
+            exit 1
+          fi
+          if ! grep -q "missing required environment variables" <<<"$output"; then
+            echo "output does not contain the missing-variables error"
+            exit 1
+          fi
