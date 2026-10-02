@@ -18,3 +18,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-orte-anlegen-bearbeiten-und-auflisten.md`
   summary: AGENTS.md-TODO zu Codegen per `bmad-project-context`-Refresh auflösen: sqlc-Befehl (`go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate`, braucht cgo; unter Windows Release-Binary) und den CI-Schritt „generierter Code aktuell“ eintragen.
   evidence: Story 1.4 führt sqlc und die CI-Prüfung ein; die Befehle stehen nur in der README, AGENTS.md darf im Build nicht geändert werden.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-12-adresse-in-strasse-plz-und-ort-aufteilen.md`
+  summary: AGENTS.md-TODO zu Codegen-Befehlen (sqlc 1.31.1) und CI-Prüfung „generierter Code aktuell“ per `bmad-project-context`-Refresh eintragen.
+  evidence: Story 1.12 hat sqlc-Code neu erzeugt; die CI prüft das bereits, AGENTS.md nennt den Befehl aber noch nicht.

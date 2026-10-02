@@ -36,7 +36,7 @@ func (r *LocationRepo) List(ctx context.Context) ([]core.Location, error) {
 	}
 	locations := make([]core.Location, 0, len(rows))
 	for _, row := range rows {
-		locations = append(locations, locationFromRow(row))
+		locations = append(locations, locationFromRow(locationRow(row)))
 	}
 	return locations, nil
 }
@@ -52,7 +52,7 @@ func (r *LocationRepo) Get(ctx context.Context, id string) (core.Location, error
 	if err != nil {
 		return core.Location{}, translateError("get location", err)
 	}
-	return locationFromRow(row), nil
+	return locationFromRow(locationRow(row)), nil
 }
 
 // FindByNameKey returns the location with nameKey or core.ErrNotFound.
@@ -61,25 +61,27 @@ func (r *LocationRepo) FindByNameKey(ctx context.Context, nameKey string) (core.
 	if err != nil {
 		return core.Location{}, translateError("find location by name key", err)
 	}
-	return locationFromRow(row), nil
+	return locationFromRow(locationRow(row)), nil
 }
 
 // Create inserts location; the database generates the UUIDv7 ID. A taken
 // name key yields core.ErrConflict.
 func (r *LocationRepo) Create(ctx context.Context, location core.Location) (core.Location, error) {
 	row, err := r.queries.CreateLocation(ctx, db.CreateLocationParams{
-		Name:      location.Name,
-		NameKey:   location.NameKey,
-		Address:   location.Address,
-		Latitude:  location.Latitude,
-		Longitude: location.Longitude,
-		Precision: string(location.Precision),
-		Note:      optionalText(location.Note),
+		Name:       location.Name,
+		NameKey:    location.NameKey,
+		Street:     location.Street,
+		PostalCode: location.PostalCode,
+		City:       location.City,
+		Latitude:   location.Latitude,
+		Longitude:  location.Longitude,
+		Precision:  string(location.Precision),
+		Note:       optionalText(location.Note),
 	})
 	if err != nil {
 		return core.Location{}, translateError("create location", err)
 	}
-	return locationFromRow(row), nil
+	return locationFromRow(locationRow(row)), nil
 }
 
 // Update replaces the location with location.ID. A missing location yields
@@ -90,19 +92,21 @@ func (r *LocationRepo) Update(ctx context.Context, location core.Location) (core
 		return core.Location{}, err
 	}
 	row, err := r.queries.UpdateLocation(ctx, db.UpdateLocationParams{
-		ID:        uuid,
-		Name:      location.Name,
-		NameKey:   location.NameKey,
-		Address:   location.Address,
-		Latitude:  location.Latitude,
-		Longitude: location.Longitude,
-		Precision: string(location.Precision),
-		Note:      optionalText(location.Note),
+		ID:         uuid,
+		Name:       location.Name,
+		NameKey:    location.NameKey,
+		Street:     location.Street,
+		PostalCode: location.PostalCode,
+		City:       location.City,
+		Latitude:   location.Latitude,
+		Longitude:  location.Longitude,
+		Precision:  string(location.Precision),
+		Note:       optionalText(location.Note),
 	})
 	if err != nil {
 		return core.Location{}, translateError("update location", err)
 	}
-	return locationFromRow(row), nil
+	return locationFromRow(locationRow(row)), nil
 }
 
 // parseID turns id into a UUID; an unparsable id is reported as
@@ -133,15 +137,23 @@ func optionalText(text string) pgtype.Text {
 	return pgtype.Text{String: text, Valid: text != ""}
 }
 
-func locationFromRow(row db.Location) core.Location {
+// locationRow is the row every location query returns. The queries list
+// their columns to leave out the legacy address column (AD-17), so sqlc
+// generates one row type per query; they all have the same fields and
+// convert to this one.
+type locationRow db.GetLocationRow
+
+func locationFromRow(row locationRow) core.Location {
 	return core.Location{
-		ID:        row.ID.String(),
-		Name:      row.Name,
-		NameKey:   row.NameKey,
-		Address:   row.Address,
-		Latitude:  row.Latitude,
-		Longitude: row.Longitude,
-		Precision: core.LocationPrecision(row.Precision),
-		Note:      row.Note.String,
+		ID:         row.ID.String(),
+		Name:       row.Name,
+		NameKey:    row.NameKey,
+		Street:     row.Street,
+		PostalCode: row.PostalCode,
+		City:       row.City,
+		Latitude:   row.Latitude,
+		Longitude:  row.Longitude,
+		Precision:  core.LocationPrecision(row.Precision),
+		Note:       row.Note.String,
 	}
 }

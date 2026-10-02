@@ -6,6 +6,7 @@ import (
 	"math"
 	"slices"
 	"strconv"
+	"strings"
 )
 
 // LocationPrecision says how exactly a location's coordinates mark the
@@ -30,12 +31,14 @@ func LocationPrecisions() []LocationPrecision {
 // (api/v1/openapi.yaml, Story 2.1) will define them; these constants must
 // then match it (AD-9).
 const (
-	LocationFieldName      = "name"
-	LocationFieldAddress   = "address"
-	LocationFieldLatitude  = "latitude"
-	LocationFieldLongitude = "longitude"
-	LocationFieldPrecision = "precision"
-	LocationFieldNote      = "note"
+	LocationFieldName       = "name"
+	LocationFieldStreet     = "street"
+	LocationFieldPostalCode = "postalCode"
+	LocationFieldCity       = "city"
+	LocationFieldLatitude   = "latitude"
+	LocationFieldLongitude  = "longitude"
+	LocationFieldPrecision  = "precision"
+	LocationFieldNote       = "note"
 )
 
 // Coordinate bounds in degrees, both inclusive.
@@ -47,17 +50,25 @@ const (
 // coordinateBitSize parses coordinates as float64.
 const coordinateBitSize = 64
 
+// postalCodeDigits is the length of a German postal code.
+const postalCodeDigits = 5
+
 // Location is a place events refer to. Its ID stays the same when it is
 // renamed.
 type Location struct {
 	ID string
 	// Name is unique after NormalizeKey; NameKey stores that key.
-	Name      string
-	NameKey   string
-	Address   string
-	Latitude  float64
-	Longitude float64
-	Precision LocationPrecision
+	Name    string
+	NameKey string
+	// Street holds the street with house number if there is one, or an
+	// area such as "Marktplatz bis Schulsportplatz". Street, PostalCode and
+	// City are empty only for locations stored before Story 1.12.
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  LocationPrecision
 	// Note is optional; empty means none.
 	Note string
 }
@@ -66,12 +77,14 @@ type Location struct {
 // Coordinates arrive as text so the core decides what counts as missing
 // (empty) and what is not a number.
 type LocationInput struct {
-	Name      string
-	Address   string
-	Latitude  string
-	Longitude string
-	Precision string
-	Note      string
+	Name       string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   string
+	Longitude  string
+	Precision  string
+	Note       string
 }
 
 // newLocation canonicalizes and validates input and returns the location
@@ -83,18 +96,25 @@ func newLocation(in LocationInput) (Location, error) {
 	}
 
 	location := Location{
-		Name:    normalizeText(in.Name),
-		Address: normalizeText(in.Address),
-		Note:    normalizeText(in.Note),
+		Name:   normalizeText(in.Name),
+		Street: normalizeText(in.Street),
+		City:   normalizeText(in.City),
+		Note:   normalizeText(in.Note),
 	}
 	location.NameKey = NormalizeKey(location.Name)
 	if location.Name == "" {
 		report(LocationFieldName, ProblemMissing)
 	}
-	if location.Address == "" {
-		report(LocationFieldAddress, ProblemMissing)
+	if location.Street == "" {
+		report(LocationFieldStreet, ProblemMissing)
 	}
 	var problem FieldProblem
+	if location.PostalCode, problem = parsePostalCode(in.PostalCode); problem != "" {
+		report(LocationFieldPostalCode, problem)
+	}
+	if location.City == "" {
+		report(LocationFieldCity, ProblemMissing)
+	}
 	if location.Latitude, problem = parseCoordinate(in.Latitude, maxLatitude); problem != "" {
 		report(LocationFieldLatitude, problem)
 	}
@@ -130,6 +150,23 @@ func parseCoordinate(text string, limit float64) (float64, FieldProblem) {
 		return 0, ProblemOutOfRange
 	}
 	return value, ""
+}
+
+// parsePostalCode accepts exactly five ASCII digits after trimming; other
+// digits such as full-width ones are rejected.
+func parsePostalCode(text string) (string, FieldProblem) {
+	postalCode := normalizeText(text)
+	if postalCode == "" {
+		return "", ProblemMissing
+	}
+	if len(postalCode) != postalCodeDigits || strings.ContainsFunc(postalCode, isNotASCIIDigit) {
+		return "", ProblemInvalidFormat
+	}
+	return postalCode, ""
+}
+
+func isNotASCIIDigit(r rune) bool {
+	return r < '0' || r > '9'
 }
 
 // parsePrecision accepts exactly one of the precision codes.

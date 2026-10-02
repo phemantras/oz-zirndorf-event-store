@@ -63,7 +63,7 @@ Ein Event, so wie es geplant ist (gekürzt):
       "location": {
         "id": "0192f0b1-…",
         "name": "Marktplatz",
-        "address": "Marktplatz, 90513 Zirndorf",
+        "address": { "street": "Marktplatz", "postalCode": "90513", "city": "Zirndorf" },
         "latitude": 49.4425,
         "longitude": 10.9547,
         "precision": "street"

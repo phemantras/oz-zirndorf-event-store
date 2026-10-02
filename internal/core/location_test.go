@@ -9,19 +9,23 @@ import (
 // validLocationInput returns a complete input; tests change single fields.
 func validLocationInput() LocationInput {
 	return LocationInput{
-		Name:      "Paul-Metz-Halle",
-		Address:   "Volkhardtstraße 2, 90513 Zirndorf",
-		Latitude:  "49.4424",
-		Longitude: "10.9539",
-		Precision: string(PrecisionBuilding),
-		Note:      "Eingang an der Rückseite",
+		Name:       "Paul-Metz-Halle",
+		Street:     "Volkhardtstraße 2",
+		PostalCode: "90513",
+		City:       "Zirndorf",
+		Latitude:   "49.4424",
+		Longitude:  "10.9539",
+		Precision:  string(PrecisionBuilding),
+		Note:       "Eingang an der Rückseite",
 	}
 }
 
 func TestNewLocationAcceptsValidInputAndDerivesNameKey(t *testing.T) {
 	in := validLocationInput()
 	in.Name = "  Paul-Metz-Halle\u00a0"
-	in.Address = " Volkhardtstraße 2, 90513 Zirndorf "
+	in.Street = " Volkhardtstraße 2 "
+	in.PostalCode = " 90513 "
+	in.City = "\u00a0Zirndorf "
 	in.Latitude = " 49.4424 "
 	in.Precision = " building "
 	in.Note = "  "
@@ -31,13 +35,15 @@ func TestNewLocationAcceptsValidInputAndDerivesNameKey(t *testing.T) {
 		t.Fatalf("newLocation: %v", err)
 	}
 	want := Location{
-		Name:      "Paul-Metz-Halle",
-		NameKey:   "paul-metz-halle",
-		Address:   "Volkhardtstraße 2, 90513 Zirndorf",
-		Latitude:  49.4424,
-		Longitude: 10.9539,
-		Precision: PrecisionBuilding,
-		Note:      "",
+		Name:       "Paul-Metz-Halle",
+		NameKey:    "paul-metz-halle",
+		Street:     "Volkhardtstraße 2",
+		PostalCode: "90513",
+		City:       "Zirndorf",
+		Latitude:   49.4424,
+		Longitude:  10.9539,
+		Precision:  PrecisionBuilding,
+		Note:       "",
 	}
 	if got != want {
 		t.Errorf("newLocation = %+v, want %+v", got, want)
@@ -47,14 +53,15 @@ func TestNewLocationAcceptsValidInputAndDerivesNameKey(t *testing.T) {
 func TestNewLocationComposesTextsToNFC(t *testing.T) {
 	in := validLocationInput()
 	in.Name = decomposedOelmuehle
-	in.Address = decomposedOelmuehle
+	in.Street = decomposedOelmuehle
+	in.City = decomposedOelmuehle
 	in.Note = decomposedOelmuehle
 
 	got, err := newLocation(in)
 	if err != nil {
 		t.Fatalf("newLocation: %v", err)
 	}
-	if got.Name != composedOelmuehle || got.Address != composedOelmuehle || got.Note != composedOelmuehle {
+	if got.Name != composedOelmuehle || got.Street != composedOelmuehle || got.City != composedOelmuehle || got.Note != composedOelmuehle {
 		t.Errorf("newLocation = %+v, want NFC texts %q", got, composedOelmuehle)
 	}
 }
@@ -95,15 +102,41 @@ func TestNewLocationReportsEveryInvalidField(t *testing.T) {
 	}{
 		"all required fields missing or blank": {
 			change: func(in *LocationInput) {
-				*in = LocationInput{Name: "   ", Address: "\u00a0", Latitude: "", Longitude: " ", Precision: ""}
+				*in = LocationInput{Name: "   ", Street: "\u00a0", PostalCode: "", City: " ", Latitude: "", Longitude: " ", Precision: ""}
 			},
 			want: []FieldError{
 				{LocationFieldName, ProblemMissing},
-				{LocationFieldAddress, ProblemMissing},
+				{LocationFieldStreet, ProblemMissing},
+				{LocationFieldPostalCode, ProblemMissing},
+				{LocationFieldCity, ProblemMissing},
 				{LocationFieldLatitude, ProblemMissing},
 				{LocationFieldLongitude, ProblemMissing},
 				{LocationFieldPrecision, ProblemMissing},
 			},
+		},
+		"postal code with four digits": {
+			change: func(in *LocationInput) { in.PostalCode = "9051" },
+			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+		},
+		"postal code with six digits": {
+			change: func(in *LocationInput) { in.PostalCode = "905130" },
+			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+		},
+		"postal code with a letter": {
+			change: func(in *LocationInput) { in.PostalCode = "90513a" },
+			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+		},
+		"postal code with country prefix": {
+			change: func(in *LocationInput) { in.PostalCode = "D-90513" },
+			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+		},
+		"postal code with full-width digits": {
+			change: func(in *LocationInput) { in.PostalCode = "\uff19\uff10\uff15\uff11\uff13" },
+			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+		},
+		"postal code with inner space": {
+			change: func(in *LocationInput) { in.PostalCode = "905 13" },
+			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
 		},
 		"latitude above range, longitude not a number": {
 			change: func(in *LocationInput) { in.Latitude, in.Longitude = "91", "abc" },

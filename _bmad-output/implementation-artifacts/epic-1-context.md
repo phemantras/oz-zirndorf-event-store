@@ -26,7 +26,7 @@ Epic 1 baut das Fundament des Event Store: ein geprüftes Go-Grundgerüst mit Po
 - **Event:** Pflicht sind Titel, Event-Typ, Ort, Beginn (mindestens Datum) und Quelle; optional Ende, Notiz, Ablaufplan. Fehlt Pflichtes oder besteht nur aus Leerraum, wird abgelehnt. Ein Ende vor (oder gleich) dem Beginn wird abgelehnt.
 - **Event-Typen:** feste Liste `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other` (deutsche Beschriftungen im Admin). Unbekannter Typ wird abgelehnt.
 - **Quelle:** Objekt aus Pflicht-Beschreibung und optionalem Link (nur http(s)). Nie im Titel.
-- **Ort:** Name, Adresse, Koordinaten (Breite −90..90, Länge −180..180) und Ortsgenauigkeit `building`/`street`/`area`/`district` sind Pflicht, Notiz optional. Die Adresse besteht aus Straße (mit Hausnummer), PLZ (genau fünf Ziffern) und Ort, alle drei Pflicht, auch bei `district`/`area`. Spalte `address` nur bis zum Contract-Schritt in Story 1.7. Stabile Kennung, die beim Umbenennen gleich bleibt. Namen sind eindeutig nach Normalisierung. Events referenzieren den Ort, keine Kopie. Ein Ort mit Events (auch archivierten) ist nicht löschbar.
+- **Ort:** Name, Adresse, Koordinaten (Breite −90..90, Länge −180..180) und Ortsgenauigkeit `building`/`street`/`area`/`district` sind Pflicht, Notiz optional. Die Adresse besteht aus Straße (mit Hausnummer, falls vorhanden), PLZ und Ort; alle drei Pflicht, auch bei `district`/`area` (dann Straße der Ortsmitte oder Bereichsangabe wie „Marktplatz bis Schulsportplatz“; die Ortsgenauigkeit zeigt die Ungenauigkeit). PLZ nach Trimmen genau fünf Ziffern (`9051`, `90513a`, `D-90513` abgelehnt, eigene Meldung). Stabile Kennung, die beim Umbenennen gleich bleibt. Namen sind eindeutig nach Normalisierung. Events referenzieren den Ort, keine Kopie. Ein Ort mit Events (auch archivierten) ist nicht löschbar.
 - **Ablaufplan:** beliebig viele Punkte mit Beschreibung, Datum, optionaler Beginn-/End-Uhrzeit; chronologisch sortiert ausgeliefert.
 - **Keine personenbezogenen Daten** in Events und Orten; Formulare weisen darauf hin.
 - **Zeitzone** immer Europe/Berlin. Leere Uhrzeit heißt „unbekannt“, nie 00:00.
@@ -52,8 +52,6 @@ Epic 1 baut das Fundament des Event Store: ein geprüftes Go-Grundgerüst mit Po
 | Redoc | 2.5.4 |
 | HTTP, Templates, Logging, CSRF | Standardbibliothek (`net/http`, `html/template`, `log/slog`, `http.CrossOriginProtection`) |
 
-golangci-lint ist im Spine nicht versioniert; Version beim Aufsetzen der CI festlegen.
-
 - **Struktur:** `api/v1/`, `cmd/eventstore/`, `internal/core/`, `internal/adapter/{publicapi/v1,admin,postgres,cleanup}/`, `Dockerfile`, `railway.json`, `compose.yaml`, `.github/workflows/ci.yaml`.
 - **Abhängigkeitsrichtung:** `core` importiert nur Standardbibliothek plus `golang.org/x/text/unicode/norm`. Adapter importieren nur `core`, nie einander; nur `cmd/eventstore` verdrahtet alles. Ein Architekturtest in CI erzwingt das. Ports im Kern: `EventRepo`, `LocationRepo`, `TxRunner`, `Clock`.
 - **Fachlogik nur im Kern:** SQL nur CRUD und einfache Vergleiche; keine Views, Trigger, Funktionen, `lower()`/`trim()`, kein `now()`. Zeit kommt aus `Clock`. Abgeleitete Werte (`effective_start/end`, `name_key`, `title_key`) berechnet der Kern und speichert sie mit.
@@ -65,6 +63,8 @@ golangci-lint ist im Spine nicht versioniert; Version beim Aufsetzen der CI fest
 - **Identität und Schlüssel:** UUIDv7 per `DEFAULT uuidv7()` (nur im `DEFAULT`, nie in sqlc-Queries). Texte an einer Stelle auf NFC normalisiert. `NormalizeKey` (trim, jeden Leerraum inkl. geschützter zu einem Leerzeichen, lowercase) liefert eindeutigen `name_key` und `title_key`.
 - **Duplikate:** `FindDuplicateCandidates` vergleicht `title_key`, `startDate` (nur Datum) und `locationId` über alle Events inkl. archivierter, beim Bearbeiten ohne das Event selbst. `SaveEvent` mit Policy `rejectDuplicates` (Admin zuerst, liefert `ErrDuplicateSuspect` mit Kandidaten) oder `allowDuplicates` (nach Bestätigung).
 - **Ortssortierung im Kern:** case-insensitiv, ä→a, ö→o, ü→u, ß→ss, Gleichstand nach `id`; keine DB-Sortierung.
+- **Adressteile:** Feldnamen im Kern `street`, `postalCode`, `city`; DB-Spalten `street`, `postal_code`, `city`. In der öffentlichen API wird daraus ein Objekt `address: {street, postalCode, city}` (in der Spec ab Story 2.1), damit `street` nicht mit dem Ortsgenauigkeits-Code kollidiert. Alle drei Teile werden wie jede Texteingabe auf NFC normalisiert.
+- **Adress-Migration (expand/contract):** Story 1.12 bringt Migration `00003` (`00002` ist angewendet und bleibt unverändert): neue Spalten `street`, `postal_code`, `city` als `text NOT NULL DEFAULT ''`, `address` wird nullable und vom Code weder gelesen noch geschrieben. Kein Aufteilen bestehender Adressen per SQL; Produktions-Testorte werden nach dem Deploy von Hand nachgepflegt oder gelöscht. Die Defaults halten alten Code nach einem Rollback lauffähig; Gültigkeit prüft nur der Kern. Die Migration in Story 1.7 entfernt `address` und die Defaults (contract), sobald alle Orte vollständig sind. Orte mit leeren Adressteilen aus der Zeit davor müssen anzeig- und bearbeitbar bleiben.
 - **Datenbank:** snake_case, Tabellen `locations`, `events` (`location_id` mit `ON DELETE RESTRICT`, `effective_start`/`effective_end` timestamptz, `title_key`, `import_key`, `archived_at`), `timetable_entries` (`event_id` mit Löschweitergabe). Löschschutz für Orte im Kern und zusätzlich per Fremdschlüssel.
 - **Ablaufplan:** Wertobjekt, nur über `SaveEvent` als ganze Liste ersetzt, in einer Transaktion mit dem Event. `endTime` vor `startTime` endet am Folgetag. Punkte müssen in `[effectiveStart, effectiveEnd]` liegen (darf genau mit dem Event enden); ändert `effective*` nicht.
 - **Migrationen:** goose, SQL per `embed`, laufen beim Start vor dem HTTP-Server; nur vorwärts, expand/contract; angewendete nie ändern. Vor Deploy mit neuer Migration `pg_dump` über Railway-CLI.
@@ -73,13 +73,14 @@ golangci-lint ist im Spine nicht versioniert; Version beim Aufsetzen der CI fest
 - **Konfiguration** nur über Umgebungsvariablen: `DATABASE_URL`, `PORT`, `ADMIN_USER`, `ADMIN_PASSWORD_HASH` (wegen `$` quoten), `SESSION_SECRET`. Fehlt eine, bricht der Start mit klarer Log-Meldung ab.
 - **Logging:** `log/slog` als JSON auf stdout, nie Passwörter oder Session-Daten.
 - **Deployment:** Multi-Stage-Dockerfile; `railway.json` mit `healthcheckPath: /healthz`; „Wait for CI“ aktiv; PostgreSQL 18 nur im privaten Netz. `GET /healthz` → 200 bei erreichbarer DB, sonst 503. Lokal PostgreSQL 18 per Docker Compose (Volume `/var/lib/postgresql`).
-- **Tests:** Test-first. Kernregeln ohne DB mit fester `Clock`; Postgres-Adapter gegen echtes PostgreSQL 18. 100 % Abdeckung für `internal/core` und `internal/adapter/admin` (generierter Code ausgenommen). CI: `go vet`, Unit-Tests, Postgres-Tests, Architekturtest, generierter Code aktuell.
+- **Tests:** Test-first. Kernregeln ohne DB mit fester `Clock`; Postgres-Adapter gegen echtes PostgreSQL 18. 100 % Abdeckung für `internal/core`, `internal/adapter/admin` und `internal/adapter/publicapi/v1` (generierter Code ausgenommen), Lücken nur mit Tests schließen. CI: `go vet`, Unit-Tests, Postgres-Tests, Architekturtest, generierter Code aktuell.
 - **Sprache:** Code, Bezeichner, Logs, Fehlermeldungen englisch; Admin-Oberfläche und Inhalte deutsch.
 
 ## UX & Interaction Patterns
 
 - Kein UX-Dokument; schlichtes Grundlayout, Gestaltung auf Story-Ebene. `html/template` + htmx 2.0.11, Leaflet 1.9.4, beides als Dateien unter `adapter/admin/static` (kein CDN).
 - Nicht angemeldet → Umleitung zu `/admin/login` (außer Login und `/admin/static/`). Bei htmx-Anfragen (`HX-Request`) stattdessen `HX-Redirect: /admin/login`.
+- Ortsformular hat statt „Adresse“ die Felder „Straße und Hausnummer“, „PLZ“ und „Ort“; die Ortsliste zeigt die Adresse zusammengesetzt als „Straße, PLZ Ort“.
 - Fehler je Feld auf Deutsch, Eingaben bleiben erhalten. Hinweis an leeren Uhrzeitfeldern: leer = „unbekannt“. Hinweise gegen Personendaten unter Name/Titel/Notiz/Quelle.
 - Koordinaten: Dezimalkomma wird akzeptiert, leeres Feld gilt als fehlend (nie 0). Kartenpicker zentriert auf Zirndorf, OSM-Attribution sichtbar; Klick setzt Marker, Marker ziehen aktualisiert Felder, gültige Eingabe verschiebt Marker, ungültige markiert das Feld. Ohne JavaScript bleibt Speichern über Zahlenfelder möglich.
 - Event-Formular: Ort aus Auswahl oder „Neuer Ort“ inline per htmx, ohne bisherige Eingaben zu verlieren. Programmpunkte ohne Neuladen hinzufügen/entfernen; Fehler am betroffenen Punkt.
@@ -89,7 +90,8 @@ golangci-lint ist im Spine nicht versioniert; Version beim Aufsetzen der CI fest
 ## Cross-Story Dependencies
 
 - 1.1 ist Basis für alles; 1.2 liefert das Railway-Verhalten von `X-Forwarded-For` (README), das 1.3 für die Client-IP braucht.
-- 1.4 (Orte, `NormalizeKey`, NFC) und 1.6 (Zeitmodell, `ToInstant`, `Clock`) sind Voraussetzung für 1.7. 1.5 erweitert das Ortsformular aus 1.4; 1.8 nutzt Ortsformular und Kartenpicker aus 1.4/1.5 sowie `SaveLocation`.
+- 1.12 zieht 1.4 nach (Adresse aufteilen) und läuft vor 1.5, weil 1.5 und 1.8 dasselbe Ortsformular erweitern. Vor dem Deploy von 1.12 und von 1.7 (je neue Migration) `pg_dump` ziehen.
+- 1.4/1.12 (Orte, `NormalizeKey`, NFC) und 1.6 (Zeitmodell, `ToInstant`, `Clock`) sind Voraussetzung für 1.7; 1.7 übernimmt zusätzlich den Contract-Schritt der Adress-Migration. 1.5 erweitert das Ortsformular; 1.8 nutzt Ortsformular und Kartenpicker aus 1.4/1.12/1.5 sowie `SaveLocation`.
 - 1.9 führt den Port `TxRunner` ein und erweitert `SaveEvent`; 1.10 ergänzt `title_key` und die Duplikat-Policy in `SaveEvent` und `RecomputeDerived`; 1.11 braucht Events mit Ablaufplan und den Fremdschlüssel aus 1.7.
-- Zu Epic 2: Die Enum-Konstanten im Kern entstehen hier; `api/v1/openapi.yaml` als einzige Quelle für Codes und `EventInput` sowie der CI-Enum-Abgleich folgen in Story 2.1 und müssen dann mit dem Kern übereinstimmen. `MarkArchived` und der Bereinigungsjob kommen in Epic 2.
-- Zu Epic 3: `core.EventInput`, `SaveEvent` (inkl. `allowDuplicates`, `importKey` unverändert) und `FindDuplicateCandidates` werden von `CommitImport` wiederverwendet.
+- Zu Epic 2: Die Enum-Konstanten im Kern entstehen hier; `api/v1/openapi.yaml` als einzige Quelle für Codes und `EventInput` sowie der CI-Enum-Abgleich folgen in Story 2.1 und müssen dann mit dem Kern übereinstimmen. Story 2.2 liefert den Ort mit dem Adress-Objekt. `MarkArchived` und der Bereinigungsjob kommen in Epic 2. Offen und vor Story 2.1 per eigenem Correct Course zu klären: Die öffentliche API soll keine internen UUIDs ausgeben.
+- Zu Epic 3: Das Import-Schema (3.1) übernimmt dasselbe Adress-Objekt, 3.4 teilt die Adressen der Testsammlung auf. `core.EventInput`, `SaveEvent` (inkl. `allowDuplicates`, `importKey` unverändert) und `FindDuplicateCandidates` werden von `CommitImport` wiederverwendet.

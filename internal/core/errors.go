@@ -25,6 +25,9 @@ const (
 	ProblemNotANumber  FieldProblem = "notANumber"
 	ProblemOutOfRange  FieldProblem = "outOfRange"
 	ProblemUnknownCode FieldProblem = "unknownCode"
+	// ProblemInvalidFormat means the text does not have the required shape,
+	// such as a postal code that is not five digits.
+	ProblemInvalidFormat FieldProblem = "invalidFormat"
 )
 
 // FieldError names one rejected field and why it was rejected.

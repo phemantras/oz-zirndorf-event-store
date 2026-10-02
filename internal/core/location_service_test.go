@@ -123,7 +123,8 @@ func (r *fakeLocationRepo) beforeWrite(location Location) error {
 func hall() Location {
 	return Location{
 		ID: hallID, Name: "Paul-Metz-Halle", NameKey: "paul-metz-halle",
-		Address: "Volkhardtstraße 2, 90513 Zirndorf", Latitude: 49.4424, Longitude: 10.9539,
+		Street: "Volkhardtstraße 2", PostalCode: "90513", City: "Zirndorf",
+		Latitude: 49.4424, Longitude: 10.9539,
 		Precision: PrecisionBuilding,
 	}
 }
@@ -131,7 +132,8 @@ func hall() Location {
 func park() Location {
 	return Location{
 		ID: parkID, Name: "Bibertpark", NameKey: "bibertpark",
-		Address: "Bibertstraße, 90513 Zirndorf", Latitude: 49.44, Longitude: 10.95,
+		Street: "Bibertstraße", PostalCode: "90513", City: "Zirndorf",
+		Latitude: 49.44, Longitude: 10.95,
 		Precision: PrecisionArea,
 	}
 }
@@ -207,14 +209,14 @@ func TestSaveLocationRejectsRenamingIntoAnotherLocationsName(t *testing.T) {
 func TestSaveLocationKeepsOwnNameWithoutConflict(t *testing.T) {
 	repo := newFakeLocationRepo(hall())
 	in := validLocationInput()
-	in.Address = "Volkhardtstraße 2a, 90513 Zirndorf"
+	in.PostalCode, in.City = "90522", "Oberasbach"
 
 	saved, err := NewLocationService(repo).SaveLocation(context.Background(), hallID, in)
 	if err != nil {
 		t.Fatalf("SaveLocation: %v", err)
 	}
-	if saved.ID != hallID || saved.Address != in.Address {
-		t.Errorf("saved = %+v, want same id with new address", saved)
+	if saved.ID != hallID || saved.PostalCode != in.PostalCode || saved.City != in.City {
+		t.Errorf("saved = %+v, want same id with new postal code and city", saved)
 	}
 }
 
