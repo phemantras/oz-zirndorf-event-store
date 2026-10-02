@@ -45,7 +45,7 @@ context:
 - `cmd/eventstore/main.go` -- `_ "time/tzdata"` eingebettet, Distroless ohne Zonendaten funktioniert also. Nichts ändern.
 - `.github/workflows/ci.yaml` -- Jobs `lint`, `unit`, `postgres` laufen auf Push nach `main` (Voraussetzung für „Wait for CI“); neuen Job ergänzen.
 - `README.md` -- Abschnitt „Lokal starten“ existiert; Deployment-Abschnitt dahinter einfügen, Status-Zeile oben aktualisieren.
-- Keine Railway-CLI, kein Docker, kein `gh` lokal: Image-Build nur in der CI verifizierbar, Railway-Einrichtung macht Andreas im Dashboard.
+- Keine Railway-CLI, kein Docker lokal: Image-Build nur in der CI verifizierbar, Railway-Einrichtung macht Andreas im Dashboard. `gh` liegt unter `C:/Program Files/GitHub CLI/gh.exe` (in PowerShell im PATH, in Git Bash nicht).
 
 ## Tasks & Acceptance
 
