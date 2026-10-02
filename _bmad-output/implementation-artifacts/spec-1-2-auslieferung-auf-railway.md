@@ -73,6 +73,7 @@ context:
 - Log-Zeile `health check request` mit `x_forwarded_for` (leer bei fehlendem Header) und `remote_addr`, bei jedem `/healthz`-Aufruf, also auch bei Railways Health Checks.
 - Matrix-Abgleich: „XFF-Messung“ durch `TestHealthLogsForwardedForAndRemoteAddress` und `TestHealthLogsEmptyForwardedForWhenHeaderIsMissing` abgedeckt, „Health scheitert“ (503 bei Ping-Fehler) durch `TestHealthReturnsUnavailableAndLogsWhenPingFails`; beide lokal grün. „Deploy grün“ und „Deploy rot“ sind Railway-Verhalten und nur manuell nach dem Merge prüfbar (Checkliste in der README); ebenso ob die Image-Builds gelingen (erstmals im CI-Job `docker`). Offener Task: XFF-Messung nach dem ersten Deploy, Story bleibt bis dahin nicht `done`.
 - Messung ENT-21 (2026-10-02, nach Deploy von PR #5): Ohne Header kam `<Client-IP>, <Edge-IP>` an, mit gefälschtem `203.0.113.7` ebenfalls `<Client-IP>, <Edge-IP>`. Railway verwirft den Client-Wert, Client-IP = linker Eintrag; `RemoteAddr` ist `100.64.x.x` (intern). Beide Anfragen trafen dieselbe Replika. Ergebnis in der README, XFF-Log im selben Folge-PR entfernt (Test `TestHealthLogsNothingWhenDatabaseAnswers` zuerst rot).
+- Abnahme (2026-10-02, von Andreas bestätigt): `/healthz` unter `https://oz-zirndorf-event-store.up.railway.app` antwortet mit 200; `DATABASE_URL` zeigt auf den privaten Host `postgres.railway.internal`; kein TCP-Proxy am Postgres-Service; `SHOW server_version` meldet 18.x; „Wait for CI“ ist aktiv (kein absichtlich roter Push auf `main` ausgeführt); genau eine Replika.
 
 ## Spec Change Log
 
