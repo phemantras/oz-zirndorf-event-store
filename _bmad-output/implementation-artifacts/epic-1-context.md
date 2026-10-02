@@ -12,6 +12,7 @@ Epic 1 baut das Fundament des Event Store: ein geprüftes Go-Grundgerüst mit Po
 - Story 1.2: Auslieferung auf Railway
 - Story 1.3: Admin-Anmeldung
 - Story 1.4: Orte anlegen, bearbeiten und auflisten
+- Story 1.12: Adresse in Straße, PLZ und Ort aufteilen (läuft vor 1.5)
 - Story 1.5: Koordinaten auf der Karte setzen
 - Story 1.6: Ehrliches Zeitmodell im Kern
 - Story 1.7: Events anlegen, bearbeiten und auflisten
@@ -25,7 +26,7 @@ Epic 1 baut das Fundament des Event Store: ein geprüftes Go-Grundgerüst mit Po
 - **Event:** Pflicht sind Titel, Event-Typ, Ort, Beginn (mindestens Datum) und Quelle; optional Ende, Notiz, Ablaufplan. Fehlt Pflichtes oder besteht nur aus Leerraum, wird abgelehnt. Ein Ende vor (oder gleich) dem Beginn wird abgelehnt.
 - **Event-Typen:** feste Liste `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other` (deutsche Beschriftungen im Admin). Unbekannter Typ wird abgelehnt.
 - **Quelle:** Objekt aus Pflicht-Beschreibung und optionalem Link (nur http(s)). Nie im Titel.
-- **Ort:** Name, Adresse, Koordinaten (Breite −90..90, Länge −180..180) und Ortsgenauigkeit `building`/`street`/`area`/`district` sind Pflicht, Notiz optional. Stabile Kennung, die beim Umbenennen gleich bleibt. Namen sind eindeutig nach Normalisierung. Events referenzieren den Ort, keine Kopie. Ein Ort mit Events (auch archivierten) ist nicht löschbar.
+- **Ort:** Name, Adresse, Koordinaten (Breite −90..90, Länge −180..180) und Ortsgenauigkeit `building`/`street`/`area`/`district` sind Pflicht, Notiz optional. Die Adresse besteht aus Straße (mit Hausnummer), PLZ (genau fünf Ziffern) und Ort, alle drei Pflicht, auch bei `district`/`area`. Spalte `address` nur bis zum Contract-Schritt in Story 1.7. Stabile Kennung, die beim Umbenennen gleich bleibt. Namen sind eindeutig nach Normalisierung. Events referenzieren den Ort, keine Kopie. Ein Ort mit Events (auch archivierten) ist nicht löschbar.
 - **Ablaufplan:** beliebig viele Punkte mit Beschreibung, Datum, optionaler Beginn-/End-Uhrzeit; chronologisch sortiert ausgeliefert.
 - **Keine personenbezogenen Daten** in Events und Orten; Formulare weisen darauf hin.
 - **Zeitzone** immer Europe/Berlin. Leere Uhrzeit heißt „unbekannt“, nie 00:00.
