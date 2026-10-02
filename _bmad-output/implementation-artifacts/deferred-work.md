@@ -9,3 +9,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-lokales-grundgeruest-mit-ci.md`
   summary: Test, dass `run` den Datenbank-Pool beim Shutdown schließt.
   evidence: Nur `defer pool.Close()` in `cmd/eventstore/main.go`; kein Test beobachtet das, eine Prüfung braucht eine Injektionsnaht oder `pg_stat_activity`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-auslieferung-auf-railway.md`
+  summary: Befristetes Log von `X-Forwarded-For` und `RemoteAddr` in `/healthz` (`cmd/eventstore/health.go`) nach der ENT-21-Messung per Folge-PR wieder entfernen, spätestens mit Story 1.3.
+  evidence: Entscheidung vom 2026-10-02 in der Spec; im Dauerbetrieb dürfen keine Client-IPs im Log stehen.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-auslieferung-auf-railway.md`
+  summary: Backup per `railway ssh --service Postgres -- pg_dump … > datei` vor dem ersten Deploy mit echter Migration (Story 1.4) einmal ausprobieren, Dump-Ende (`-- PostgreSQL database dump complete`) prüfen und einen getesteten Restore-Befehl in der README ergänzen.
+  evidence: Unverifiziert (maybe-false, wäre medium): Eine TTY/CRLF-Umwandlung durch `railway ssh` könnte den Dump verfälschen; AD-17 stützt sich auf diesen Dump statt auf Down-Migrationen.

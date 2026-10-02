@@ -1,0 +1,9 @@
+.git
+.github
+_bmad*
+.claude
+*.md
+zirndorf_events.json
+.env*
+*.out
+coverage*

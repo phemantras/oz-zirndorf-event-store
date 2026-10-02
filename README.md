@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI, aber noch keine Fachfunktionen.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, aber noch keine Fachfunktionen.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -173,7 +173,60 @@ export EVENTSTORE_TEST_DATABASE_URL='postgres://eventstore:eventstore@localhost:
 go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...   # -p 1: beide Pakete migrieren dieselbe Datenbank
 ```
 
-Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests sowie die Abdeckungsprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
+Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
+
+## Deployment auf Railway
+
+Die App läuft auf [Railway](https://railway.com) als ein Service aus diesem Repository, daneben ein PostgreSQL-18-Service, der nur im privaten Netz erreichbar ist. Gebaut wird das `Dockerfile` (Multi-Stage: statisches Go-Binary auf `gcr.io/distroless/static-debian13:nonroot`, ohne Shell, als Nicht-root). Die Deploy-Einstellungen stehen als Code in `railway.json`: Dockerfile-Builder, Health Check auf `/healthz`, genau eine Replika, Neustart bei Absturz.
+
+### Einmalige Einrichtung (Railway-Dashboard)
+
+1. Neues Projekt anlegen, Umgebung `production`.
+2. PostgreSQL-Service hinzufügen und das Image auf Major 18 pinnen: unter *Settings → Source* `ghcr.io/railwayapp-templates/postgres-ssl:18` eintragen, nie `:latest` (das ist 16).
+3. Am PostgreSQL-Service unter *Settings → Networking* keinen TCP-Proxy einrichten bzw. einen vorhandenen entfernen. Die Datenbank bleibt so ohne öffentliche Verbindung.
+4. App-Service aus GitHub hinzufügen (dieses Repository, Branch `main`). Railway erkennt `railway.json` und baut das `Dockerfile`.
+5. Am App-Service die Variable `DATABASE_URL=${{Postgres.DATABASE_URL}}` setzen, also die Referenz auf die private URL des Postgres-Services (Service-Name ggf. anpassen). `PORT` setzt Railway selbst.
+6. Unter *Settings → Deploy* „Wait for CI“ einschalten.
+7. Unter *Settings → Networking* eine Railway-Domain erzeugen.
+
+Prüfen nach dem ersten Deploy:
+
+```sh
+curl -i https://<railway-domain>/healthz   # 200
+railway ssh --service Postgres -- psql -U postgres -c 'SHOW server_version;'   # 18.x
+```
+
+Im Dashboard: genau ein aktiver Deploy, Replikas = 1, Postgres-Image-Tag 18, kein TCP-Proxy auf Postgres.
+
+### Ablauf eines Deploys
+
+- Jeder Push auf `main` (also jeder gemergte Pull Request) löst einen Deploy aus. Railway wartet, bis die CI grün ist; ist sie rot, wird der Deploy übersprungen und die alte Version bleibt live.
+- Die CI baut das Docker-Image mit (ohne Push) und startet es einmal ohne Umgebungsvariablen: Es muss mit Exit-Code 1 und der Meldung über fehlende Variablen enden. Scheitert Build oder Startprüfung (z. B. kaputtes `ENTRYPOINT` oder nicht statisches Binary), wird die CI rot und blockiert so den Deploy. Die CI braucht kein Railway-Token.
+- Railway baut das Image selbst und startet die neue Version. Beim Start laufen zuerst die Migrationen, dann der HTTP-Server. Erst wenn `/healthz` mit 200 antwortet, wird die neue Version live; scheitert der Health Check (z. B. Datenbank nicht erreichbar), bleibt die alte Version aktiv und der Fehler steht im Railway-Log.
+
+### Migrationen und Datensicherung (AD-17)
+
+- Vor jedem Deploy mit einer neuen Migration ein Backup mit der Railway-CLI ziehen. Weil die Datenbank keinen TCP-Proxy hat, läuft `pg_dump` (Version 18) im Postgres-Container, nicht lokal:
+
+  ```sh
+  railway link                                  # einmalig: Projekt und Umgebung production wählen
+  railway ssh --service Postgres -- pg_dump -U postgres -d railway > backup-$(date +%F).sql
+  ```
+
+  `railway run pg_dump …` führt `pg_dump` dagegen lokal aus und erreicht die private Datenbank-URL nicht. Den Dump vor dem Merge kurz auf Inhalt prüfen.
+- Migrationen nur vorwärts, es gibt kein Zurückrollen per Down-Migration.
+- Schemaänderungen nach expand/contract: erst erweitern (neue Spalte, neue Tabelle), Code umstellen und deployen, erst in einem späteren Deploy das Alte entfernen. So passt die laufende alte Version immer zum Schema.
+- Bereits angewendete Migrationen nie ändern, sondern eine neue anlegen.
+
+### Client-IP hinter Railway
+
+*Noch offen:* Nach dem ersten Deploy wird gemessen, wie Railway mit einem vom Client mitgeschickten `X-Forwarded-For` umgeht:
+
+```sh
+curl -i -H 'X-Forwarded-For: 203.0.113.7' https://<railway-domain>/healthz
+```
+
+`/healthz` loggt dafür vorübergehend `x_forwarded_for` und `remote_addr` (das Log wird nach der Messung wieder entfernt). Hier steht dann, ob Railway den Client-Wert verwirft (Client-IP = linker Eintrag) oder seinen Wert anhängt (Client-IP = rechter Eintrag). Story 1.3 (Admin-Anmeldung) leitet daraus die Client-IP für die Login-Sperre ab.
 
 ## Dokumentation
 
