@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Vet and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9.3.0
+        with:
+          version: v2.14.0
+
+  unit:
+    name: Unit and architecture tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build ./...
+      - name: Unit tests
+        # PostgreSQL tests fail instead of skipping when CI is set; they run in
+        # the postgres job, so this job clears CI to let them skip here.
+        env:
+          CI: ""
+        run: go test -race ./...
+      - name: Architecture test (AD-1)
+        run: go test -count=1 -v ./internal/archtest/...
+      - name: Coverage gate (100 %)
+        run: bash scripts/check-coverage.sh
+
+  postgres:
+    name: PostgreSQL tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: eventstore
+          POSTGRES_PASSWORD: eventstore
+          POSTGRES_DB: eventstore_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eventstore -d eventstore_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      EVENTSTORE_TEST_DATABASE_URL: postgres://eventstore:eventstore@localhost:5432/eventstore_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: PostgreSQL tests
+        run: go test -race -count=1 -p 1 -v ./internal/adapter/postgres/... ./cmd/eventstore/...

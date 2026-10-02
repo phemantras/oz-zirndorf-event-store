@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Planung abgeschlossen, Umsetzung startet. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Code gibt es noch nicht.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI, aber noch keine Fachfunktionen.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -109,7 +109,7 @@ Alle 17 Entscheidungen mit Regeln stehen im [Architecture Spine](_bmad-output/pl
 | Hosting | [Railway](https://railway.com): ein Service für die App, einer für PostgreSQL |
 | CI | GitHub Actions. Railway deployt erst, wenn die CI grün ist. |
 
-## Projektstruktur (geplant)
+## Projektstruktur
 
 ```text
 api/v1/              OpenAPI-Spec und Import-Schema
@@ -120,7 +120,60 @@ internal/adapter/    publicapi/v1, admin, postgres, cleanup
 
 ## Lokal starten
 
-Folgt, sobald es Code gibt. Geplant ist PostgreSQL 18 per Docker Compose und das Programm mit `go run ./cmd/eventstore`.
+### Voraussetzungen
+
+- Go 1.27.1. Mit `GOTOOLCHAIN=auto` (Standard) lädt eine ältere Go-1.27-Installation die passende Version selbst nach.
+- Docker mit Docker Compose für das lokale PostgreSQL 18.
+
+### Datenbank starten
+
+```sh
+docker compose up -d
+```
+
+`compose.yaml` startet PostgreSQL 18 auf Port 5432 mit Benutzer, Passwort und Datenbank `eventstore`. Die Daten liegen im Volume `pgdata` unter `/var/lib/postgresql`. Die Zugangsdaten sind nur für die lokale Entwicklung gedacht.
+
+### Umgebungsvariablen
+
+| Variable | Pflicht | Beispiel |
+| --- | --- | --- |
+| `DATABASE_URL` | ja | `postgres://eventstore:eventstore@localhost:5432/eventstore?sslmode=disable` |
+| `PORT` | ja | `8080` (1 bis 65535) |
+
+Fehlt eine Variable oder ist `PORT` ungültig, bricht der Start mit einer JSON-Logzeile ab, die die Variable nennt.
+
+### Programm starten
+
+```sh
+export DATABASE_URL='postgres://eventstore:eventstore@localhost:5432/eventstore?sslmode=disable'
+export PORT=8080
+go run ./cmd/eventstore
+```
+
+Beim Start laufen zuerst die eingebetteten goose-Migrationen, erst danach nimmt der HTTP-Server Anfragen an. Logs gehen als JSON auf stdout.
+
+```sh
+curl -i localhost:8080/healthz   # 200, solange die Datenbank erreichbar ist, sonst 503
+```
+
+### Tests und Prüfungen
+
+```sh
+go build ./...
+go vet ./...
+go test ./...                    # Unit- und Architekturtest; Postgres-Tests werden ohne Datenbank übersprungen
+bash scripts/check-coverage.sh   # 100 % Abdeckung für core, publicapi/v1 und admin
+```
+
+Die Postgres-Tests laufen gegen eine eigene Testdatenbank:
+
+```sh
+docker compose exec postgres createdb -U eventstore eventstore_test
+export EVENTSTORE_TEST_DATABASE_URL='postgres://eventstore:eventstore@localhost:5432/eventstore_test?sslmode=disable'
+go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...   # -p 1: beide Pakete migrieren dieselbe Datenbank
+```
+
+Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests sowie die Abdeckungsprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
 
 ## Dokumentation
 
