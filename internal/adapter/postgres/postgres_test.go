@@ -2,9 +2,14 @@ package postgres_test
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 
 	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
 )
@@ -128,5 +133,90 @@ func TestDatabaseIsPostgres18(t *testing.T) {
 	const versionNumDivisor = 10000
 	if got := versionNum / versionNumDivisor; got != wantMajorVersion {
 		t.Errorf("PostgreSQL major version = %d, want %d", got, wantMajorVersion)
+	}
+}
+
+// addressPartsVersion is the migration that splits the address (Story 1.12).
+const addressPartsVersion = 3
+
+// legacySchema isolates the migration test from the shared test schema, so
+// it can start from an empty database.
+const legacySchema = "migration_address_parts"
+
+// poolInLegacySchema returns a pool on a freshly created schema that is
+// dropped after the test.
+func poolInLegacySchema(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	admin, err := postgres.Connect(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(admin.Close)
+	dropSchema := func() error {
+		_, err := admin.Exec(ctx, "DROP SCHEMA IF EXISTS "+legacySchema+" CASCADE")
+		return err
+	}
+	if err := dropSchema(); err != nil {
+		t.Fatalf("drop schema: %v", err)
+	}
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+legacySchema); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := dropSchema(); err != nil {
+			t.Errorf("drop schema: %v", err)
+		}
+	})
+
+	databaseURL, err := url.Parse(testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("parse database url: %v", err)
+	}
+	query := databaseURL.Query()
+	query.Set("search_path", legacySchema)
+	databaseURL.RawQuery = query.Encode()
+	pool, err := postgres.Connect(ctx, databaseURL.String())
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
+}
+
+// TestMigrateKeepsLegacyLocationsWhenSplittingAddress applies the migrations
+// up to the free-text address, stores a location as the code before Story
+// 1.12 did, and then migrates the rest: the row survives with its address
+// and empty address parts.
+func TestMigrateKeepsLegacyLocationsWhenSplittingAddress(t *testing.T) {
+	ctx := context.Background()
+	pool := poolInLegacySchema(t)
+	db := stdlib.OpenDBFromPool(pool)
+	t.Cleanup(func() { _ = db.Close() })
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, os.DirFS("migrations"))
+	if err != nil {
+		t.Fatalf("create migration provider: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, addressPartsVersion-1); err != nil {
+		t.Fatalf("migrate to version %d: %v", addressPartsVersion-1, err)
+	}
+	_, err = pool.Exec(ctx, `INSERT INTO locations (name, name_key, address, latitude, longitude, precision)
+		VALUES ('Alte Feuerwache', 'alte feuerwache', 'Fürther Straße 10, 90513 Zirndorf', 49.44, 10.95, 'building')`)
+	if err != nil {
+		t.Fatalf("insert legacy location: %v", err)
+	}
+
+	if _, err := postgres.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+
+	var address, street, postalCode, city string
+	err = pool.QueryRow(ctx, "SELECT address, street, postal_code, city FROM locations WHERE name_key = 'alte feuerwache'").
+		Scan(&address, &street, &postalCode, &city)
+	if err != nil {
+		t.Fatalf("read legacy location: %v", err)
+	}
+	if address != "Fürther Straße 10, 90513 Zirndorf" || street != "" || postalCode != "" || city != "" {
+		t.Errorf("legacy location = %q, %q, %q, %q, want address kept and empty parts", address, street, postalCode, city)
 	}
 }

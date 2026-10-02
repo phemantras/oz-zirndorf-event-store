@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -45,6 +46,12 @@ const (
 	coordinateBitSize   = 64
 )
 
+// The location list shows the address parts as "Straße, PLZ Ort".
+const (
+	streetSeparator     = ", "
+	postalCodeSeparator = " "
+)
+
 // German texts of the location pages.
 const (
 	headingNewLocation  = "Neuer Ort"
@@ -71,16 +78,19 @@ var precisionLabels = map[core.LocationPrecision]string{
 // fieldMessages are the German messages for the field problems the core
 // reports for a location.
 var fieldMessages = map[core.FieldError]string{
-	{Field: core.LocationFieldName, Problem: core.ProblemMissing}:          "Bitte einen Namen angeben.",
-	{Field: core.LocationFieldAddress, Problem: core.ProblemMissing}:       "Bitte eine Adresse angeben.",
-	{Field: core.LocationFieldLatitude, Problem: core.ProblemMissing}:      "Bitte eine Breite angeben.",
-	{Field: core.LocationFieldLatitude, Problem: core.ProblemNotANumber}:   "Die Breite ist keine Zahl.",
-	{Field: core.LocationFieldLatitude, Problem: core.ProblemOutOfRange}:   "Die Breite muss zwischen −90 und 90 liegen.",
-	{Field: core.LocationFieldLongitude, Problem: core.ProblemMissing}:     "Bitte eine Länge angeben.",
-	{Field: core.LocationFieldLongitude, Problem: core.ProblemNotANumber}:  "Die Länge ist keine Zahl.",
-	{Field: core.LocationFieldLongitude, Problem: core.ProblemOutOfRange}:  "Die Länge muss zwischen −180 und 180 liegen.",
-	{Field: core.LocationFieldPrecision, Problem: core.ProblemMissing}:     "Bitte eine Ortsgenauigkeit auswählen.",
-	{Field: core.LocationFieldPrecision, Problem: core.ProblemUnknownCode}: "Bitte eine der angebotenen Ortsgenauigkeiten auswählen.",
+	{Field: core.LocationFieldName, Problem: core.ProblemMissing}:             "Bitte einen Namen angeben.",
+	{Field: core.LocationFieldStreet, Problem: core.ProblemMissing}:           "Bitte Straße und Hausnummer angeben.",
+	{Field: core.LocationFieldPostalCode, Problem: core.ProblemMissing}:       "Bitte eine PLZ angeben.",
+	{Field: core.LocationFieldPostalCode, Problem: core.ProblemInvalidFormat}: "Die PLZ muss aus genau fünf Ziffern bestehen.",
+	{Field: core.LocationFieldCity, Problem: core.ProblemMissing}:             "Bitte einen Ort angeben.",
+	{Field: core.LocationFieldLatitude, Problem: core.ProblemMissing}:         "Bitte eine Breite angeben.",
+	{Field: core.LocationFieldLatitude, Problem: core.ProblemNotANumber}:      "Die Breite ist keine Zahl.",
+	{Field: core.LocationFieldLatitude, Problem: core.ProblemOutOfRange}:      "Die Breite muss zwischen −90 und 90 liegen.",
+	{Field: core.LocationFieldLongitude, Problem: core.ProblemMissing}:        "Bitte eine Länge angeben.",
+	{Field: core.LocationFieldLongitude, Problem: core.ProblemNotANumber}:     "Die Länge ist keine Zahl.",
+	{Field: core.LocationFieldLongitude, Problem: core.ProblemOutOfRange}:     "Die Länge muss zwischen −180 und 180 liegen.",
+	{Field: core.LocationFieldPrecision, Problem: core.ProblemMissing}:        "Bitte eine Ortsgenauigkeit auswählen.",
+	{Field: core.LocationFieldPrecision, Problem: core.ProblemUnknownCode}:    "Bitte eine der angebotenen Ortsgenauigkeiten auswählen.",
 }
 
 // locationListPage is the data of the location list.
@@ -89,7 +99,9 @@ type locationListPage struct {
 }
 
 type locationRow struct {
-	Name      string
+	Name string
+	// Address joins the address parts for display; empty for a location
+	// stored before the address was split.
 	Address   string
 	Precision string
 	Latitude  string
@@ -140,7 +152,7 @@ func (h *handler) showLocations(w http.ResponseWriter, r *http.Request) {
 	for _, location := range locations {
 		rows = append(rows, locationRow{
 			Name:      location.Name,
-			Address:   location.Address,
+			Address:   formatAddress(location),
 			Precision: precisionLabels[location.Precision],
 			Latitude:  formatCoordinate(location.Latitude),
 			Longitude: formatCoordinate(location.Longitude),
@@ -245,12 +257,14 @@ func newLocationFormPage(id string, values core.LocationInput) locationFormPage 
 // inputFromForm reads the location fields exactly as entered.
 func inputFromForm(form url.Values) core.LocationInput {
 	return core.LocationInput{
-		Name:      form.Get(core.LocationFieldName),
-		Address:   form.Get(core.LocationFieldAddress),
-		Latitude:  form.Get(core.LocationFieldLatitude),
-		Longitude: form.Get(core.LocationFieldLongitude),
-		Precision: form.Get(core.LocationFieldPrecision),
-		Note:      form.Get(core.LocationFieldNote),
+		Name:       form.Get(core.LocationFieldName),
+		Street:     form.Get(core.LocationFieldStreet),
+		PostalCode: form.Get(core.LocationFieldPostalCode),
+		City:       form.Get(core.LocationFieldCity),
+		Latitude:   form.Get(core.LocationFieldLatitude),
+		Longitude:  form.Get(core.LocationFieldLongitude),
+		Precision:  form.Get(core.LocationFieldPrecision),
+		Note:       form.Get(core.LocationFieldNote),
 	}
 }
 
@@ -265,12 +279,14 @@ func withDecimalPoints(in core.LocationInput) core.LocationInput {
 // inputFromLocation fills the edit form with a stored location.
 func inputFromLocation(location core.Location) core.LocationInput {
 	return core.LocationInput{
-		Name:      location.Name,
-		Address:   location.Address,
-		Latitude:  formatCoordinate(location.Latitude),
-		Longitude: formatCoordinate(location.Longitude),
-		Precision: string(location.Precision),
-		Note:      location.Note,
+		Name:       location.Name,
+		Street:     location.Street,
+		PostalCode: location.PostalCode,
+		City:       location.City,
+		Latitude:   formatCoordinate(location.Latitude),
+		Longitude:  formatCoordinate(location.Longitude),
+		Precision:  string(location.Precision),
+		Note:       location.Note,
 	}
 }
 
@@ -285,6 +301,19 @@ func fieldErrorMessages(fields []core.FieldError) map[string]string {
 		messages[field.Field] = message
 	}
 	return messages
+}
+
+// formatAddress returns the address as "Straße, PLZ Ort", leaving out empty
+// parts, so a location stored before the address was split shows an empty
+// address.
+func formatAddress(location core.Location) string {
+	place := joinNonEmpty(postalCodeSeparator, location.PostalCode, location.City)
+	return joinNonEmpty(streetSeparator, location.Street, place)
+}
+
+// joinNonEmpty joins the parts that are not empty with separator.
+func joinNonEmpty(separator string, parts ...string) string {
+	return strings.Join(slices.DeleteFunc(parts, func(part string) bool { return part == "" }), separator)
 }
 
 func formatCoordinate(degrees float64) string {

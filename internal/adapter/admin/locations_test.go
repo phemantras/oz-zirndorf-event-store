@@ -108,8 +108,15 @@ func (f failingLocations) ListLocations(context.Context) ([]core.Location, error
 var errStorageDown = errors.New("storage down")
 
 const (
-	hallName    = "Paul-Metz-Halle"
+	hallName       = "Paul-Metz-Halle"
+	hallStreet     = "Volkhardtstraße 2"
+	hallPostalCode = "90513"
+	hallCity       = "Zirndorf"
+	// hallAddress is how the location list shows the address parts.
 	hallAddress = "Volkhardtstraße 2, 90513 Zirndorf"
+	// msgPostalCodeFormat is the message for a postal code that is not
+	// five digits.
+	msgPostalCodeFormat = "Die PLZ muss aus genau fünf Ziffern bestehen."
 	// unknownLocationID is a well-formed id that no test stores.
 	unknownLocationID = "0192f0b1-0000-7000-8000-0000000000ff"
 )
@@ -117,12 +124,14 @@ const (
 // hallForm is a complete, valid location form with a decimal comma.
 func hallForm() url.Values {
 	return url.Values{
-		core.LocationFieldName:      {hallName},
-		core.LocationFieldAddress:   {hallAddress},
-		core.LocationFieldLatitude:  {"49,4424"},
-		core.LocationFieldLongitude: {"10,9539"},
-		core.LocationFieldPrecision: {string(core.PrecisionBuilding)},
-		core.LocationFieldNote:      {"Eingang hinten"},
+		core.LocationFieldName:       {hallName},
+		core.LocationFieldStreet:     {hallStreet},
+		core.LocationFieldPostalCode: {hallPostalCode},
+		core.LocationFieldCity:       {hallCity},
+		core.LocationFieldLatitude:   {"49,4424"},
+		core.LocationFieldLongitude:  {"10,9539"},
+		core.LocationFieldPrecision:  {string(core.PrecisionBuilding)},
+		core.LocationFieldNote:       {"Eingang hinten"},
 	}
 }
 
@@ -228,6 +237,23 @@ func TestLocationListWithoutLocationsLinksNewForm(t *testing.T) {
 	assertBodyContains(t, rec, "Noch keine Orte angelegt.", `href="`+newLocationPath+`"`)
 }
 
+func TestNewLocationFormHasThreeAddressFieldsInsteadOfAddress(t *testing.T) {
+	ts := newTestServer(t)
+
+	rec := ts.get(newLocationPath)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec,
+		`<label for="street">Straße und Hausnummer</label>`,
+		`<label for="postalCode">PLZ</label>`,
+		`<label for="city">Ort</label>`,
+		`name="`+core.LocationFieldStreet+`"`,
+		`name="`+core.LocationFieldPostalCode+`"`,
+		`name="`+core.LocationFieldCity+`"`,
+	)
+	assertBodyLacks(t, rec, `name="address"`, ">Adresse<")
+}
+
 func TestNewLocationFormOffersPrecisionsWithGermanLabelsAndPrivacyHints(t *testing.T) {
 	ts := newTestServer(t)
 
@@ -262,7 +288,8 @@ func TestCreateLocationWithMissingFieldsShowsGermanMessagesAndKeepsInput(t *test
 	assertStatusCode(t, rec, http.StatusUnprocessableEntity)
 	assertBodyContains(t, rec,
 		"Bitte einen Namen angeben.", "Bitte eine Länge angeben.", "Bitte eine Ortsgenauigkeit auswählen.",
-		`value="`+hallAddress+`"`, `value="49,4424"`, "Eingang hinten",
+		`value="`+hallStreet+`"`, `value="`+hallPostalCode+`"`, `value="`+hallCity+`"`,
+		`value="49,4424"`, "Eingang hinten",
 	)
 	if len(ts.locations.locations) != 0 {
 		t.Error("an invalid location was stored")
@@ -308,15 +335,59 @@ func TestCreateLocationWithUnknownPrecisionShowsFieldMessage(t *testing.T) {
 	assertBodyContains(t, rec, "Bitte eine der angebotenen Ortsgenauigkeiten auswählen.")
 }
 
-func TestCreateLocationWithMissingAddressShowsFieldMessage(t *testing.T) {
+func TestCreateLocationWithBlankAddressPartsShowsThreeMessagesAndKeepsInput(t *testing.T) {
 	ts := newTestServer(t)
 	form := hallForm()
-	form.Set(core.LocationFieldAddress, "")
+	form.Set(core.LocationFieldStreet, "   ")
+	form.Set(core.LocationFieldPostalCode, "")
+	form.Set(core.LocationFieldCity, " ")
 
 	rec := ts.post(locationsPath, form)
 
 	assertStatusCode(t, rec, http.StatusUnprocessableEntity)
-	assertBodyContains(t, rec, "Bitte eine Adresse angeben.")
+	assertBodyContains(t, rec,
+		"Bitte Straße und Hausnummer angeben.", "Bitte eine PLZ angeben.", "Bitte einen Ort angeben.",
+		`name="street" type="text" value="   "`, `name="city" type="text" value=" "`, `value="`+hallName+`"`,
+	)
+	if len(ts.locations.locations) != 0 {
+		t.Error("a location without address parts was stored")
+	}
+}
+
+func TestCreateLocationWithMalformedPostalCodeShowsFormatMessage(t *testing.T) {
+	fullWidthPostalCode := "\uff19\uff10\uff15\uff11\uff13"
+	for _, postalCode := range []string{"9051", "90513a", "D-90513", fullWidthPostalCode} {
+		t.Run(postalCode, func(t *testing.T) {
+			ts := newTestServer(t)
+			form := hallForm()
+			form.Set(core.LocationFieldPostalCode, postalCode)
+
+			rec := ts.post(locationsPath, form)
+
+			assertStatusCode(t, rec, http.StatusUnprocessableEntity)
+			assertBodyContains(t, rec, msgPostalCodeFormat, `value="`+postalCode+`"`)
+			if len(ts.locations.locations) != 0 {
+				t.Error("a location with a malformed postal code was stored")
+			}
+		})
+	}
+}
+
+func TestCreateLocationTrimsPostalCode(t *testing.T) {
+	ts := newTestServer(t)
+	form := hallForm()
+	form.Set(core.LocationFieldPostalCode, " 90513 ")
+
+	rec := ts.post(locationsPath, form)
+
+	assertRedirect(t, rec, locationsPath)
+	stored, err := ts.locations.FindByNameKey(context.Background(), "paul-metz-halle")
+	if err != nil {
+		t.Fatalf("location not stored: %v", err)
+	}
+	if stored.Street != hallStreet || stored.PostalCode != hallPostalCode || stored.City != hallCity {
+		t.Errorf("stored = %+v, want %q, %q, %q", stored, hallStreet, hallPostalCode, hallCity)
+	}
 }
 
 func TestCreateLocationKeepsSelectedPrecisionAfterError(t *testing.T) {
@@ -390,17 +461,102 @@ func TestEditingLocationKeepsID(t *testing.T) {
 	hall := ts.seed(t, hallName)
 	form := hallForm()
 	form.Set(core.LocationFieldName, "Paul-Metz-Halle Zirndorf")
-	form.Set(core.LocationFieldAddress, "Volkhardtstraße 2a, 90513 Zirndorf")
 
 	rec := ts.post(locationPath(hall.ID), form)
 
 	assertRedirect(t, rec, locationsPath)
 	stored := ts.locations.locations[hall.ID]
-	if stored.Name != "Paul-Metz-Halle Zirndorf" || stored.Address != "Volkhardtstraße 2a, 90513 Zirndorf" {
-		t.Errorf("stored = %+v, want new name and address under id %s", stored, hall.ID)
+	if stored.Name != "Paul-Metz-Halle Zirndorf" {
+		t.Errorf("stored = %+v, want new name under id %s", stored, hall.ID)
 	}
 	if len(ts.locations.locations) != 1 {
 		t.Errorf("stored %d locations, want 1", len(ts.locations.locations))
+	}
+}
+
+func TestEditingOnlyPostalCodeAndCityKeepsID(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	form := hallForm()
+	form.Set(core.LocationFieldPostalCode, "90522")
+	form.Set(core.LocationFieldCity, "Oberasbach")
+
+	rec := ts.post(locationPath(hall.ID), form)
+
+	assertRedirect(t, rec, locationsPath)
+	stored := ts.locations.locations[hall.ID]
+	if stored.Street != hallStreet || stored.PostalCode != "90522" || stored.City != "Oberasbach" {
+		t.Errorf("stored = %+v, want new postal code and city under id %s", stored, hall.ID)
+	}
+	if len(ts.locations.locations) != 1 {
+		t.Errorf("stored %d locations, want 1", len(ts.locations.locations))
+	}
+	assertBodyContains(t, ts.get(locationsPath), "Volkhardtstraße 2, 90522 Oberasbach")
+}
+
+// legacyLocation is a location stored before Story 1.12: it has no address
+// parts.
+func legacyLocation() core.Location {
+	return core.Location{
+		ID: unknownLocationID, Name: "Alte Feuerwache", NameKey: "alte feuerwache",
+		Latitude: 49.44, Longitude: 10.95, Precision: core.PrecisionBuilding,
+	}
+}
+
+func TestLegacyLocationWithoutAddressPartsIsListedWithEmptyAddress(t *testing.T) {
+	ts := newTestServer(t)
+	legacy := legacyLocation()
+	ts.locations.locations[legacy.ID] = legacy
+
+	rec := ts.get(locationsPath)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec, legacy.Name, "<td></td>")
+}
+
+func TestLegacyLocationOpensWithEmptyAddressFieldsAndCanBeCompleted(t *testing.T) {
+	ts := newTestServer(t)
+	legacy := legacyLocation()
+	ts.locations.locations[legacy.ID] = legacy
+
+	form := ts.get(locationPath(legacy.ID))
+
+	assertStatusCode(t, form, http.StatusOK)
+	assertBodyContains(t, form,
+		`name="street" type="text" value=""`, `name="postalCode" type="text" inputmode="numeric" value=""`,
+		`name="city" type="text" value=""`, `value="`+legacy.Name+`"`,
+	)
+
+	completed := hallForm()
+	completed.Set(core.LocationFieldName, legacy.Name)
+	rec := ts.post(locationPath(legacy.ID), completed)
+
+	assertRedirect(t, rec, locationsPath)
+	stored := ts.locations.locations[legacy.ID]
+	if stored.Street != hallStreet || stored.PostalCode != hallPostalCode || stored.City != hallCity {
+		t.Errorf("stored = %+v, want the address parts of the form", stored)
+	}
+}
+
+func TestFormatAddressJoinsOnlyGivenParts(t *testing.T) {
+	tests := map[string]struct {
+		street, postalCode, city string
+		want                     string
+	}{
+		"all parts":              {hallStreet, hallPostalCode, hallCity, hallAddress},
+		"none":                   {"", "", "", ""},
+		"street only":            {hallStreet, "", "", hallStreet},
+		"postal code and city":   {"", hallPostalCode, hallCity, "90513 Zirndorf"},
+		"street and city":        {hallStreet, "", hallCity, "Volkhardtstraße 2, Zirndorf"},
+		"street and postal code": {hallStreet, hallPostalCode, "", "Volkhardtstraße 2, 90513"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			location := core.Location{Street: tt.street, PostalCode: tt.postalCode, City: tt.city}
+			if got := formatAddress(location); got != tt.want {
+				t.Errorf("formatAddress = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -412,7 +568,8 @@ func TestEditFormShowsStoredValues(t *testing.T) {
 
 	assertStatusCode(t, rec, http.StatusOK)
 	assertBodyContains(t, rec,
-		`action="`+locationPath(hall.ID)+`"`, `value="`+hallName+`"`, `value="`+hallAddress+`"`,
+		`action="`+locationPath(hall.ID)+`"`, `value="`+hallName+`"`,
+		`value="`+hallStreet+`"`, `value="`+hallPostalCode+`"`, `value="`+hallCity+`"`,
 		`value="49.4424"`, `value="10.9539"`, `<option value="building" selected>Gebäude</option>`, "Eingang hinten",
 	)
 }

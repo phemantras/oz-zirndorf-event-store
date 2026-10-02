@@ -12,37 +12,56 @@ import (
 )
 
 const createLocation = `-- name: CreateLocation :one
-INSERT INTO locations (name, name_key, address, latitude, longitude, precision, note)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, name, name_key, address, latitude, longitude, precision, note
+INSERT INTO locations (name, name_key, street, postal_code, city, latitude, longitude, precision, note)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, name, name_key, street, postal_code, city, latitude, longitude, precision, note
 `
 
 type CreateLocationParams struct {
-	Name      string
-	NameKey   string
-	Address   string
-	Latitude  float64
-	Longitude float64
-	Precision string
-	Note      pgtype.Text
+	Name       string
+	NameKey    string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
 }
 
-func (q *Queries) CreateLocation(ctx context.Context, arg CreateLocationParams) (Location, error) {
+type CreateLocationRow struct {
+	ID         pgtype.UUID
+	Name       string
+	NameKey    string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
+}
+
+func (q *Queries) CreateLocation(ctx context.Context, arg CreateLocationParams) (CreateLocationRow, error) {
 	row := q.db.QueryRow(ctx, createLocation,
 		arg.Name,
 		arg.NameKey,
-		arg.Address,
+		arg.Street,
+		arg.PostalCode,
+		arg.City,
 		arg.Latitude,
 		arg.Longitude,
 		arg.Precision,
 		arg.Note,
 	)
-	var i Location
+	var i CreateLocationRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.NameKey,
-		&i.Address,
+		&i.Street,
+		&i.PostalCode,
+		&i.City,
 		&i.Latitude,
 		&i.Longitude,
 		&i.Precision,
@@ -52,19 +71,34 @@ func (q *Queries) CreateLocation(ctx context.Context, arg CreateLocationParams) 
 }
 
 const findLocationByNameKey = `-- name: FindLocationByNameKey :one
-SELECT id, name, name_key, address, latitude, longitude, precision, note
+SELECT id, name, name_key, street, postal_code, city, latitude, longitude, precision, note
 FROM locations
 WHERE name_key = $1
 `
 
-func (q *Queries) FindLocationByNameKey(ctx context.Context, nameKey string) (Location, error) {
+type FindLocationByNameKeyRow struct {
+	ID         pgtype.UUID
+	Name       string
+	NameKey    string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
+}
+
+func (q *Queries) FindLocationByNameKey(ctx context.Context, nameKey string) (FindLocationByNameKeyRow, error) {
 	row := q.db.QueryRow(ctx, findLocationByNameKey, nameKey)
-	var i Location
+	var i FindLocationByNameKeyRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.NameKey,
-		&i.Address,
+		&i.Street,
+		&i.PostalCode,
+		&i.City,
 		&i.Latitude,
 		&i.Longitude,
 		&i.Precision,
@@ -74,19 +108,34 @@ func (q *Queries) FindLocationByNameKey(ctx context.Context, nameKey string) (Lo
 }
 
 const getLocation = `-- name: GetLocation :one
-SELECT id, name, name_key, address, latitude, longitude, precision, note
+SELECT id, name, name_key, street, postal_code, city, latitude, longitude, precision, note
 FROM locations
 WHERE id = $1
 `
 
-func (q *Queries) GetLocation(ctx context.Context, id pgtype.UUID) (Location, error) {
+type GetLocationRow struct {
+	ID         pgtype.UUID
+	Name       string
+	NameKey    string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
+}
+
+func (q *Queries) GetLocation(ctx context.Context, id pgtype.UUID) (GetLocationRow, error) {
 	row := q.db.QueryRow(ctx, getLocation, id)
-	var i Location
+	var i GetLocationRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.NameKey,
-		&i.Address,
+		&i.Street,
+		&i.PostalCode,
+		&i.City,
 		&i.Latitude,
 		&i.Longitude,
 		&i.Precision,
@@ -97,25 +146,42 @@ func (q *Queries) GetLocation(ctx context.Context, id pgtype.UUID) (Location, er
 
 const listLocations = `-- name: ListLocations :many
 
-SELECT id, name, name_key, address, latitude, longitude, precision, note
+SELECT id, name, name_key, street, postal_code, city, latitude, longitude, precision, note
 FROM locations
 `
 
+type ListLocationsRow struct {
+	ID         pgtype.UUID
+	Name       string
+	NameKey    string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
+}
+
 // Plain CRUD only: sorting, normalization and validation live in the core.
-func (q *Queries) ListLocations(ctx context.Context) ([]Location, error) {
+// The column address is left over from before Story 1.12 and is neither read
+// nor written (AD-17), so every query names its columns.
+func (q *Queries) ListLocations(ctx context.Context) ([]ListLocationsRow, error) {
 	rows, err := q.db.Query(ctx, listLocations)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Location
+	var items []ListLocationsRow
 	for rows.Next() {
-		var i Location
+		var i ListLocationsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.NameKey,
-			&i.Address,
+			&i.Street,
+			&i.PostalCode,
+			&i.City,
 			&i.Latitude,
 			&i.Longitude,
 			&i.Precision,
@@ -133,39 +199,59 @@ func (q *Queries) ListLocations(ctx context.Context) ([]Location, error) {
 
 const updateLocation = `-- name: UpdateLocation :one
 UPDATE locations
-SET name = $2, name_key = $3, address = $4, latitude = $5, longitude = $6, precision = $7, note = $8
+SET name = $2, name_key = $3, street = $4, postal_code = $5, city = $6,
+    latitude = $7, longitude = $8, precision = $9, note = $10
 WHERE id = $1
-RETURNING id, name, name_key, address, latitude, longitude, precision, note
+RETURNING id, name, name_key, street, postal_code, city, latitude, longitude, precision, note
 `
 
 type UpdateLocationParams struct {
-	ID        pgtype.UUID
-	Name      string
-	NameKey   string
-	Address   string
-	Latitude  float64
-	Longitude float64
-	Precision string
-	Note      pgtype.Text
+	ID         pgtype.UUID
+	Name       string
+	NameKey    string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
 }
 
-func (q *Queries) UpdateLocation(ctx context.Context, arg UpdateLocationParams) (Location, error) {
+type UpdateLocationRow struct {
+	ID         pgtype.UUID
+	Name       string
+	NameKey    string
+	Street     string
+	PostalCode string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
+}
+
+func (q *Queries) UpdateLocation(ctx context.Context, arg UpdateLocationParams) (UpdateLocationRow, error) {
 	row := q.db.QueryRow(ctx, updateLocation,
 		arg.ID,
 		arg.Name,
 		arg.NameKey,
-		arg.Address,
+		arg.Street,
+		arg.PostalCode,
+		arg.City,
 		arg.Latitude,
 		arg.Longitude,
 		arg.Precision,
 		arg.Note,
 	)
-	var i Location
+	var i UpdateLocationRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.NameKey,
-		&i.Address,
+		&i.Street,
+		&i.PostalCode,
+		&i.City,
 		&i.Latitude,
 		&i.Longitude,
 		&i.Precision,

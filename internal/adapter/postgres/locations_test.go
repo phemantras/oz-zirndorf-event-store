@@ -40,15 +40,16 @@ func migratedLocationRepo(t *testing.T) (*postgres.LocationRepo, *pgxpool.Pool) 
 func hallLocation() core.Location {
 	return core.Location{
 		Name: "Paul-Metz-Halle", NameKey: "paul-metz-halle",
-		Address: "Volkhardtstraße 2, 90513 Zirndorf", Latitude: 49.4424, Longitude: 10.9539,
-		Precision: core.PrecisionBuilding,
+		Street: "Volkhardtstraße 2", PostalCode: "90513", City: "Zirndorf",
+		Latitude: 49.4424, Longitude: 10.9539, Precision: core.PrecisionBuilding,
 	}
 }
 
 func parkLocation() core.Location {
 	return core.Location{
 		Name: "Bibertpark", NameKey: "bibertpark",
-		Address: "Bibertstraße, 90513 Zirndorf", Latitude: 49.44, Longitude: 10.95,
+		Street: "Bibertstraße", PostalCode: "90513", City: "Zirndorf",
+		Latitude: 49.44, Longitude: 10.95,
 		Precision: core.PrecisionArea, Note: "Zugang über die Brücke",
 	}
 }
@@ -165,7 +166,7 @@ func TestLocationRepoUpdateKeepsID(t *testing.T) {
 
 	renamed := hall
 	renamed.Name, renamed.NameKey = "Paul-Metz-Halle Zirndorf", "paul-metz-halle zirndorf"
-	renamed.Address = "Volkhardtstraße 2a, 90513 Zirndorf"
+	renamed.Street, renamed.PostalCode, renamed.City = "Volkhardtstraße 2a", "90522", "Oberasbach"
 	renamed.Note = "Neu"
 	updated, err := repo.Update(ctx, renamed)
 	if err != nil {
@@ -180,6 +181,81 @@ func TestLocationRepoUpdateKeepsID(t *testing.T) {
 	}
 }
 
+// insertLegacyLocation inserts a location the way the code before Story 1.12
+// wrote it: with the free-text address and without address parts.
+func insertLegacyLocation(t *testing.T, pool *pgxpool.Pool) string {
+	t.Helper()
+	var id string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO locations (name, name_key, address, latitude, longitude, precision)
+		 VALUES ('Alte Feuerwache', 'alte feuerwache', 'Fürther Straße 10, 90513 Zirndorf', 49.44, 10.95, 'building')
+		 RETURNING id::text`).Scan(&id)
+	if err != nil {
+		t.Fatalf("insert legacy location: %v", err)
+	}
+	return id
+}
+
+func TestLocationRepoReadsLegacyLocationWithEmptyAddressParts(t *testing.T) {
+	repo, pool := migratedLocationRepo(t)
+	id := insertLegacyLocation(t, pool)
+	ctx := context.Background()
+
+	want := core.Location{
+		ID: id, Name: "Alte Feuerwache", NameKey: "alte feuerwache",
+		Latitude: 49.44, Longitude: 10.95, Precision: core.PrecisionBuilding,
+	}
+	got, err := repo.Get(ctx, id)
+	if err != nil || got != want {
+		t.Errorf("Get = %+v, %v, want %+v", got, err, want)
+	}
+	list, err := repo.List(ctx)
+	if err != nil || !slices.Equal(list, []core.Location{want}) {
+		t.Errorf("List = %v, %v, want %v", list, err, want)
+	}
+}
+
+func TestLocationRepoUpdateCompletesLegacyLocation(t *testing.T) {
+	repo, pool := migratedLocationRepo(t)
+	id := insertLegacyLocation(t, pool)
+	ctx := context.Background()
+
+	completed, err := repo.Get(ctx, id)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	completed.Street, completed.PostalCode, completed.City = "Fürther Straße 10", "90513", "Zirndorf"
+	updated, err := repo.Update(ctx, completed)
+	if err != nil || updated != completed {
+		t.Errorf("Update = %+v, %v, want %+v", updated, err, completed)
+	}
+
+	var address string
+	if err := pool.QueryRow(ctx, "SELECT address FROM locations WHERE id = $1", id).Scan(&address); err != nil {
+		t.Fatalf("read address: %v", err)
+	}
+	if address != "Fürther Straße 10, 90513 Zirndorf" {
+		t.Errorf("address = %q, want the legacy address untouched", address)
+	}
+}
+
+// TestLocationRepoStoresEmptyNonNullAddressForNewLocations guards the
+// rollback: the code before Story 1.12 scans address into a string and fails
+// on NULL.
+func TestLocationRepoStoresEmptyNonNullAddressForNewLocations(t *testing.T) {
+	repo, pool := migratedLocationRepo(t)
+	created := createLocation(t, repo, hallLocation())
+
+	var address *string
+	err := pool.QueryRow(context.Background(), "SELECT address FROM locations WHERE id = $1", created.ID).Scan(&address)
+	if err != nil {
+		t.Fatalf("read address: %v", err)
+	}
+	if address == nil || *address != "" {
+		t.Errorf("address = %v, want an empty, non-NULL text", address)
+	}
+}
+
 // TestLocationServiceReportsConflictAgainstDatabase runs the use case against
 // PostgreSQL: a name that only collides after NormalizeKey is rejected with
 // the existing location.
@@ -188,7 +264,7 @@ func TestLocationServiceReportsConflictAgainstDatabase(t *testing.T) {
 	service := core.NewLocationService(repo)
 	ctx := context.Background()
 	in := core.LocationInput{
-		Name: "Paul-Metz-Halle", Address: "Volkhardtstraße 2, 90513 Zirndorf",
+		Name: "Paul-Metz-Halle", Street: "Volkhardtstraße 2", PostalCode: "90513", City: "Zirndorf",
 		Latitude: "49.4424", Longitude: "10.9539", Precision: string(core.PrecisionBuilding),
 	}
 	hall, err := service.SaveLocation(ctx, "", in)

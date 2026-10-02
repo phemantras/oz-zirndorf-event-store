@@ -9,9 +9,17 @@
   {{with index .Errors "name"}}<p class="field-error">{{.}}</p>{{end}}
   <p class="hint" id="name-hint">{{.PrivacyHint}}</p>
 
-  <label for="address">Adresse</label>
-  <input id="address" name="address" type="text" value="{{.Values.Address}}" required>
-  {{with index .Errors "address"}}<p class="field-error">{{.}}</p>{{end}}
+  <label for="street">Straße und Hausnummer</label>
+  <input id="street" name="street" type="text" value="{{.Values.Street}}" required>
+  {{with index .Errors "street"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <label for="postalCode">PLZ</label>
+  <input id="postalCode" name="postalCode" type="text" inputmode="numeric" value="{{.Values.PostalCode}}" required>
+  {{with index .Errors "postalCode"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <label for="city">Ort</label>
+  <input id="city" name="city" type="text" value="{{.Values.City}}" required>
+  {{with index .Errors "city"}}<p class="field-error">{{.}}</p>{{end}}
 
   <label for="latitude">Breite</label>
   <input id="latitude" name="latitude" type="text" inputmode="decimal" value="{{.Values.Latitude}}" placeholder="49,4424" required>

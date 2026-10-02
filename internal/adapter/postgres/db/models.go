@@ -9,12 +9,15 @@ import (
 )
 
 type Location struct {
-	ID        pgtype.UUID
-	Name      string
-	NameKey   string
-	Address   string
-	Latitude  float64
-	Longitude float64
-	Precision string
-	Note      pgtype.Text
+	ID         pgtype.UUID
+	Name       string
+	NameKey    string
+	Address    pgtype.Text
+	Latitude   float64
+	Longitude  float64
+	Precision  string
+	Note       pgtype.Text
+	Street     string
+	PostalCode string
+	City       string
 }
