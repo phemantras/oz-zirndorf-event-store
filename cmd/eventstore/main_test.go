@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
 // unreachableDatabaseURL points at a port where no server listens, so the
@@ -147,11 +149,49 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 		time.Sleep(healthPollInterval)
 	}
 
-	assertStatus(t, "http://127.0.0.1:"+port+adminLoginPath, http.StatusOK)
+	baseURL := "http://127.0.0.1:" + port
+	assertStatus(t, baseURL+adminLoginPath, http.StatusOK)
+	assertLocationsServedWithSession(t, baseURL)
 
 	cancel()
 	if err := <-done; err != nil {
 		t.Errorf("run returned %v, want nil after shutdown", err)
+	}
+}
+
+// assertLocationsServedWithSession logs in at baseURL and checks that the
+// location list, wired to PostgreSQL, answers with the session.
+func assertLocationsServedWithSession(t *testing.T, baseURL string) {
+	t.Helper()
+	// The session cookie is Secure, so a cookie jar would drop it over plain
+	// HTTP; the test carries it by hand and stops at the login redirect.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	form := url.Values{"username": {validAdminUser}, "password": {validAdminPassword}}
+	login, err := client.PostForm(baseURL+adminLoginPath, form)
+	if err != nil {
+		t.Fatalf("POST login: %v", err)
+	}
+	_ = login.Body.Close()
+	cookies := login.Cookies()
+	if login.StatusCode != http.StatusSeeOther || len(cookies) != 1 {
+		t.Fatalf("login: status = %d with %d cookies, want %d with the session cookie",
+			login.StatusCode, len(cookies), http.StatusSeeOther)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, baseURL+adminLocationsPath, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.AddCookie(cookies[0])
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", adminLocationsPath, err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("GET %s with session: status = %d, want %d", adminLocationsPath, resp.StatusCode, http.StatusOK)
 	}
 }
 
@@ -161,7 +201,7 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	logger := slog.New(slog.DiscardHandler)
-	server := newServer(&fakePinger{}, logger, newAdminHandler(validConfig(t), logger))
+	server := newServer(&fakePinger{}, logger, newAdminHandler(validConfig(t), logger, emptyLocations{}))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- serve(ctx, server, listener, slog.New(slog.DiscardHandler)) }()
@@ -203,6 +243,28 @@ func TestServeReturnsErrorWhenListenerFails(t *testing.T) {
 // adminLoginPath is where the admin login form is served.
 const adminLoginPath = "/admin/login"
 
+// adminLocationsPath lists the locations; it needs a session.
+const adminLocationsPath = "/admin/locations"
+
+// validAdminPassword is the password behind validPasswordHash.
+const validAdminPassword = "richtig-und-lang"
+
+// emptyLocations stands in for the location use cases where no database is
+// available: there are no locations.
+type emptyLocations struct{}
+
+func (emptyLocations) SaveLocation(context.Context, string, core.LocationInput) (core.Location, error) {
+	return core.Location{}, core.ErrNotFound
+}
+
+func (emptyLocations) GetLocation(context.Context, string) (core.Location, error) {
+	return core.Location{}, core.ErrNotFound
+}
+
+func (emptyLocations) ListLocations(context.Context) ([]core.Location, error) {
+	return nil, nil
+}
+
 func validConfig(t *testing.T) config {
 	t.Helper()
 	cfg, err := loadConfig(validEnv(nil))
@@ -238,9 +300,8 @@ func TestRunFailsWithWeakSessionSecretWithoutLeakingIt(t *testing.T) {
 }
 
 func TestNewAdminHandlerLogsInWithConfiguredCredentials(t *testing.T) {
-	const validPassword = "richtig-und-lang"
-	handler := newAdminHandler(validConfig(t), slog.New(slog.DiscardHandler))
-	form := url.Values{"username": {validAdminUser}, "password": {validPassword}}
+	handler := newAdminHandler(validConfig(t), slog.New(slog.DiscardHandler), emptyLocations{})
+	form := url.Values{"username": {validAdminUser}, "password": {validAdminPassword}}
 	login := httptest.NewRequest(http.MethodPost, adminLoginPath, strings.NewReader(form.Encode()))
 	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -261,5 +322,12 @@ func TestNewAdminHandlerLogsInWithConfiguredCredentials(t *testing.T) {
 	handler.ServeHTTP(homeRec, home)
 	if homeRec.Code != http.StatusOK {
 		t.Errorf("home with session cookie: status = %d, want %d", homeRec.Code, http.StatusOK)
+	}
+	locations := httptest.NewRequest(http.MethodGet, adminLocationsPath, nil)
+	locations.AddCookie(cookies[0])
+	locationsRec := httptest.NewRecorder()
+	handler.ServeHTTP(locationsRec, locations)
+	if locationsRec.Code != http.StatusOK {
+		t.Errorf("locations with session cookie: status = %d, want %d", locationsRec.Code, http.StatusOK)
 	}
 }

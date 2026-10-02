@@ -1,6 +1,6 @@
 // Package postgres is the PostgreSQL adapter: connection pool, embedded goose
-// migrations and, in later stories, the repository implementations of the
-// core ports.
+// migrations and the repository implementations of the core ports, built on
+// the sqlc-generated queries in package db.
 package postgres
 
 import (

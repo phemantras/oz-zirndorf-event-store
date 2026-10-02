@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
 const (
@@ -31,6 +33,8 @@ type testServer struct {
 	clock          *fakeClock
 	logs           *bytes.Buffer
 	passwordChecks int
+	// locations is the in-memory storage behind the real core use cases.
+	locations *memoryLocationRepo
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -40,13 +44,18 @@ func newTestServer(t *testing.T) *testServer {
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
-	ts := &testServer{clock: &fakeClock{current: testLoginTime}, logs: &bytes.Buffer{}}
+	ts := &testServer{
+		clock:     &fakeClock{current: testLoginTime},
+		logs:      &bytes.Buffer{},
+		locations: newMemoryLocationRepo(),
+	}
 	ts.handler = newHandler(Config{
 		User:          testUser,
 		PasswordHash:  hash,
 		SessionSecret: testSecret,
 		Logger:        slog.New(slog.NewJSONHandler(ts.logs, nil)),
 		Now:           ts.clock.now,
+		Locations:     core.NewLocationService(ts.locations),
 	})
 	compare := ts.handler.comparePassword
 	ts.handler.comparePassword = func(hash, password []byte) error {
@@ -311,7 +320,7 @@ func TestLoginPageRedirectsHomeWhenSignedIn(t *testing.T) {
 	assertRedirect(t, rec, homePath)
 }
 
-func TestHomeShowsPlaceholderAndLogoutButton(t *testing.T) {
+func TestHomeLinksLocationsAndShowsLogoutButton(t *testing.T) {
 	ts := newTestServer(t)
 
 	rec := ts.do(withCookie(httptest.NewRequest(http.MethodGet, homePath, nil), ts.validCookie()))
@@ -320,7 +329,7 @@ func TestHomeShowsPlaceholderAndLogoutButton(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"<h1>", "Orte und Events folgen", `action="` + logoutPath + `"`, "Abmelden"} {
+	for _, want := range []string{"<h1>", `href="` + locationsPath + `"`, ">Orte<", `action="` + logoutPath + `"`, "Abmelden"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("home page does not contain %q", want)
 		}

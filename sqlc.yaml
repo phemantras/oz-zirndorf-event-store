@@ -1,0 +1,13 @@
+# sqlc 1.31.1 generates the typed query code in internal/adapter/postgres/db
+# from the goose migrations and the queries. Never edit the generated code;
+# change a query or add a migration and run `sqlc generate` again.
+version: "2"
+sql:
+  - engine: postgresql
+    schema: internal/adapter/postgres/migrations
+    queries: internal/adapter/postgres/queries
+    gen:
+      go:
+        package: db
+        out: internal/adapter/postgres/db
+        sql_package: pgx/v5

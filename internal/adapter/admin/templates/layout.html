@@ -10,7 +10,12 @@
   header { padding: 0.75rem 1rem; background: #1f4e79; color: #fff; font-weight: 600; }
   main { max-width: 40rem; margin: 2rem auto; padding: 0 1rem; }
   label { display: block; margin-top: 1rem; font-weight: 600; }
-  input { display: block; width: 100%; max-width: 20rem; padding: 0.4rem; font: inherit; box-sizing: border-box; }
+  input, select, textarea { display: block; width: 100%; max-width: 20rem; padding: 0.4rem; font: inherit; box-sizing: border-box; }
+  textarea { max-width: 100%; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 0.4rem; border-bottom: 1px solid #ddd; text-align: left; vertical-align: top; }
+  .hint { margin: 0.25rem 0 0; font-size: 0.9rem; color: #555; }
+  .field-error { margin: 0.25rem 0 0; color: #b00020; font-weight: 600; }
   button { margin-top: 1.25rem; padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
   .error { padding: 0.5rem 0.75rem; border-left: 4px solid #b00020; background: #fdecee; color: #b00020; }
 </style>
