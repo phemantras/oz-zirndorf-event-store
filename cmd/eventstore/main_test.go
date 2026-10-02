@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -41,7 +43,7 @@ func TestRunFailsWithoutRequiredVariables(t *testing.T) {
 }
 
 func TestRunFailsWithMalformedDatabaseURL(t *testing.T) {
-	err := run(context.Background(), slog.New(slog.DiscardHandler), envFrom(map[string]string{
+	err := run(context.Background(), slog.New(slog.DiscardHandler), validEnv(map[string]string{
 		envDatabaseURL: "postgres://%zz",
 		envPort:        "8080",
 	}))
@@ -51,7 +53,7 @@ func TestRunFailsWithMalformedDatabaseURL(t *testing.T) {
 }
 
 func TestRunErrorDoesNotLeakPasswordFromUnparsableURL(t *testing.T) {
-	err := run(context.Background(), slog.New(slog.DiscardHandler), envFrom(map[string]string{
+	err := run(context.Background(), slog.New(slog.DiscardHandler), validEnv(map[string]string{
 		envDatabaseURL: "postgres://eventstore:secret@localhost:5432/eventstore?sslmode=bogus",
 		envPort:        "8080",
 	}))
@@ -65,7 +67,7 @@ func TestRunErrorDoesNotLeakPasswordFromUnparsableURL(t *testing.T) {
 
 func TestRunFailsWhenMigrationFails(t *testing.T) {
 	port := freePort(t)
-	err := run(context.Background(), slog.New(slog.DiscardHandler), envFrom(map[string]string{
+	err := run(context.Background(), slog.New(slog.DiscardHandler), validEnv(map[string]string{
 		envDatabaseURL: unreachableDatabaseURL,
 		envPort:        port,
 	}))
@@ -117,7 +119,7 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- run(ctx, slog.New(slog.DiscardHandler), envFrom(map[string]string{
+		done <- run(ctx, slog.New(slog.DiscardHandler), validEnv(map[string]string{
 			envDatabaseURL: databaseURL,
 			envPort:        port,
 		}))
@@ -145,6 +147,8 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 		time.Sleep(healthPollInterval)
 	}
 
+	assertStatus(t, "http://127.0.0.1:"+port+adminLoginPath, http.StatusOK)
+
 	cancel()
 	if err := <-done; err != nil {
 		t.Errorf("run returned %v, want nil after shutdown", err)
@@ -156,7 +160,8 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	server := newServer(&fakePinger{}, slog.New(slog.DiscardHandler))
+	logger := slog.New(slog.DiscardHandler)
+	server := newServer(&fakePinger{}, logger, newAdminHandler(validConfig(t), logger))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- serve(ctx, server, listener, slog.New(slog.DiscardHandler)) }()
@@ -169,6 +174,7 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
+	assertStatus(t, "http://"+listener.Addr().String()+adminLoginPath, http.StatusOK)
 
 	cancel()
 	select {
@@ -187,9 +193,73 @@ func TestServeReturnsErrorWhenListenerFails(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	_ = listener.Close()
-	server := newServer(&fakePinger{}, slog.New(slog.DiscardHandler))
+	server := newServer(&fakePinger{}, slog.New(slog.DiscardHandler), http.NotFoundHandler())
 
 	if err := serve(context.Background(), server, listener, slog.New(slog.DiscardHandler)); err == nil {
 		t.Fatal("serve returned no error for a closed listener")
+	}
+}
+
+// adminLoginPath is where the admin login form is served.
+const adminLoginPath = "/admin/login"
+
+func validConfig(t *testing.T) config {
+	t.Helper()
+	cfg, err := loadConfig(validEnv(nil))
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	return cfg
+}
+
+func assertStatus(t *testing.T, url string, want int) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != want {
+		t.Errorf("GET %s: status = %d, want %d", url, resp.StatusCode, want)
+	}
+}
+
+func TestRunFailsWithWeakSessionSecretWithoutLeakingIt(t *testing.T) {
+	const shortSecret = "only-thirty-one-bytes-long-abcd"
+	err := run(context.Background(), slog.New(slog.DiscardHandler), validEnv(map[string]string{
+		envSessionSecret: shortSecret,
+	}))
+	if !errors.Is(err, errSessionSecretTooShort) {
+		t.Fatalf("err = %v, want errSessionSecretTooShort", err)
+	}
+	if strings.Contains(err.Error(), shortSecret) {
+		t.Errorf("error %q leaks the session secret", err)
+	}
+}
+
+func TestNewAdminHandlerLogsInWithConfiguredCredentials(t *testing.T) {
+	const validPassword = "richtig-und-lang"
+	handler := newAdminHandler(validConfig(t), slog.New(slog.DiscardHandler))
+	form := url.Values{"username": {validAdminUser}, "password": {validPassword}}
+	login := httptest.NewRequest(http.MethodPost, adminLoginPath, strings.NewReader(form.Encode()))
+	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	loginRec := httptest.NewRecorder()
+	handler.ServeHTTP(loginRec, login)
+
+	if loginRec.Code != http.StatusSeeOther || loginRec.Header().Get("Location") != adminPath {
+		t.Fatalf("login: status = %d, Location = %q, want %d to %s",
+			loginRec.Code, loginRec.Header().Get("Location"), http.StatusSeeOther, adminPath)
+	}
+	cookies := loginRec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("login set %d cookies, want 1 session cookie", len(cookies))
+	}
+	home := httptest.NewRequest(http.MethodGet, adminPath, nil)
+	home.AddCookie(cookies[0])
+	homeRec := httptest.NewRecorder()
+	handler.ServeHTTP(homeRec, home)
+	if homeRec.Code != http.StatusOK {
+		t.Errorf("home with session cookie: status = %d, want %d", homeRec.Code, http.StatusOK)
 	}
 }

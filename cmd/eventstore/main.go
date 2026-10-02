@@ -17,6 +17,7 @@ import (
 	"time"
 	_ "time/tzdata" // Europe/Berlin must resolve even without system zone data.
 
+	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/admin"
 	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
 )
 
@@ -70,13 +71,25 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.ListenAddress(), err)
 	}
-	return serve(ctx, newServer(pool, logger), listener, logger)
+	return serve(ctx, newServer(pool, logger, newAdminHandler(cfg, logger)), listener, logger)
+}
+
+// newAdminHandler builds the admin interface from the validated
+// configuration, with the wall clock as time source.
+func newAdminHandler(cfg config, logger *slog.Logger) http.Handler {
+	return admin.NewHandler(admin.Config{
+		User:          cfg.AdminUser,
+		PasswordHash:  cfg.AdminPasswordHash,
+		SessionSecret: cfg.SessionSecret,
+		Logger:        logger,
+		Now:           time.Now,
+	})
 }
 
 // newServer returns the HTTP server with all routes and timeouts.
-func newServer(db pinger, logger *slog.Logger) *http.Server {
+func newServer(db pinger, logger *slog.Logger, adminHandler http.Handler) *http.Server {
 	return &http.Server{
-		Handler:           newRouter(db, logger),
+		Handler:           newRouter(db, logger, adminHandler),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
