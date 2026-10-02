@@ -2,7 +2,7 @@
 title: "PRD: OZ Zirndorf Event Store"
 status: final
 created: 2026-10-01
-updated: 2026-10-01
+updated: 2026-10-02
 ---
 
 # PRD: OZ Zirndorf Event Store
@@ -43,6 +43,7 @@ Nebenbei soll das Projekt zeigen, wie ein OZ-Backend seine Schnittstelle gestalt
 
 - **Event** — Eine Veranstaltung an einem Termin. Hat genau einen Ort, genau einen Event-Typ, einen Beginn, optional ein Ende, je eine Zeitgenauigkeit für Beginn und Ende, eine Quelle und optional eine Notiz und einen Ablaufplan. Wiederkehrende Termine sind jeweils eigene Events.
 - **Ort** — Ein Veranstaltungsort mit Name, Adresse, Koordinaten, Ortsgenauigkeit und optionaler Notiz (z. B. „Paul-Metz-Halle“, „Marktplatz“, „Ortsteil Weinzierlein“). Ein Ort gehört zu beliebig vielen Events.
+- **Adresse** — Teil eines Orts, aufgeteilt in Straße (mit Hausnummer, falls vorhanden), Postleitzahl und Ort (Gemeinde oder Ortsteil, z. B. „Zirndorf“).
 - **Event-Typ** — Kategorie eines Events aus einer festen Liste (§4.1).
 - **Zeitgenauigkeit** — Angabe, wie genau ein Zeitpunkt bekannt ist (z. B. „exakt“, „nur Datum“, „ganztägig“). Beginn und Ende eines Events haben je eine eigene Zeitgenauigkeit.
 - **Ortsgenauigkeit** — Angabe, wie genau die Koordinaten eines Orts den tatsächlichen Veranstaltungsplatz treffen (z. B. „Gebäude“, „Platz/Straße“, „Bereich“, „nur Ortsteil“).
@@ -114,7 +115,7 @@ Jedes Event hat genau einen Event-Typ aus einer festen Liste. Abnehmer können d
 Ein Ort besteht aus Name, Adresse, Koordinaten, Ortsgenauigkeit und optionaler Notiz. Realisiert UJ-2.
 
 **Konsequenzen (testbar):**
-- Name, Adresse, Koordinaten und Ortsgenauigkeit sind Pflichtangaben. Ein Ort ohne Adresse oder ohne Koordinaten wird abgelehnt. Auch ein nur ortsteilgenauer Ort hat eine Adresse (z. B. den Ortsteil-Mittelpunkt).
+- Name, Adresse, Koordinaten und Ortsgenauigkeit sind Pflichtangaben. Die Adresse besteht aus Straße, Postleitzahl und Ort. Alle drei sind Pflicht, die Postleitzahl hat genau fünf Ziffern. Fehlt einer der Teile oder die Koordinaten, wird der Ort abgelehnt. Auch ein nur ortsteilgenauer Ort und ein Bereich haben eine vollständige Adresse. Als Straße gilt dann die Straße der Ortsmitte oder eine Bereichsangabe (z. B. „Marktplatz bis Schulsportplatz“). Die Ortsgenauigkeit zeigt, dass die Angabe ungenau ist.
 - Die Ortsgenauigkeit kennt die Werte Gebäude / Platz/Straße / Bereich (z. B. Festmeile über mehrere Straßen; die Koordinaten markieren den Mittelpunkt) / nur Ortsteil.
 - Die Notiz erklärt Besonderheiten des Orts, z. B. „Eingang über den Hof“ oder „Koordinaten = Mitte der Festmeile“.
 - Jeder Ort hat eine stabile Kennung, die sich nicht ändert, wenn Name oder Adresse bearbeitet werden.

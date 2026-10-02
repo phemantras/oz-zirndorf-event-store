@@ -36,7 +36,7 @@ FR-5: Jedes Event hat genau einen Event-Typ aus der festen Liste Fest/Kirchweih,
 
 **Orte**
 
-FR-6: Ein Ort besteht aus Name, Adresse, Koordinaten, Ortsgenauigkeit und optionaler Notiz. Name, Adresse, Koordinaten und Ortsgenauigkeit sind Pflicht. Die Ortsgenauigkeit hat die Werte Gebäude, Platz/Straße, Bereich und nur Ortsteil (`building`, `street`, `area`, `district`). Jeder Ort hat eine stabile Kennung, die beim Bearbeiten von Name oder Adresse gleich bleibt.
+FR-6: Ein Ort besteht aus Name, Adresse, Koordinaten, Ortsgenauigkeit und optionaler Notiz. Name, Adresse, Koordinaten und Ortsgenauigkeit sind Pflicht. Die Adresse besteht aus Straße (mit Hausnummer, falls vorhanden), Postleitzahl (fünf Ziffern) und Ort. Alle drei sind Pflicht, auch bei einem nur ortsteilgenauen Ort und bei einem Bereich. Die Ortsgenauigkeit hat die Werte Gebäude, Platz/Straße, Bereich und nur Ortsteil (`building`, `street`, `area`, `district`). Jeder Ort hat eine stabile Kennung, die beim Bearbeiten von Name oder Adresse gleich bleibt.
 
 FR-7: Events verweisen auf einen Ort statt einer Kopie. Werden die Koordinaten eines Orts geändert, liefern alle Events dieses Orts die neuen Koordinaten. Ein Ort, auf den noch Events verweisen (auch archivierte), kann nicht gelöscht werden.
 
@@ -557,6 +557,7 @@ damit der Bestand echte Zirndorfer Termine mit ehrlichen Angaben enthält.
 - Die Quelle ist im Kern ein Objekt aus Beschreibung und optionalem Link (ENT-10).
 - Das Event hat keine Felder für Personen. Unter Titel, Notiz und Quelle weist ein Hinweis darauf hin, dass keine Privatpersonen, Kontaktpersonen oder Telefonnummern eingetragen werden (NFR-4).
 - Das SQL enthält keine Fachlogik und kein `now()` (AD-2).
+- Die Migration dieser Story entfernt die Spalte `locations.address` und die Defaults von `street`, `postal_code` und `city` (contract nach Story 1.12, AD-17). Vorher sind alle Orte in Produktion vollständig gepflegt oder gelöscht.
 
 ### Story 1.8: Neuen Ort direkt beim Anlegen eines Events
 
@@ -688,6 +689,49 @@ damit der Bestand sauber bleibt, ohne dass Events ihren Ort verlieren.
 **Außerdem gilt:**
 - Ein Test belegt, dass auch ein direktes SQL-`DELETE` auf einen referenzierten Ort am Fremdschlüssel `ON DELETE RESTRICT` scheitert.
 
+### Story 1.12: Adresse in Straße, PLZ und Ort aufteilen
+
+Als Admin,
+möchte ich die Adresse eines Orts in Straße, Postleitzahl und Ort getrennt pflegen,
+damit Abnehmer die Adressteile ohne Raten aus einem Freitext lesen können.
+
+**Deckt ab:** FR-6, AD-2, AD-11, AD-17
+
+**Hinweis:** Diese Story zieht Story 1.4 nach (Sprint Change Proposal vom 2026-10-02). Sie läuft vor Story 1.5.
+
+**Datenmodell:** Neue Migration `00003`. Die Spalten `street`, `postal_code` und `city` (`text NOT NULL DEFAULT ''`) kommen hinzu, `address` wird nullable und vom Code nicht mehr gelesen oder geschrieben (expand, AD-17). Die Migration teilt vorhandene Adressen nicht per SQL auf (AD-2). In Produktion gibt es nur Testdaten, die nach dem Deploy nachgepflegt oder gelöscht werden. Erst Story 1.7 entfernt `address` und die Defaults (contract).
+
+**Acceptance Criteria:**
+
+**Angenommen** das Ortsformular im Admin
+**Wenn** es sich öffnet
+**Dann** hat es statt des Felds „Adresse“ die drei Felder „Straße und Hausnummer“, „PLZ“ und „Ort“
+
+**Angenommen** Straße, PLZ oder Ort fehlen oder bestehen nur aus Leerraum
+**Wenn** ich speichere
+**Dann** lehnt der Kern mit `ErrValidation` ab, und das Formular zeigt je Feld eine deutsche Meldung, ohne die Eingaben zu verlieren
+
+**Angenommen** eine PLZ, die nicht aus genau fünf Ziffern besteht (z. B. `9051`, `90513a`, `D-90513`)
+**Wenn** ich speichere
+**Dann** lehnt der Kern sie mit einer eigenen Meldung ab
+**Und** Leerraum am Rand wird vorher entfernt (`" 90513 "` ist gültig)
+
+**Angenommen** ein vorhandener Ort
+**Wenn** ich Straße, PLZ oder Ort ändere
+**Dann** bleibt seine Kennung unverändert
+
+**Angenommen** die Ortsliste
+**Wenn** sie angezeigt wird
+**Dann** zeigt die Spalte „Adresse“ die Teile zusammengesetzt als „Straße, PLZ Ort“
+**Und** ein Testort mit leeren Adressteilen aus der Zeit vor der Migration wird ohne Fehler angezeigt und lässt sich bearbeiten
+
+**Außerdem gilt:**
+- Alle drei Felder werden wie jede Texteingabe auf NFC normalisiert (AD-11).
+- Die Feldnamen im Kern sind `street`, `postalCode` und `city`. Story 2.1 legt sie in der Spec als Objekt `address` im Ort fest (AD-9).
+- Validierung und Normalisierung sind mit Unit-Tests ohne Datenbank abgedeckt, der Postgres-Adapter mit Tests gegen PostgreSQL 18.
+- Das Beispiel in der README zeigt den Ort mit dem Objekt `address`.
+- Vor dem Deploy wird nach AD-17 ein `pg_dump` gezogen.
+
 ## Epic 2: Die Karten-App liest Events über die öffentliche API
 
 Abnehmer fragen ohne Anmeldung ab: „heute“, Zeiträume und Event-Typen, einzelne Events, die Listen der Orte und Event-Typen sowie das Archiv. Das geschieht über einen dokumentierten Vertrag, der als Vorlage für andere OZ-Backends taugt. Die tägliche Bereinigung läuft im Hintergrund. SM-1 (Weihnachtsmarkt) ist gegen eine Fixture prüfbar.
@@ -736,7 +780,7 @@ damit ich Details anzeigen und Events nach Ort gruppieren kann.
 
 **Angenommen** die Spec ist um `GET /v1/events/{id}`, `GET /v1/locations` und die Schemas `Event` und `Location` erweitert
 **Wenn** ein Abnehmer ein vorhandenes Event abruft
-**Dann** liefert `GetEvent` die Leseform nach AD-14: `id`, `title`, `type`, `location` (vollständig: `id`, `name`, `address`, `latitude`, `longitude`, `precision`, `note`), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `startPrecision`, `endPrecision`, `source` (Objekt aus `description` und `url`, ENT-10), `note`, `timetable`, `effectiveStart`, `effectiveEnd`, `archived`
+**Dann** liefert `GetEvent` die Leseform nach AD-14: `id`, `title`, `type`, `location` (vollständig: `id`, `name`, `address` als Objekt aus `street`, `postalCode` und `city`, `latitude`, `longitude`, `precision`, `note`), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `startPrecision`, `endPrecision`, `source` (Objekt aus `description` und `url`, ENT-10), `note`, `timetable`, `effectiveStart`, `effectiveEnd`, `archived`
 **Und** Uhrzeiten sind `HH:MM` oder `null`, Datumswerte `YYYY-MM-DD`, `effective*` ISO 8601 mit Offset
 **Und** der Ablaufplan ist chronologisch sortiert
 
@@ -925,6 +969,7 @@ damit ich Recherche-Dateien zuverlässig im richtigen Format erstellen kann.
 **Und** es bindet `EventInput` und die Enum-Codes per `$ref` aus `openapi.yaml` ein, statt sie zu kopieren (AD-9)
 **Und** jedes Event hat genau eines von beidem (`oneOf`): `locationId` für einen vorhandenen Ort oder `importLocation` für einen mitgebrachten Ort (ENT-18)
 **Und** ein mitgebrachter Ort hat immer `name`; `address`, `latitude`, `longitude` und `precision` sind im Schema optional, weil ein Ort mit vorhandenem Namen sie nicht braucht; `note` ist optional
+**Und** `address` ist dasselbe Objekt wie in der Leseform (`street`, `postalCode`, `city`), per `$ref` aus `openapi.yaml` eingebunden (AD-9)
 **Und** jedes Event kann einen `importKey` haben
 **Und** `GET /v1/import-v1.schema.json` liefert das Schema öffentlich aus
 
@@ -939,7 +984,7 @@ damit ich Recherche-Dateien zuverlässig im richtigen Format erstellen kann.
 **Angenommen** eine Datei mit gültiger Version, in der einzelne Einträge fehlerhaft sind
 **Wenn** ich sie hochlade
 **Dann** werden genau diese Einträge mit Position, Titel und Grund gemeldet, die übrigen gelten als gültig
-**Und** fehlerhaft sind unter anderem: ungültiges Datum, unbekannter Typ, `locationId` und mitgebrachter Ort zugleich oder keines von beiden, eine syntaktisch ungültige oder unbekannte `locationId`, ein mitgebrachter neuer Ort ohne Adresse, Koordinaten oder Ortsgenauigkeit
+**Und** fehlerhaft sind unter anderem: ungültiges Datum, unbekannter Typ, `locationId` und mitgebrachter Ort zugleich oder keines von beiden, eine syntaktisch ungültige oder unbekannte `locationId`, ein mitgebrachter neuer Ort ohne Adresse, Koordinaten oder Ortsgenauigkeit, ein neuer Ort mit unvollständiger Adresse (Straße, PLZ oder Ort fehlt) oder ungültiger PLZ
 
 **Außerdem gilt:**
 - In dieser Story wird noch nichts in den Bestand geschrieben.
@@ -1061,11 +1106,12 @@ damit ich sie importieren kann, ohne dass Genauigkeiten geraten werden.
 **Und** jedes Event hat einen stabilen `importKey`, einen Event-Typ und eine Quelle; die Quelle ist aus dem Feld `name` herausgelöst, und der Titel enthält danach keine Quellenangabe mehr
 **Und** `00:00` als Platzhalter wird zu einer leeren Uhrzeit
 **Und** Orte werden mitgebracht, nicht per `locationId` referenziert; gleiche Orte sind zusammengeführt (z. B. Paul-Metz-Halle nur einmal mit Adresse und Koordinaten) und haben eine Ortsgenauigkeit
+**Und** jede Adresse ist in `street`, `postalCode` und `city` aufgeteilt; der Zusatz „, Germany“ entfällt; Erläuterungen in Klammern (z. B. „Ortsteil-Zentrum, kein exakter Festplatz bekannt“) wandern in die Notiz des Orts
 
 **Angenommen** eine Angabe, die sich aus der Quelle nicht sicher ableiten lässt (Genauigkeit, Typ)
 **Wenn** überführt wird
 **Dann** wird der vorsichtigere Wert gewählt (SM-C1)
-**Und** die Story listet diese Fälle zur Prüfung durch Andreas auf
+**Und** die Story listet diese Fälle zur Prüfung durch Andreas auf, darunter alle Orte, deren Straße nicht in der Quelle steht (Ortsteile Lind, Wintersdorf, Weinzierlein, Weiherhof: Straße der Ortsmitte; Festmeile: Bereichsangabe) und Ortsteil-Angaben im Feld „Ort“ (z. B. „Zirndorf-Lind“ oder „Zirndorf“)
 
 **Außerdem gilt:**
 - Die Story ist abgeschlossen, wenn Andreas die gelisteten Fälle geprüft und freigegeben hat.
