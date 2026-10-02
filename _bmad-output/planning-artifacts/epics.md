@@ -12,7 +12,7 @@ inputDocuments:
 
 Dieses Dokument zerlegt die Anforderungen aus PRD und Architecture Spine des OZ Zirndorf Event Store in umsetzbare Epics und Stories.
 
-Das Requirements Inventory fasst PRD und Spine zusammen, damit jede Story ohne Umweg lesbar ist. Bei einer Abweichung gelten PRD und Spine. Ausgenommen sind die Festlegungen ENT-1 bis ENT-14: Sie präzisieren den Spine nach dem Review vom 2026-10-01 und gelten, bis der Spine nachgezogen ist.
+Das Requirements Inventory fasst PRD und Spine zusammen, damit jede Story ohne Umweg lesbar ist. Bei einer Abweichung gelten PRD und Spine. Die Festlegungen ENT-1 bis ENT-23 sind seit dem Spine-Update vom 2026-10-02 im Spine enthalten. Jede nennt die AD, in der sie steht.
 
 Abnehmer sind Apps, die die öffentliche API lesen, zuerst die Karten-App.
 
@@ -109,33 +109,33 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 **Starter-Template:** Keines. Es ist ein Greenfield-Go-Projekt. Story 1.1 legt das Projektgerüst nach der Struktur im Spine an: `api/v1/`, `cmd/eventstore/`, `internal/core/`, `internal/adapter/{publicapi/v1,admin,postgres,cleanup}/`, `Dockerfile`, `railway.json`, `compose.yaml`, `.github/workflows/ci.yaml`.
 
 **Struktur und Abhängigkeiten**
-- AD-1: Hexagonal light. `internal/core` importiert nur die Standardbibliothek. Adapter importieren nur `core`, nie einander. Nur `cmd/eventstore` kennt alle. Der Kern definiert die Ports `EventRepo`, `LocationRepo`, `TxRunner` und `Clock`.
+- AD-1: Hexagonal light, genau eine Replika. `internal/core` importiert nur die Standardbibliothek, einzige Ausnahme ist `golang.org/x/text/unicode/norm` (NFC). Adapter importieren nur `core`, nie einander. Nur `cmd/eventstore` kennt alle. Der Kern definiert die Ports `EventRepo`, `LocationRepo`, `TxRunner` und `Clock`.
 - AD-2: Fachlogik nur im Kern. SQL macht nur CRUD und einfache Vergleiche, ohne Views, Trigger, Funktionen, `lower()`/`trim()` oder `now()`. Die aktuelle Zeit kommt als Parameter aus `Clock`. Abgeleitete Werte (`effective*`, `name_key`) berechnet der Kern und speichert sie.
-- AD-6: Schreiben nur über die Kern-Anwendungsfälle `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation` und `CommitImport`. Admin und Import nutzen denselben Eingabetyp `core.EventInput`. Der Löschschutz für Orte liegt im Kern und zusätzlich im Fremdschlüssel `ON DELETE RESTRICT`.
-- AD-7: Lesen über die Kern-Abfragen `ListActiveEvents`, `ListArchivedEvents`, `GetEvent`, `ListLocations` und `ListEventTypes`. Sortierung: aktive Events nach `effectiveStart` aufsteigend, Archiv absteigend, bei Gleichstand nach `id`.
+- AD-6: Schreiben nur über die Kern-Anwendungsfälle `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation`, `CommitImport`, `RecomputeDerived` und `MarkArchived`. Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern und eine Hülle mit `TxRunner`; `CommitImport` ruft nur die Kerne in einer Transaktion auf. `SaveEvent` aus dem Admin ändert `importKey` nie. Admin und Import nutzen denselben Eingabetyp `core.EventInput`. Der Löschschutz für Orte liegt im Kern und zusätzlich im Fremdschlüssel `ON DELETE RESTRICT`.
+- AD-7: Lesen über die Kern-Abfragen `ListActiveEvents`, `ListArchivedEvents`, `GetEvent`, `ListLocations` und `ListEventTypes`. Sortierung: aktive Events nach `effectiveStart` aufsteigend, Archiv absteigend, bei Gleichstand nach `id`. Orte nach Namen im Kern (ENT-8).
 
 **Zeitmodell**
-- AD-3: Gespeichert werden `startDate` (Pflicht), `startTime`, `endDate`, `endTime` (optional) und `allDay` (bool), lokal Europe/Berlin. Eine leere Uhrzeit heißt „unbekannt“. Bei `allDay` werden Uhrzeiten abgelehnt. Die Genauigkeit (`exact`/`dateOnly`/`allDay`) leitet der Kern je Beginn und Ende ab und speichert sie nicht.
-- AD-4: `effectiveStart`/`effectiveEnd` (timestamptz) werden bei jedem Schreiben berechnet. Ohne Uhrzeit beim Beginn gilt 00:00 des Beginn-Tages. Ohne Uhrzeit beim Ende gilt 00:00 des Tages nach dem End-Tag. Ohne Ende gilt 00:00 des Tages nach dem Beginn-Tag. Intervalle sind halboffen. Aktiv heißt `effectiveEnd > now`. Alle Lese-Abfragen filtern nur über diese Spalten. (Diese Regel ersetzt die „23:59:59“-Formulierung aus dem PRD-Addendum und ist gleichwertig.)
-- AD-16: Die einzige Umrechnung ist die Kernfunktion `ToInstant` (Europe/Berlin). Uhrzeiten in der Frühjahrslücke werden abgelehnt, doppelte Uhrzeiten im Herbst bekommen den früheren Offset. Die Zeit kommt nur aus `Clock`. Filter werden zu `[lo, hi)` normalisiert, ein reines Datum gilt als ganzer Tag inklusive. Das einzige Prädikat lautet `effectiveStart < hi AND effectiveEnd > lo`. `time/tzdata` ist eingebettet. Beim Start werden `effective*` für alle Events neu berechnet.
-- AD-15: Der Ablaufplan ist ein Wertobjekt des Events und wird nur über `SaveEvent` als ganze Liste ersetzt. Jeder Eintrag hat `description`, `date`, `startTime?` und `endTime?`. Einträge müssen im Zeitraum des Events liegen und ändern `effective*` nicht.
+- AD-3: Gespeichert werden `startDate` (Pflicht), `startTime`, `endDate`, `endTime` (optional) und `allDay` (bool), lokal Europe/Berlin. Eine leere Uhrzeit heißt „unbekannt“. `allDay` gilt für Beginn und Ende gemeinsam, gemischte Angaben und `endTime` ohne `endDate` werden abgelehnt. Die Genauigkeit (`exact`/`dateOnly`/`allDay`) leitet der Kern je Beginn und Ende ab und speichert sie nicht.
+- AD-4: `effectiveStart`/`effectiveEnd` (timestamptz) werden bei jedem Schreiben berechnet. Ohne Uhrzeit beim Beginn gilt 00:00 des Beginn-Tages. Ohne Uhrzeit beim Ende gilt 00:00 des Tages nach dem End-Tag. Ohne Ende gilt 00:00 des Tages nach dem Beginn-Tag. Intervalle sind halboffen. Ein Ende mit `effectiveEnd <= effectiveStart` wird abgelehnt (ENT-1). Aktiv heißt `effectiveEnd > now`. Alle Lese-Abfragen filtern nur über diese Spalten. (Diese Regel ersetzt die „23:59:59“-Formulierung aus dem PRD-Addendum und ist gleichwertig.)
+- AD-16: Die einzige Umrechnung ist die Kernfunktion `ToInstant` (Europe/Berlin). Uhrzeiten in der Frühjahrslücke werden abgelehnt, doppelte Uhrzeiten im Herbst bekommen den früheren Offset. Die Zeit kommt nur aus `Clock`. Filter werden zu `[lo, hi)` normalisiert, ein reines Datum gilt als ganzer Tag inklusive. Das einzige Prädikat lautet `effectiveStart < hi AND effectiveEnd > lo`. Standardwerte von `from`/`to` je Endpunkt nach ENT-4. `time/tzdata` ist eingebettet. Beim Start berechnet `RecomputeDerived` alle abgeleiteten Werte neu, Fehler nach ENT-5; Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server.
+- AD-15: Der Ablaufplan ist ein Wertobjekt des Events und wird nur über `SaveEvent` als ganze Liste ersetzt. Jeder Eintrag hat `description`, `date`, `startTime?` und `endTime?`. Einträge liegen in `[effectiveStart, effectiveEnd]`, über Mitternacht nach ENT-3, und ändern `effective*` nicht.
 
 **Archiv und Bereinigung**
 - AD-5: Es gibt eine Tabelle. Der Archivstatus ergibt sich nur aus AD-4. Das API-Feld `archived` ist abgeleitet. `archivedAt` ist nur eine Markierung für Statistik, die keine Abfrage auswertet. `SaveEvent` leert `archivedAt`, wenn das Event wieder aktiv ist.
-- AD-13: Der Bereinigungsjob läuft im Programm, einmal beim Start und danach täglich. Er setzt `archivedAt` für `effectiveEnd <= now` und leeres `archivedAt` und ist idempotent.
+- AD-13: Der Bereinigungsjob läuft im Programm, einmal beim Start und danach täglich. Über `MarkArchived` setzt er `archivedAt` für `effectiveEnd <= now` und leeres `archivedAt` und ist idempotent.
 
 **API-Vertrag**
-- AD-8: Spec-first. `api/v1/openapi.yaml` (OpenAPI 3.1, Rückfall 3.0.3) ist die einzige Quelle. Das Gerüst erzeugt `oapi-codegen` (`std-http-server` + `strict-server`). Es wird eingecheckt und nie von Hand geändert. v2 bekäme eine eigene Spec und ein eigenes Paket, dazu ein Abschaltdatum in `info` und einen `Sunset`-Header. Öffentlich ausgeliefert werden `/v1/openapi.yaml` und `/v1/import-v1.schema.json`.
+- AD-8: Spec-first. `api/v1/openapi.yaml` (OpenAPI 3.1, Rückfall 3.0.3) ist die einzige Quelle. Das Gerüst erzeugt `oapi-codegen` (`std-http-server` + `strict-server`). Es wird eingecheckt und nie von Hand geändert. v2 bekäme eine eigene Spec und ein eigenes Paket, dazu ein Abschaltdatum in `info` und einen `Sunset`-Header. Öffentlich ausgeliefert werden `/v1/openapi.yaml`, `/v1/import-v1.schema.json` und `/v1/docs` (Redoc), statisch außerhalb der Spec mit offenem CORS.
 - AD-9: Enum-Codes und `EventInput` sind nur in `openapi.yaml` (`components/schemas`) definiert. Das Import-Schema bindet sie per `$ref` ein. Die Kern-Konstanten spiegeln die Codes, und ein CI-Test prüft die Übereinstimmung. `formatVersion` ist Pflicht, unbekannte Versionen werden abgelehnt.
-- AD-14: Die Schreibform `EventInput` hat die Felder `title`, `type`, `locationId` oder einen mitgebrachten Ort (nur Import), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source`, `note`, `timetable` und `importKey` (nur Import). Die Leseform `Event` besteht aus `EventInput` ohne `importKey`, plus `id`, `location` (vollständig), `startPrecision`, `endPrecision`, `effectiveStart`, `effectiveEnd` und `archived`.
+- AD-14: Die Schreibform `EventInput` hat die Felder `title`, `type`, `locationId` oder `importLocation` (mitgebrachter Ort, nur Import), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source` (Objekt, ENT-10), `note`, `timetable` und `importKey` (nur Import). Die Leseform `Event` ist ein eigenes Schema mit denselben Feldnamen (ohne `importKey` und `importLocation`), plus `id`, `location` (vollständig), `startPrecision`, `endPrecision`, `effectiveStart`, `effectiveEnd` (lokaler Offset Europe/Berlin) und `archived`. `Canonicalize` bringt Eingaben in eine kanonische Form.
 - Ressourcen (aus dem Addendum): `GET /v1/events` (`from`, `to`, `type`), `GET /v1/events/{id}`, `GET /v1/locations`, `GET /v1/event-types`, `GET /v1/archive/events`.
 
 **Import**
-- AD-10: Der Import ist zustandslos. (1) Beim Upload wird jeder Eintrag geparst, validiert und gegen den gesamten Bestand klassifiziert, archivierte Events eingeschlossen. Die Klassen sind `new`, `update`, `duplicateSuspect`, `error` und pro Ort `newLocation`. (2) Innerhalb der Datei macht ein doppelter `importKey` beide Einträge zu `error`, gleiche Einträge werden untereinander zu `duplicateSuspect`, und ein neuer Ort wird nur einmal angelegt. (3) Der Zwischenstand liegt nur im Browser-Formular. (4) Beim Speichern wird der vollständige Satz samt Entscheidungen, ursprünglicher Klasse und Ziel-ID gesendet und neu klassifiziert. Bei einer Abweichung wird der Eintrag als `stale` gemeldet. (5) `error`, `stale` und Verdachtsfälle ohne Entscheidung werden vor der Transaktion aussortiert, der Rest wird in einer Transaktion über `TxRunner` geschrieben. (6) Die Zusammenfassung nennt neue, aktualisierte, übersprungene, fehlerhafte und veraltete Einträge.
-- AD-11: IDs sind UUIDv7 per `DEFAULT uuidv7()` (PostgreSQL 18). `importKey` ist eindeutig, wenn er gesetzt ist. `NormalizeKey` (trim, lowercase) liefert den eindeutigen Ortsschlüssel `name_key`. `FindDuplicateCandidates` vergleicht `NormalizeKey(title)`, `startDate` und `locationId` über alle Events. `SaveEvent` erhält eine Policy `rejectDuplicates` oder `allowDuplicates`. Das Admin-Formular warnt zuerst und speichert erst nach Bestätigung mit `allowDuplicates`.
+- AD-10: Der Import ist zustandslos. (1) Beim Upload wird jeder Eintrag geparst, validiert und gegen den gesamten Bestand klassifiziert, archivierte Events eingeschlossen. Die Klassen sind `new`, `update`, `unchanged`, `duplicateSuspect`, `error` und pro Ort `newLocation` (ENT-11). (2) Innerhalb der Datei macht ein doppelter `importKey` oder ein gemeinsames Ziel-Event beide Einträge zu `error`, gleiche Einträge werden untereinander zu `duplicateSuspect`, und ein neuer Ort wird nur einmal angelegt. (3) Der Zwischenstand liegt nur im Browser-Formular. (4) Beim Speichern wird der vollständige Satz samt Entscheidungen, ursprünglicher Klasse und Ziel-ID gesendet und neu klassifiziert. Bei einer Abweichung wird der Eintrag als `stale` gemeldet. (5) `error`, `stale` und Verdachtsfälle ohne Entscheidung werden vor der Transaktion aussortiert, der Rest wird in einer Transaktion über `TxRunner` geschrieben, immer mit `allowDuplicates` (ENT-12). (6) Die Zusammenfassung nach ENT-11. Upload-Grenzen nach ENT-13.
+- AD-11: IDs sind UUIDv7 per `DEFAULT uuidv7()` (PostgreSQL 18). `importKey` ist eindeutig, wenn er gesetzt ist. Der Kern normalisiert alle Texte an einer Stelle auf NFC. `NormalizeKey` (trim, Leerraum zusammenfassen, lowercase) liefert den eindeutigen Ortsschlüssel `name_key` und den Titelschlüssel `title_key`. `FindDuplicateCandidates` vergleicht `title_key`, `startDate` und `locationId` über alle Events. `SaveEvent` erhält eine Policy `rejectDuplicates` oder `allowDuplicates`. Das Admin-Formular warnt zuerst und speichert erst nach Bestätigung mit `allowDuplicates`.
 
 **Sicherheit und Admin**
-- AD-12: `/v1/…` ist nur lesend (`GET`) mit offenem CORS. `/admin/…` hat kein CORS und verlangt eine Session (HttpOnly, Secure, SameSite=Strict). Gegen CSRF schützt `http.CrossOriginProtection`. Es gibt ein Konto: `ADMIN_USER` und `ADMIN_PASSWORD_HASH` (bcrypt) aus Umgebungsvariablen.
+- AD-12: `/v1/…` ist nur lesend (`GET`) mit offenem CORS. `/admin/…` hat kein CORS und verlangt eine Session (HttpOnly, Secure, SameSite=Strict). Gegen CSRF schützt `http.CrossOriginProtection`. Es gibt ein Konto: `ADMIN_USER` und `ADMIN_PASSWORD_HASH` (bcrypt) aus Umgebungsvariablen. Session und Anmeldeschutz nach ENT-6, ENT-7 und ENT-22.
 - Die Admin-Oberfläche nutzt `html/template` und htmx 2.0.11, den Kartenpicker mit Leaflet 1.9.4 und OSM-Kacheln. htmx und Leaflet liegen als Dateien unter `adapter/admin/static`, nicht per CDN.
 - Die Admin-Oberfläche ist deutsch, alles Technische englisch.
 
@@ -161,22 +161,31 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 
 ### Ergänzende Festlegungen (Review 2026-10-01)
 
-Diese Festlegungen präzisieren den Spine. Sie sind in den Stories umgesetzt und sollen beim nächsten Update in den Spine übernommen werden.
+Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Seit dem Spine-Update vom 2026-10-02 stehen sie im Spine (Pfeil = AD), maßgeblich ist dort der Wortlaut. ENT-15 bis ENT-23 kamen aus dem Review dieses Updates hinzu.
 
-- ENT-1 Zeitraum prüfen: Ein Ende wird abgelehnt, wenn `effectiveEnd <= effectiveStart`. Verglichen werden immer die berechneten Werte, nie die Rohfelder. Ein eintägiges Event mit `endDate = startDate` (nur Datum) ist gültig.
-- ENT-2 Ganztägig: `allDay` gilt für Beginn und Ende gemeinsam. Gemischte Angaben (ein Teil ganztägig, der andere mit Uhrzeit) sind nicht darstellbar und werden abgelehnt. Die Spec dokumentiert das.
-- ENT-3 Programmpunkte über Mitternacht: Liegt `endTime` vor `startTime`, endet der Punkt am Folgetag.
-- ENT-4 Filter-Standardwerte: In `GET /v1/events` beginnt ein fehlendes `from` mit dem heutigen Tag, ein fehlendes `to` ist offen. In `GET /v1/archive/events` ist ein fehlendes `from` offen und ein fehlendes `to` gleich `now`. Ein Zeitpunkt in `from`/`to` braucht einen Offset. Ein Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht (`hi`), damit `to` inklusive ist.
-- ENT-5 Neuberechnung beim Start: Schlägt sie für ein Event fehl, behält es seine gespeicherten Werte. Der Fehler wird mit der Event-Kennung geloggt, das Programm startet trotzdem, und der Admin markiert das Event mit „prüfen“.
-- ENT-6 Admin-Session: Signiertes Cookie mit `SESSION_SECRET`, ohne Zustand auf dem Server. Sie läuft nach 8 Stunden ohne Aktivität oder spätestens 7 Tage nach der Anmeldung ab. Abmelden löscht das Cookie im Browser. Ein kopiertes Cookie bleibt bis zum Ablauf gültig; das ist bewusst hingenommen. Ein neues `SESSION_SECRET` macht alle Sessions ungültig.
-- ENT-7 Anmeldeschutz: Nach 5 Fehlversuchen von einer Client-IP ist die Anmeldung von dieser IP für 15 Minuten gesperrt. Die Zähler liegen im Speicher; ein Neustart setzt sie zurück.
-- ENT-8 Sortierung nach Name: Der Kern sortiert Orte ohne Unterschied von Groß- und Kleinschreibung, Umlaute wie ihren Grundbuchstaben (ä→a, ö→o, ü→u, ß→ss), bei Gleichstand nach `id`. Die Datenbank-Sortierung wird nicht genutzt.
-- ENT-9 Texteingaben: Die Adapter normalisieren Texteingaben auf Unicode NFC, bevor sie den Kern erreichen. `NormalizeKey` trimmt, fasst jeden Leerraum (auch geschützte Leerzeichen) zu einem Leerzeichen zusammen und wandelt in Kleinbuchstaben. Ein Pflichtfeld, das nur aus Leerraum besteht, fehlt.
-- ENT-10 Quelle: `source` ist in Lese- und Schreibform ein Objekt `{ "description": string, "url": string | null }`. `description` ist Pflicht, `url` muss eine http(s)-URL sein.
-- ENT-11 Import-Klassen: Zusätzlich zu AD-10 gibt es die Klasse `unchanged` (Import-Schlüssel vorhanden, keine Abweichung, nichts wird geschrieben). Für `update` zeigt die Vorschau die geänderten Felder. Vorrang: `error` vor `update`/`unchanged` vor `duplicateSuspect`. Die Zusammenfassung zählt neu, aktualisiert, unverändert, übersprungen, ohne Entscheidung, fehlerhaft und veraltet; die Summe entspricht der Zahl der Einträge.
-- ENT-12 Übernahme: Alle Schreibvorgänge in `CommitImport` nutzen `allowDuplicates`, weil die Klassifizierung schon entschieden ist. Ein Eintrag ohne `importKey` lässt den Schlüssel des Ziel-Events beim Überschreiben unverändert. Hat das Ziel-Event einen anderen Schlüssel als der Eintrag, ist der Eintrag `error`.
-- ENT-13 Import-Upload: Höchstens 2 MB je Datei. Eine Datei ohne Einträge wird mit einer Meldung abgelehnt.
-- ENT-14 API-Dokumentation: `/v1/docs` rendert die Spec mit Redoc in einer gepinnten Version, ausgeliefert aus `adapter/publicapi/v1/static`. Das ist die einzige HTML-Seite unter `/v1/…` und eine Ergänzung zum Stack im Spine.
+- ENT-1 (→ AD-4) Zeitraum prüfen: Ein Ende wird abgelehnt, wenn `effectiveEnd <= effectiveStart`. Verglichen werden immer die berechneten Werte, nie die Rohfelder. Ein eintägiges Event mit `endDate = startDate` (nur Datum) ist gültig.
+- ENT-2 (→ AD-3) Ganztägig: `allDay` gilt für Beginn und Ende gemeinsam. Gemischte Angaben (ein Teil ganztägig, der andere mit Uhrzeit) sind nicht darstellbar und werden abgelehnt. Die Spec dokumentiert das.
+- ENT-3 (→ AD-15) Programmpunkte über Mitternacht: Liegt `endTime` vor `startTime`, endet der Punkt am Folgetag.
+- ENT-4 (→ AD-16) Filter-Standardwerte: In `GET /v1/events` gilt ohne `from` und `to` der heutige Tag (FR-8). Fehlt nur `from`, beginnt der Zeitraum mit dem heutigen Tag. Fehlt nur `to`, ist er offen. In `GET /v1/archive/events` ist ein fehlendes `from` offen und ein fehlendes `to` gleich `now`. Ein Zeitpunkt in `from`/`to` braucht einen Offset. Ein Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht (`hi`), damit `to` inklusive ist.
+- ENT-5 (→ AD-16) Neuberechnung beim Start: Schlägt sie für ein Event fehl, behält es seine gespeicherten Werte. Der Fehler wird mit der Event-Kennung geloggt, das Programm startet trotzdem, und der Admin markiert das Event mit „prüfen“. Die Menge der betroffenen IDs hält der Kern nur im Speicher (Mutex). Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` wird die ID entfernt.
+- ENT-6 (→ AD-12) Admin-Session: Signiertes Cookie mit `SESSION_SECRET`, ohne Zustand auf dem Server. Sie läuft nach 8 Stunden ohne Aktivität oder spätestens 7 Tage nach der Anmeldung ab. Abmelden löscht das Cookie im Browser. Ein kopiertes Cookie bleibt bis zum Ablauf gültig; das ist bewusst hingenommen. Ein neues `SESSION_SECRET` macht alle Sessions ungültig.
+- ENT-7 (→ AD-12) Anmeldeschutz: Nach 5 Fehlversuchen von einer Client-IP ist die Anmeldung von dieser IP für 15 Minuten gesperrt. Die Zähler liegen im Speicher; ein Neustart setzt sie zurück. Client-IP ist der Eintrag in `X-Forwarded-For`, den Railways Edge setzt (Prüfung nach ENT-21), ohne Header `RemoteAddr` ohne Port.
+- ENT-8 (→ AD-7) Sortierung nach Name: Der Kern sortiert Orte ohne Unterschied von Groß- und Kleinschreibung, Umlaute wie ihren Grundbuchstaben (ä→a, ö→o, ü→u, ß→ss), bei Gleichstand nach `id`. Die Datenbank-Sortierung wird nicht genutzt.
+- ENT-9 (→ AD-1, AD-11) Texteingaben: Der Kern normalisiert alle Texte an einer Stelle beim Bau jedes Inputs auf Unicode NFC (`golang.org/x/text/unicode/norm` v0.42.0, einzige Ausnahme von AD-1), für Admin und Import gleich. `NormalizeKey` trimmt, fasst jeden Leerraum (auch geschützte Leerzeichen) zu einem Leerzeichen zusammen und wandelt in Kleinbuchstaben. Ein Pflichtfeld, das nur aus Leerraum besteht, fehlt.
+- ENT-10 (→ AD-14) Quelle: `source` ist in Lese- und Schreibform ein Objekt `{ "description": string, "url": string | null }`. `description` ist Pflicht, `url` muss eine http(s)-URL sein.
+- ENT-11 (→ AD-10) Import-Klassen: Zusätzlich zu AD-10 gibt es die Klasse `unchanged` (Import-Schlüssel vorhanden, keine Abweichung, nichts wird geschrieben). Für `update` zeigt die Vorschau die geänderten Felder. Vorrang: `error` vor `update`/`unchanged` vor `duplicateSuspect`. Die Zusammenfassung zählt neu, aktualisiert, unverändert, übersprungen, ohne Entscheidung, fehlerhaft und veraltet; die Summe entspricht der Zahl der Einträge.
+- ENT-12 (→ AD-10, AD-11) Übernahme: Alle Schreibvorgänge in `CommitImport` nutzen `allowDuplicates`, weil die Klassifizierung schon entschieden ist. Ein Eintrag ohne `importKey` lässt den Schlüssel des Ziel-Events beim Überschreiben unverändert. Hat das Ziel-Event einen anderen Schlüssel als der Eintrag, ist der Eintrag `error`.
+- ENT-13 (→ AD-10) Import-Upload: Höchstens 2 MB je Datei. Eine Datei ohne Einträge wird mit einer Meldung abgelehnt.
+- ENT-14 (→ AD-8, Stack) API-Dokumentation: `/v1/docs` rendert die Spec mit Redoc 2.5.4 (`redoc.standalone.js`), ausgeliefert aus `adapter/publicapi/v1/static`. Das ist die einzige HTML-Seite unter `/v1/…`.
+- ENT-15 (→ AD-6) Transaktionen: Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern, der die Repositories einer laufenden Transaktion erhält, und eine Hülle, die ihn über `TxRunner` ausführt. `CommitImport` ruft nur die Kerne auf, alles in einer Transaktion.
+- ENT-16 (→ AD-6) Import-Schlüssel: `SaveEvent` aus dem Admin ändert `importKey` nie. Nur `CommitImport` setzt ihn.
+- ENT-17 (→ AD-6, AD-13, AD-16) Weitere Schreib-Anwendungsfälle: `RecomputeDerived` (beim Start, alle abgeleiteten Werte: `effective*`, `title_key`, `name_key`) und `MarkArchived` (Bereinigungsjob). Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server.
+- ENT-18 (→ AD-14) Datenformen: Der mitgebrachte Ort heißt `importLocation` (`oneOf` mit `locationId`). `Event` und `EventInput` sind eigene Schemas mit denselben Feldnamen. `effective*` tragen den lokalen Offset von Europe/Berlin (`+01:00`/`+02:00`). `Canonicalize` (getrimmt, `""` als `null`, Ablaufplan sortiert) wird vor dem Speichern angewendet und beim Vergleich für `unchanged` genutzt.
+- ENT-19 (→ AD-10) Import-Konflikte: Zwei Einträge mit demselben Ziel-Event sind beide `error`. Ein Eintrag, dessen Ziel-Event einen anderen `importKey` hat, ist schon beim Upload `error`.
+- ENT-20 (→ AD-15) Ablaufplan-Grenze: Programmpunkte liegen in `[effectiveStart, effectiveEnd]`, ein Punkt darf genau mit dem Event enden.
+- ENT-21 (→ AD-12, Seed) Betrieb: Die App läuft mit genau einer Replika. Nach dem ersten Deploy wird per `curl` mit gefälschtem `X-Forwarded-For` geprüft, ob Railway den Client-Wert verwirft (dann linker Eintrag) oder anhängt (dann rechter Eintrag). Das Ergebnis steht in der README.
+- ENT-22 (→ AD-12) Session-Technik: HMAC-SHA256, das Cookie trägt Anmelde- und Aktivitätszeitpunkt und wird bei Aktivität neu ausgestellt. `SESSION_SECRET` hat mindestens 32 Byte, das prüft der Start. bcrypt mit Kosten ≥ 12.
+- ENT-23 (→ AD-8) Statische Pfade: `/v1/openapi.yaml`, `/v1/import-v1.schema.json` und `/v1/docs` sind statische Auslieferungen außerhalb der Spec, mit offenem CORS.
 
 ### Success Metrics
 
@@ -186,7 +195,7 @@ Diese Festlegungen präzisieren den Spine. Sie sind in den Stories umgesetzt und
 - SM-4: Ein OZ-Mitglied bestätigt nach Durchsicht der OpenAPI-Dokumentation, dass es Versionierung, Fehlerformat, Zeitformat und Filterkonventionen ohne Rückfrage übernehmen könnte.
 - SM-C1 (Gegenmetrik Scheinpräzision): Genauigkeitswerte werden nie geraten, um die Karte schöner aussehen zu lassen. Im Zweifel gilt der vorsichtigere Wert.
 
-**Testsammlung:** `zirndorf_events.json` (Stand 2026-09-18, Mai 2026 bis Dezember 2027) wird in das Import-Format v1 überführt. Dabei kommen Typ, Zeitgenauigkeit statt `00:00`, Ortsgenauigkeit, eine aus dem Feld `name` herausgelöste Quelle und Import-Schlüssel dazu. Orte werden mitgebracht, nicht per `locationId` referenziert, damit die Datei in jeder Umgebung importierbar ist. Die Datei liegt noch nicht im Repo.
+**Testsammlung:** `zirndorf_events.json` (Stand 2026-09-18, Mai 2026 bis Dezember 2027) wird in das Import-Format v1 überführt. Dabei kommen Typ, Zeitgenauigkeit statt `00:00`, Ortsgenauigkeit, eine aus dem Feld `name` herausgelöste Quelle und Import-Schlüssel dazu. Orte werden mitgebracht, nicht per `locationId` referenziert, damit die Datei in jeder Umgebung importierbar ist. Die Datei liegt derzeit im Repo-Root, Story 3.4 verschiebt sie nach `testdata/`.
 
 ### Out of Scope v1
 
@@ -287,7 +296,7 @@ Als Andreas (Entwickler und Admin),
 möchte ich, dass jeder grüne Stand auf `main` automatisch auf Railway läuft,
 damit jede weitere Story direkt in einem laufenden System landet.
 
-**Deckt ab:** AD-17, Betrieb und Deployment
+**Deckt ab:** AD-17, Betrieb und Deployment, ENT-21
 
 **Acceptance Criteria:**
 
@@ -300,6 +309,11 @@ damit jede weitere Story direkt in einem laufenden System landet.
 **Wenn** auf `main` gepusht wird
 **Dann** deployt Railway nicht
 
+**Angenommen** der erste Deploy läuft
+**Wenn** ich `/healthz` per `curl` mit einem gefälschten `X-Forwarded-For` aufrufe und den ankommenden Header logge
+**Dann** steht in der README, ob Railway den Client-Wert verwirft (Client-IP = linker Eintrag) oder anhängt (Client-IP = rechter Eintrag) (ENT-21)
+**Und** die App läuft mit genau einer Replika
+
 **Außerdem gilt:**
 - Die README beschreibt das Deployment und die Regel aus AD-17: vor jedem Deploy mit neuer Migration einen `pg_dump` über die Railway-CLI ziehen; Migrationen nur vorwärts nach expand/contract; angewendete Migrationen nie ändern.
 
@@ -309,7 +323,7 @@ Als Admin,
 möchte ich mich mit meinem einzigen Konto im Admin anmelden und abmelden,
 damit nur ich Daten ändern kann.
 
-**Deckt ab:** FR-14, AD-12, ENT-6, ENT-7
+**Deckt ab:** FR-14, AD-12, ENT-6, ENT-7, ENT-21, ENT-22
 
 **Acceptance Criteria:**
 
@@ -496,7 +510,7 @@ Als Admin,
 möchte ich Events mit Titel, Typ, Ort, Zeitangaben, Quelle und Notiz pflegen,
 damit der Bestand echte Zirndorfer Termine mit ehrlichen Angaben enthält.
 
-**Deckt ab:** FR-1, FR-3, FR-5, FR-7, FR-15, NFR-4, AD-2, AD-6, AD-14, AD-16, ENT-5, ENT-9, ENT-10
+**Deckt ab:** FR-1, FR-3, FR-5, FR-7, FR-15, NFR-4, AD-2, AD-6, AD-14, AD-16, ENT-5, ENT-9, ENT-10, ENT-15, ENT-16, ENT-17, ENT-18
 
 **Datenmodell:** Tabelle `events` mit `id` (UUIDv7), `title`, `type`, `location_id` (Fremdschlüssel mit `ON DELETE RESTRICT`), `start_date`, `start_time`, `end_date`, `end_time`, `all_day`, `source_description`, `source_url`, `note`, `effective_start` und `effective_end`.
 
@@ -576,7 +590,7 @@ Als Admin,
 möchte ich einem Event einen Ablaufplan mit Programmpunkten geben,
 damit zum Beispiel ein Festprogramm Schritt für Schritt sichtbar ist.
 
-**Deckt ab:** FR-4, AD-15, ENT-3
+**Deckt ab:** FR-4, AD-15, ENT-3, ENT-15, ENT-20
 
 **Datenmodell:** Tabelle `timetable_entries` mit `id` (UUIDv7), `event_id` (Fremdschlüssel mit Löschweitergabe), `description`, `date`, `start_time` und `end_time`.
 
@@ -591,7 +605,7 @@ damit zum Beispiel ein Festprogramm Schritt für Schritt sichtbar ist.
 **Wenn** ich speichere
 **Dann** gilt das Ende als Uhrzeit am Folgetag (ENT-3)
 
-**Angenommen** ein Programmpunkt ohne Beschreibung oder Datum, außerhalb des Zeitraums des Events oder mit einer Uhrzeit in der Lücke der Zeitumstellung
+**Angenommen** ein Programmpunkt ohne Beschreibung oder Datum, außerhalb von `[effectiveStart, effectiveEnd]` (ENT-20) oder mit einer Uhrzeit in der Lücke der Zeitumstellung
 **Wenn** ich speichere
 **Dann** lehnt der Kern das gesamte Speichern mit einer deutschen Meldung am betroffenen Punkt ab
 **Und** „im Zeitraum“ heißt: Der über `ToInstant` berechnete Beginn und das Ende des Punkts liegen in `[effectiveStart, effectiveEnd)` des Events; ein Punkt ohne Uhrzeit liegt im Zeitraum, wenn sein Datum einer der Tage des Events ist
@@ -684,7 +698,7 @@ Als Entwickler einer Abnehmer-App,
 möchte ich einen öffentlichen, versionierten und dokumentierten API-Vertrag und als ersten Endpunkt die Liste der Event-Typen,
 damit ich Kartenfilter und Icons darauf aufbauen und das Muster für eigene Backends übernehmen kann.
 
-**Deckt ab:** FR-5, FR-11, NFR-1 bis NFR-3, KON-1 bis KON-3, KON-7, KON-8, AD-8, AD-9
+**Deckt ab:** FR-5, FR-11, NFR-1 bis NFR-3, KON-1 bis KON-3, KON-7, KON-8, AD-8, AD-9, ENT-18
 
 **Acceptance Criteria:**
 
@@ -745,7 +759,7 @@ damit ich Details anzeigen und Events nach Ort gruppieren kann.
 **Dann** liefert `ListLocations` alle Orte in der Hülle `{ "data": [ … ] }`, sortiert nach ENT-8
 
 **Außerdem gilt:**
-- `components/schemas` enthält zusätzlich die Schreibform `EventInput` nach AD-14 (einschließlich `importKey` und mitgebrachtem Ort, beide nur für den Import), mit denselben Feldnamen und Formaten wie `Event`, damit das Import-Schema in Epic 3 sie per `$ref` einbinden kann (AD-9).
+- `components/schemas` enthält zusätzlich die Schreibform `EventInput` nach AD-14 (einschließlich `importKey` und `importLocation` für den mitgebrachten Ort, beide nur für den Import, ENT-18), mit denselben Feldnamen und Formaten wie `Event`, damit das Import-Schema in Epic 3 sie per `$ref` einbinden kann (AD-9).
 - Der Handler bildet nur Kern-Objekte auf die erzeugten Typen ab und leitet nichts selbst ab (AD-7).
 
 ### Story 2.3: Events von heute und nach Zeitraum und Typ abfragen
@@ -768,7 +782,7 @@ damit ich zeigen kann, was heute oder in einem bestimmten Zeitraum in Zirndorf l
 **Wenn** der Kern den Filter normalisiert (AD-16, ENT-4)
 **Dann** wird daraus ein halboffenes Intervall `[lo, hi)`
 **Und** ein reines Datum zählt als ganzer Tag inklusive
-**Und** ein fehlendes `to` ist nach hinten offen, ein fehlendes `from` beginnt mit dem heutigen Tag
+**Und** fehlt nur `to`, ist der Zeitraum nach hinten offen; fehlt nur `from`, beginnt er mit dem heutigen Tag (ohne beide gilt das erste Szenario: nur heute)
 **Und** ein Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht, sodass ein Event, das genau zum Zeitpunkt `to` beginnt, enthalten ist
 **Und** das einzige Filterprädikat ist `effectiveStart < hi AND effectiveEnd > lo`
 **Und** auch mit Filter enthält die Antwort nur aktive Events
@@ -830,7 +844,7 @@ Als Admin,
 möchte ich, dass vergangene Events täglich als archiviert markiert werden, ohne dass sich die API-Antworten ändern,
 damit ich den Bestand auswerten kann und nichts verloren geht.
 
-**Deckt ab:** FR-13, AD-5, AD-13
+**Deckt ab:** FR-13, AD-5, AD-13, ENT-17
 
 **Datenmodell:** Spalte `archived_at` in `events`.
 
@@ -868,7 +882,7 @@ Als Entwicklerin eines anderen OZ-Backends,
 möchte ich die API-Dokumentation im Browser lesen und die Konventionen ohne Rückfrage übernehmen können,
 damit der Event Store als Vorlage taugt.
 
-**Deckt ab:** NFR-3, SM-1 (Fixture), SM-4, ENT-14
+**Deckt ab:** NFR-3, SM-1 (Fixture), SM-4, ENT-14, ENT-23
 
 **Acceptance Criteria:**
 
@@ -901,7 +915,7 @@ Als Admin,
 möchte ich ein dokumentiertes, versioniertes Import-Format und einen Upload, der meine Datei prüft und Fehler je Eintrag meldet,
 damit ich Recherche-Dateien zuverlässig im richtigen Format erstellen kann.
 
-**Deckt ab:** FR-16, AD-9, ENT-13
+**Deckt ab:** FR-16, AD-9, ENT-13, ENT-18
 
 **Acceptance Criteria:**
 
@@ -909,7 +923,7 @@ damit ich Recherche-Dateien zuverlässig im richtigen Format erstellen kann.
 **Wenn** das Schema gelesen wird
 **Dann** verlangt es `formatVersion` und eine Liste von Events
 **Und** es bindet `EventInput` und die Enum-Codes per `$ref` aus `openapi.yaml` ein, statt sie zu kopieren (AD-9)
-**Und** jedes Event hat genau eines von beidem (`oneOf`): `locationId` für einen vorhandenen Ort oder einen mitgebrachten Ort
+**Und** jedes Event hat genau eines von beidem (`oneOf`): `locationId` für einen vorhandenen Ort oder `importLocation` für einen mitgebrachten Ort (ENT-18)
 **Und** ein mitgebrachter Ort hat immer `name`; `address`, `latitude`, `longitude` und `precision` sind im Schema optional, weil ein Ort mit vorhandenem Namen sie nicht braucht; `note` ist optional
 **Und** jedes Event kann einen `importKey` haben
 **Und** `GET /v1/import-v1.schema.json` liefert das Schema öffentlich aus
@@ -937,7 +951,7 @@ Als Admin,
 möchte ich vor dem Übernehmen für jedes Event sehen, ob es neu ist, eine Aktualisierung, unverändert, ein Duplikatverdacht oder fehlerhaft, und welche Orte neu angelegt würden,
 damit nichts stillschweigend verdoppelt oder verworfen wird.
 
-**Deckt ab:** FR-16, FR-17, NFR-4, AD-10, ENT-11
+**Deckt ab:** FR-16, FR-17, NFR-4, AD-10, ENT-11, ENT-18, ENT-19
 
 **Datenmodell:** Spalte `import_key` in `events` (optional, eindeutig, wenn gesetzt).
 
@@ -985,7 +999,7 @@ Als Admin,
 möchte ich jeden Duplikatverdacht entscheiden und den Import dann in einem Schritt übernehmen, mit einer Zusammenfassung danach,
 damit meine Recherche vollständig und ohne stille Duplikate im Bestand landet.
 
-**Deckt ab:** FR-18, AD-10, ENT-11, ENT-12
+**Deckt ab:** FR-18, AD-10, ENT-11, ENT-12, ENT-15
 
 **Acceptance Criteria:**
 
