@@ -1,5 +1,5 @@
 <!-- bmad:context -->
-<!-- Verified 2026-10-02 against 0eb5476. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
+<!-- Verified 2026-10-02 against 268241f. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
 
 ## oz-zirndorf-event-store
 
@@ -25,12 +25,15 @@
 
 ## Running and verifying
 
-- TODO (nach Story 1.1 per Refresh eintragen): Befehle für Build, Unit-Tests, Postgres-Tests, Codegen, golangci-lint und Coverage-Prüfung.
 - Go 1.27.1 und PostgreSQL 18 verwenden, nie Railways `:latest` (= 16). Versionen der Abhängigkeiten aus der Stack-Tabelle des Spines nehmen, nicht aus der lokalen Umgebung.
+- `go test ./...` überspringt die Postgres-Tests ohne `EVENTSTORE_TEST_DATABASE_URL`, schlägt aber fehl, wenn `CI` gesetzt ist. Ohne Datenbank `CI` leeren, nie die Tests umbauen.
+- Postgres-Tests lokal: `docker compose up -d`, einmalig `docker compose exec postgres createdb -U eventstore eventstore_test`, dann mit `EVENTSTORE_TEST_DATABASE_URL=postgres://eventstore:eventstore@localhost:5432/eventstore_test?sslmode=disable` ausführen: `go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...`. `-p 1` ist Pflicht, weil beide Pakete dieselbe Datenbank migrieren.
+- Abdeckung mit `bash scripts/check-coverage.sh` prüfen (das CI-Gate); `go test -cover` lässt fehlende Abdeckung nicht scheitern.
+- golangci-lint ist keine Modulabhängigkeit: `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run ./...`, dieselbe Version wie in der CI.
+- TODO (bei Einführung von oapi-codegen v2.8.0 bzw. sqlc 1.31.1 per Refresh eintragen): Codegen-Befehle und die CI-Prüfung „generierter Code aktuell“.
 
 ## Conventions that differ from defaults
 
-- `internal/core` importiert nur die Standardbibliothek und `golang.org/x/text/unicode/norm`. Adapter importieren `core`, nie einander (AD-1).
 - Keine Fachlogik in SQL: keine Views, Trigger, Funktionen, `lower()`/`trim()`-Vergleiche, kein `now()`. Die Zeit kommt als Parameter aus dem `Clock`-Port (AD-2).
 - Schreiben nur über Kern-Anwendungsfälle (`SaveEvent`, `CommitImport` …). Repository-Ports bieten keine Schreibmethode am Kern vorbei (AD-6).
 - Lokale Zeiten nur mit `ToInstant` umrechnen. Filter, „heute“ und Archiv nur über `effective_start`/`effective_end` (AD-4, AD-16).
