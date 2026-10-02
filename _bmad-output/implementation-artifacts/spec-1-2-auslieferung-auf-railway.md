@@ -57,7 +57,7 @@ context:
 - [x] `.github/workflows/ci.yaml` -- Job `docker`: `docker build .` ohne Push -- rotes Dockerfile blockiert per „Wait for CI“ den Deploy.
 - [x] `README.md` -- Abschnitt „Deployment auf Railway“: einmalige Einrichtung (Projekt `production`, Postgres-Service mit gepinntem 18er-Image, TCP-Proxy aus, App-Service aus GitHub mit `DATABASE_URL=${{Postgres.DATABASE_URL}}`, „Wait for CI“ an, Domain erzeugen), Ablauf eines Deploys, AD-17-Regeln (`railway run pg_dump …` vor Deploys mit neuer Migration, nur vorwärts, expand/contract, angewendete Migrationen nie ändern), Platzhalter-Abschnitt „Client-IP hinter Railway“ für das Messergebnis -- AC README.
 - [x] `_bmad-output/implementation-artifacts/deferred-work.md` -- Eintrag: XFF-Log in `/healthz` nach der Messung entfernen -- befristetes Log.
-- [ ] Nach Merge und erstem Deploy (Andreas + Agent): XFF-Messung, Ergebnis (links/rechts) in README per eigenem PR -- ENT-21.
+- [x] Nach Merge und erstem Deploy (Andreas + Agent): XFF-Messung, Ergebnis (links/rechts) in README per eigenem PR -- ENT-21.
 
 **Acceptance Criteria:**
 - Given grüne CI auf `main`, when Railway deployt, then antwortet `https://<railway-domain>/healthz` mit 200 und der Postgres-Service meldet `SHOW server_version` = 18.x ohne öffentliche Verbindung.
@@ -72,6 +72,7 @@ context:
 - README: `railway run pg_dump …` erreicht ohne TCP-Proxy die private DB nicht; dokumentiert ist daher `railway ssh --service Postgres -- pg_dump …`. Ebenso `SHOW server_version` per `railway ssh … psql` statt `railway connect` (braucht den TCP-Proxy).
 - Log-Zeile `health check request` mit `x_forwarded_for` (leer bei fehlendem Header) und `remote_addr`, bei jedem `/healthz`-Aufruf, also auch bei Railways Health Checks.
 - Matrix-Abgleich: „XFF-Messung“ durch `TestHealthLogsForwardedForAndRemoteAddress` und `TestHealthLogsEmptyForwardedForWhenHeaderIsMissing` abgedeckt, „Health scheitert“ (503 bei Ping-Fehler) durch `TestHealthReturnsUnavailableAndLogsWhenPingFails`; beide lokal grün. „Deploy grün“ und „Deploy rot“ sind Railway-Verhalten und nur manuell nach dem Merge prüfbar (Checkliste in der README); ebenso ob die Image-Builds gelingen (erstmals im CI-Job `docker`). Offener Task: XFF-Messung nach dem ersten Deploy, Story bleibt bis dahin nicht `done`.
+- Messung ENT-21 (2026-10-02, nach Deploy von PR #5): Ohne Header kam `<Client-IP>, <Edge-IP>` an, mit gefälschtem `203.0.113.7` ebenfalls `<Client-IP>, <Edge-IP>`. Railway verwirft den Client-Wert, Client-IP = linker Eintrag; `RemoteAddr` ist `100.64.x.x` (intern). Beide Anfragen trafen dieselbe Replika. Ergebnis in der README, XFF-Log im selben Folge-PR entfernt (Test `TestHealthLogsNothingWhenDatabaseAnswers` zuerst rot).
 
 ## Spec Change Log
 

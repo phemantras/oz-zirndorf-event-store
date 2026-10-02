@@ -220,13 +220,21 @@ Im Dashboard: genau ein aktiver Deploy, Replikas = 1, Postgres-Image-Tag 18, kei
 
 ### Client-IP hinter Railway
 
-*Noch offen:* Nach dem ersten Deploy wird gemessen, wie Railway mit einem vom Client mitgeschickten `X-Forwarded-For` umgeht:
+Gemessen am 2026-10-02 nach dem ersten Deploy: Railways Edge **verwirft** einen vom Client mitgeschickten `X-Forwarded-For` und setzt den Header selbst. Die Client-IP ist der **linke Eintrag**.
 
 ```sh
 curl -i -H 'X-Forwarded-For: 203.0.113.7' https://<railway-domain>/healthz
 ```
 
-`/healthz` loggt dafür vorübergehend `x_forwarded_for` und `remote_addr` (das Log wird nach der Messung wieder entfernt). Hier steht dann, ob Railway den Client-Wert verwirft (Client-IP = linker Eintrag) oder seinen Wert anhängt (Client-IP = rechter Eintrag). Story 1.3 (Admin-Anmeldung) leitet daraus die Client-IP für die Login-Sperre ab.
+| Anfrage | Ankommender `X-Forwarded-For` |
+| --- | --- |
+| ohne Header | `<Client-IP>, <Edge-IP>` |
+| mit gefälschtem `203.0.113.7` | `<Client-IP>, <Edge-IP>` (der gefälschte Wert fehlt) |
+
+- Der rechte Eintrag ist ein Railway-Edge-Knoten und wechselt von Anfrage zu Anfrage.
+- `RemoteAddr` ist eine interne Railway-Adresse (`100.64.0.0/10`) und taugt nicht als Client-IP.
+
+Story 1.3 (Admin-Anmeldung) nimmt deshalb für die Login-Sperre den linken Eintrag von `X-Forwarded-For` und nur ohne Header `RemoteAddr` ohne Port.
 
 ## Dokumentation
 
