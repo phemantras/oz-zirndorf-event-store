@@ -1,0 +1,23 @@
+# Local PostgreSQL 18 for development and the PostgreSQL integration tests.
+# The credentials are for local development only.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: eventstore
+      POSTGRES_PASSWORD: eventstore
+      POSTGRES_DB: eventstore
+    ports:
+      - "5432:5432"
+    volumes:
+      # PostgreSQL 18 images keep their data below /var/lib/postgresql/18/,
+      # so the volume is mounted one level higher.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eventstore -d eventstore"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
