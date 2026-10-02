@@ -84,6 +84,7 @@ context:
 - Gesperrte Versuche werden als `admin login rejected during lockout` geloggt, ohne IP und Namen.
 - README empfiehlt `htpasswd -nBC 12` (Präfix `$2y$`); `golang.org/x/crypto/bcrypt` akzeptiert das, ein Config-Test sichert es ab.
 - Lokal nicht ausgeführt: `-race` (kein cgo unter Windows) und die Postgres-Tests inkl. der neuen `/admin/login`-Prüfung in `TestRunMigratesThenServesHealthUntilCancelled` (kein Docker). Beides läuft in der CI.
+- Abnahme (2026-10-02, nach Merge von PR #7): CI auf `main` grün inkl. Postgres-Tests. Auf der Railway-Domain geprüft: `/healthz` 200, `/admin/` ohne Session 303 → `/admin/login`, htmx 200 aus `/admin/static/`, Cross-Site-POST 403, htmx-Anfrage ohne Session 401 mit `HX-Redirect`, keine CORS-Header. Anmelden, Abmelden und Sperre im Browser von Andreas bestätigt.
 
 ## Spec Change Log
 
