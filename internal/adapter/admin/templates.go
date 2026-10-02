@@ -10,10 +10,13 @@ import (
 const layoutTemplate = "layout"
 
 const (
-	templateDir   = "templates/"
-	layoutFile    = templateDir + "layout.html"
-	loginPageFile = templateDir + "login.html"
-	homePageFile  = templateDir + "home.html"
+	templateDir      = "templates/"
+	layoutFile       = templateDir + "layout.html"
+	loginPageFile    = templateDir + "login.html"
+	homePageFile     = templateDir + "home.html"
+	locationsFile    = templateDir + "locations.html"
+	locationFormFile = templateDir + "location_form.html"
+	notFoundFile     = templateDir + "not_found.html"
 )
 
 //go:embed templates
@@ -26,8 +29,11 @@ var templateFiles embed.FS
 var staticFiles embed.FS
 
 var (
-	loginTemplate = parsePage(loginPageFile)
-	homeTemplate  = parsePage(homePageFile)
+	loginTemplate        = parsePage(loginPageFile)
+	homeTemplate         = parsePage(homePageFile)
+	locationsTemplate    = parsePage(locationsFile)
+	locationFormTemplate = parsePage(locationFormFile)
+	notFoundTemplate     = parsePage(notFoundFile)
 )
 
 // loginPage is the data of the login form.

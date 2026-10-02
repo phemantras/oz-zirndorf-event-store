@@ -15,3 +15,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-auslieferung-auf-railway.md`
   summary: Backup per `railway ssh --service Postgres -- pg_dump … > datei` vor dem ersten Deploy mit echter Migration (Story 1.4) einmal ausprobieren, Dump-Ende (`-- PostgreSQL database dump complete`) prüfen und einen getesteten Restore-Befehl in der README ergänzen.
   evidence: Unverifiziert (maybe-false, wäre medium): Eine TTY/CRLF-Umwandlung durch `railway ssh` könnte den Dump verfälschen; AD-17 stützt sich auf diesen Dump statt auf Down-Migrationen.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-orte-anlegen-bearbeiten-und-auflisten.md`
+  summary: AGENTS.md-TODO zu Codegen per `bmad-project-context`-Refresh auflösen: sqlc-Befehl (`go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate`, braucht cgo; unter Windows Release-Binary) und den CI-Schritt „generierter Code aktuell“ eintragen.
+  evidence: Story 1.4 führt sqlc und die CI-Prüfung ein; die Befehle stehen nur in der README, AGENTS.md darf im Build nicht geändert werden.

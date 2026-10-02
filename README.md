@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway und die Admin-Anmeldung, aber noch keine Fachfunktionen.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events und die öffentliche API folgen.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -197,7 +197,17 @@ export EVENTSTORE_TEST_DATABASE_URL='postgres://eventstore:eventstore@localhost:
 go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...   # -p 1: beide Pakete migrieren dieselbe Datenbank
 ```
 
-Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
+Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung, die Prüfung, ob der generierte sqlc-Code aktuell ist, sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
+
+### Generierter Datenbankcode (sqlc)
+
+Die Datenbankzugriffe in `internal/adapter/postgres/db` erzeugt [sqlc](https://sqlc.dev) 1.31.1 aus den Migrationen (`internal/adapter/postgres/migrations`) und den Abfragen (`internal/adapter/postgres/queries`), konfiguriert in `sqlc.yaml`. Den generierten Code nie von Hand ändern, sondern Abfrage oder Migration anpassen und neu erzeugen:
+
+```sh
+go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate   # braucht cgo (gcc); alternativ das Release-Binary von sqlc 1.31.1
+```
+
+Den erzeugten Code mit committen. Die CI erzeugt ihn erneut und scheitert bei einem Unterschied.
 
 ## Deployment auf Railway
 

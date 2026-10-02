@@ -71,6 +71,8 @@ type Config struct {
 	Logger        *slog.Logger
 	// Now returns the current time; injected so expiry is testable.
 	Now func() time.Time
+	// Locations are the core use cases behind the location pages.
+	Locations LocationUseCases
 }
 
 // handler serves the admin interface.
@@ -82,6 +84,7 @@ type handler struct {
 	logger          *slog.Logger
 	now             func() time.Time
 	comparePassword func(hash, password []byte) error
+	locations       LocationUseCases
 }
 
 // NewHandler returns the admin interface for all paths below /admin/,
@@ -99,6 +102,7 @@ func newHandler(cfg Config) *handler {
 		logger:          cfg.Logger,
 		now:             cfg.Now,
 		comparePassword: bcrypt.CompareHashAndPassword,
+		locations:       cfg.Locations,
 	}
 }
 
@@ -109,6 +113,11 @@ func (h *handler) routes() http.Handler {
 	protected := http.NewServeMux()
 	protected.HandleFunc(http.MethodGet+" "+homePath+"{$}", h.showHome)
 	protected.HandleFunc(http.MethodPost+" "+logoutPath, h.logout)
+	protected.HandleFunc(http.MethodGet+" "+locationsPath, h.showLocations)
+	protected.HandleFunc(http.MethodGet+" "+newLocationPath, h.showNewLocation)
+	protected.HandleFunc(http.MethodPost+" "+locationsPath, h.createLocation)
+	protected.HandleFunc(http.MethodGet+" "+locationPathPattern, h.showLocation)
+	protected.HandleFunc(http.MethodPost+" "+locationPathPattern, h.updateLocation)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(http.MethodGet+" "+loginPath, h.showLogin)

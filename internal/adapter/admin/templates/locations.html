@@ -1,0 +1,25 @@
+{{define "title"}}Orte{{end}}
+{{define "content"}}
+<p><a href="/admin/">Übersicht</a></p>
+<h1>Orte</h1>
+<p><a href="/admin/locations/new">Neuer Ort</a></p>
+{{if .Locations}}
+<table>
+  <thead>
+    <tr><th>Name</th><th>Adresse</th><th>Genauigkeit</th><th>Koordinaten</th></tr>
+  </thead>
+  <tbody>
+  {{range .Locations}}
+    <tr>
+      <td><a href="{{.URL}}">{{.Name}}</a></td>
+      <td>{{.Address}}</td>
+      <td>{{.Precision}}</td>
+      <td>{{.Latitude}}, {{.Longitude}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>Noch keine Orte angelegt.</p>
+{{end}}
+{{end}}

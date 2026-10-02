@@ -23,6 +23,18 @@ jobs:
         uses: golangci/golangci-lint-action@v9.3.0
         with:
           version: v2.14.0
+      # The committed sqlc code must match the queries and migrations; a
+      # changed or new generated file fails the job.
+      - name: Generated code is up to date (sqlc)
+        run: |
+          go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate
+          git diff --exit-code
+          untracked=$(git status --porcelain --untracked-files=all)
+          if [ -n "$untracked" ]; then
+            echo "$untracked"
+            echo "sqlc generate produced files that are not committed"
+            exit 1
+          fi
 
   unit:
     name: Unit and architecture tests
