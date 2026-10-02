@@ -84,6 +84,7 @@ context:
 - Leere Notiz wird als `NULL` gespeichert. `ParseFloat`-Überlauf (`1e400`) gilt als `outOfRange`.
 - CI-Schritt im Lint-Job: `go run …sqlc@v1.31.1 generate`, `git diff --exit-code` plus Prüfung auf neue, nicht eingecheckte Dateien.
 - Lokal verifiziert (2026-10-02): `CI= go test ./...`, Coverage-Gate 340/340, `go vet`, golangci-lint v2.14.0 (0 Befunde), sqlc-Windows-Binary ohne Diff. Nicht lokal: Postgres-Repository-Tests und erweiterter `run`-Test (kein Docker), `-race` (kein cgo) — laufen in der CI.
+- Abnahme (2026-10-02, nach Merge von PR #9): CI auf `main` grün inkl. Postgres-Tests und sqlc-Prüfung. Auf der Railway-Domain im Browser von Andreas bestätigt: Ort anlegen, umbenennen, Namenskonflikt auslösen.
 
 ## Spec Change Log
 
