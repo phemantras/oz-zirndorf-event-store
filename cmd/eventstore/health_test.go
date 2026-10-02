@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -68,65 +67,17 @@ func TestRouterServesHealthOnlyForGet(t *testing.T) {
 	}
 }
 
-func TestHealthLogsForwardedForAndRemoteAddress(t *testing.T) {
+// Client addresses are personal data, so a successful health check must not
+// log anything about the request (ENT-21 measurement is finished).
+func TestHealthLogsNothingWhenDatabaseAnswers(t *testing.T) {
 	var logs bytes.Buffer
 	handler := newHealthHandler(&fakePinger{}, newLogger(&logs))
 
 	req := httptest.NewRequest(http.MethodGet, healthPath, nil)
-	req.Header.Set(forwardedForHeader, "203.0.113.7, 10.0.0.1")
-	req.RemoteAddr = "10.0.0.2:41234"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 198.51.100.4")
 	handler.ServeHTTP(httptest.NewRecorder(), req)
 
-	entry := decodeSingleLogEntry(t, &logs)
-	if entry["msg"] != healthRequestLogMessage {
-		t.Errorf("msg = %v, want %q", entry["msg"], healthRequestLogMessage)
+	if logs.Len() != 0 {
+		t.Errorf("log = %q, want no output", logs.String())
 	}
-	if entry[forwardedForLogKey] != "203.0.113.7, 10.0.0.1" {
-		t.Errorf("%s = %v, want the raw header value", forwardedForLogKey, entry[forwardedForLogKey])
-	}
-	if entry[remoteAddrLogKey] != "10.0.0.2:41234" {
-		t.Errorf("%s = %v, want the request remote address", remoteAddrLogKey, entry[remoteAddrLogKey])
-	}
-}
-
-func TestHealthLogsAllForwardedForLinesJoined(t *testing.T) {
-	var logs bytes.Buffer
-	handler := newHealthHandler(&fakePinger{}, newLogger(&logs))
-
-	req := httptest.NewRequest(http.MethodGet, healthPath, nil)
-	req.Header.Add(forwardedForHeader, "203.0.113.7")
-	req.Header.Add(forwardedForHeader, "198.51.100.4")
-	handler.ServeHTTP(httptest.NewRecorder(), req)
-
-	entry := decodeSingleLogEntry(t, &logs)
-	if entry[forwardedForLogKey] != "203.0.113.7, 198.51.100.4" {
-		t.Errorf("%s = %v, want both header lines joined in order", forwardedForLogKey, entry[forwardedForLogKey])
-	}
-}
-
-func TestHealthLogsEmptyForwardedForWhenHeaderIsMissing(t *testing.T) {
-	var logs bytes.Buffer
-	handler := newHealthHandler(&fakePinger{}, newLogger(&logs))
-
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, healthPath, nil))
-
-	entry := decodeSingleLogEntry(t, &logs)
-	value, ok := entry[forwardedForLogKey]
-	if !ok || value != "" {
-		t.Errorf("%s = %v (present: %t), want an empty string", forwardedForLogKey, value, ok)
-	}
-}
-
-// decodeSingleLogEntry parses logs as exactly one JSON log line.
-func decodeSingleLogEntry(t *testing.T, logs *bytes.Buffer) map[string]any {
-	t.Helper()
-	lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
-	if len(lines) != 1 {
-		t.Fatalf("got %d log lines, want 1: %q", len(lines), logs.String())
-	}
-	var entry map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &entry); err != nil {
-		t.Fatalf("decode log line %q: %v", lines[0], err)
-	}
-	return entry
 }
