@@ -52,7 +52,7 @@ func TestHealthReturnsUnavailableAndLogsWhenPingFails(t *testing.T) {
 }
 
 func TestRouterServesHealthOnlyForGet(t *testing.T) {
-	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler))
+	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), http.NotFoundHandler())
 
 	get := httptest.NewRecorder()
 	router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, healthPath, nil))
@@ -64,6 +64,28 @@ func TestRouterServesHealthOnlyForGet(t *testing.T) {
 	router.ServeHTTP(post, httptest.NewRequest(http.MethodPost, healthPath, nil))
 	if post.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST status = %d, want %d", post.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestRouterMountsAdminBelowAdminPath(t *testing.T) {
+	const adminMarker = "admin-stub"
+	admin := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(adminMarker))
+	})
+	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), admin)
+
+	for _, path := range []string{"/admin/", "/admin/login", "/admin/static/htmx.min.js"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Body.String() != adminMarker {
+			t.Errorf("GET %s did not reach the admin handler", path)
+		}
+	}
+
+	health := httptest.NewRecorder()
+	router.ServeHTTP(health, httptest.NewRequest(http.MethodGet, healthPath, nil))
+	if health.Code != http.StatusOK || health.Body.String() == adminMarker {
+		t.Errorf("health status = %d, want %d from the health handler", health.Code, http.StatusOK)
 	}
 }
 

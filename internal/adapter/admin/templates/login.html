@@ -1,0 +1,12 @@
+{{define "title"}}Anmelden{{end}}
+{{define "content"}}
+<h1>Anmelden</h1>
+{{with .Error}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form method="post" action="/admin/login">
+  <label for="username">Benutzername</label>
+  <input id="username" name="username" type="text" autocomplete="username" value="{{.Username}}" required autofocus>
+  <label for="password">Passwort</label>
+  <input id="password" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Anmelden</button>
+</form>
+{{end}}

@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, aber noch keine Fachfunktionen.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway und die Admin-Anmeldung, aber noch keine Fachfunktionen.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -139,14 +139,36 @@ docker compose up -d
 | --- | --- | --- |
 | `DATABASE_URL` | ja | `postgres://eventstore:eventstore@localhost:5432/eventstore?sslmode=disable` |
 | `PORT` | ja | `8080` (1 bis 65535) |
+| `ADMIN_USER` | ja | `admin`, der Benutzername des einzigen Admin-Kontos |
+| `ADMIN_PASSWORD_HASH` | ja | bcrypt-Hash des Admin-Passworts, Kosten mindestens 12 (`$2y$12$…`) |
+| `SESSION_SECRET` | ja | mindestens 32 Byte, signiert das Session-Cookie |
 
-Fehlt eine Variable oder ist `PORT` ungültig, bricht der Start mit einer JSON-Logzeile ab, die die Variable nennt.
+Fehlt eine Variable, ist `PORT` ungültig, ist `ADMIN_PASSWORD_HASH` kein bcrypt-Hash oder hat Kosten unter 12 oder ist `SESSION_SECRET` kürzer als 32 Byte, bricht der Start mit einer JSON-Logzeile ab, die die Variable nennt. Der Wert selbst steht nie im Log.
+
+Passwort-Hash erzeugen (fragt das Passwort ab, damit es nicht in der Shell-History landet; `htpasswd` stammt aus den Apache-Tools, z. B. Paket `apache2-utils`):
+
+```sh
+htpasswd -nBC 12 admin | cut -d: -f2   # liefert $2y$12$…
+```
+
+Session-Secret erzeugen:
+
+```sh
+openssl rand -base64 48
+```
+
+Der Hash enthält `$`. In der Shell deshalb in einfache Anführungszeichen setzen (`export ADMIN_PASSWORD_HASH='$2y$12$…'`), sonst ersetzt die Shell Teile davon durch leere Variablen. Im Railway-Dashboard wird der Wert ohne Anführungszeichen eingetragen.
+
+Ein neues `SESSION_SECRET` macht alle bestehenden Sessions ungültig. Das ist auch der Weg, eine Session vorzeitig zu beenden: Die Sessions liegen nur im signierten Cookie, ohne Serverzustand. Ein kopiertes Cookie gilt deshalb bis zu seinem Ablauf weiter (8 Stunden ohne Anfrage, höchstens 7 Tage nach der Anmeldung), auch wenn sich der Admin abmeldet.
 
 ### Programm starten
 
 ```sh
 export DATABASE_URL='postgres://eventstore:eventstore@localhost:5432/eventstore?sslmode=disable'
 export PORT=8080
+export ADMIN_USER=admin
+export ADMIN_PASSWORD_HASH='$2y$12$…'   # siehe oben
+export SESSION_SECRET="$(openssl rand -base64 48)"
 go run ./cmd/eventstore
 ```
 
@@ -155,6 +177,8 @@ Beim Start laufen zuerst die eingebetteten goose-Migrationen, erst danach nimmt 
 ```sh
 curl -i localhost:8080/healthz   # 200, solange die Datenbank erreichbar ist, sonst 503
 ```
+
+Die Admin-Oberfläche liegt unter <http://localhost:8080/admin/>. Ohne Session leitet sie zur Anmeldung um. Das Session-Cookie ist `Secure`; Chrome und Firefox akzeptieren es auf `localhost` trotzdem über HTTP, andere Browser (z. B. Safari) unter Umständen nicht. Nach 5 Fehlversuchen von derselben IP ist die Anmeldung 15 Minuten gesperrt (im Speicher, ein Neustart hebt die Sperre auf).
 
 ### Tests und Prüfungen
 
@@ -186,6 +210,7 @@ Die App läuft auf [Railway](https://railway.com) als ein Service aus diesem Rep
 3. Am PostgreSQL-Service unter *Settings → Networking* keinen TCP-Proxy einrichten bzw. einen vorhandenen entfernen. Die Datenbank bleibt so ohne öffentliche Verbindung.
 4. App-Service aus GitHub hinzufügen (dieses Repository, Branch `main`). Railway erkennt `railway.json` und baut das `Dockerfile`.
 5. Am App-Service die Variable `DATABASE_URL=${{Postgres.DATABASE_URL}}` setzen, also die Referenz auf die private URL des Postgres-Services (Service-Name ggf. anpassen). `PORT` setzt Railway selbst.
+   Außerdem `ADMIN_USER`, `ADMIN_PASSWORD_HASH` und `SESSION_SECRET` setzen (siehe [Umgebungsvariablen](#umgebungsvariablen)). Neue Pflichtvariablen müssen gesetzt sein, **bevor** der Pull Request gemergt wird, der sie einführt; sonst startet die neue Version nicht und die alte bleibt live.
 6. Unter *Settings → Deploy* „Wait for CI“ einschalten.
 7. Unter *Settings → Networking* eine Railway-Domain erzeugen.
 
@@ -234,7 +259,7 @@ curl -i -H 'X-Forwarded-For: 203.0.113.7' https://<railway-domain>/healthz
 - Der rechte Eintrag ist ein Railway-Edge-Knoten und wechselt von Anfrage zu Anfrage.
 - `RemoteAddr` ist eine interne Railway-Adresse (`100.64.0.0/10`) und taugt nicht als Client-IP.
 
-Story 1.3 (Admin-Anmeldung) nimmt deshalb für die Login-Sperre den linken Eintrag von `X-Forwarded-For` und nur ohne Header `RemoteAddr` ohne Port.
+Die Login-Sperre der Admin-Anmeldung nimmt deshalb den linken Eintrag von `X-Forwarded-For` und nur ohne Header `RemoteAddr` ohne Port.
 
 ## Dokumentation
 

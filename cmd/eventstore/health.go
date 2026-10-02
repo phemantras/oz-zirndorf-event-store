@@ -9,6 +9,8 @@ import (
 
 const (
 	healthPath = "/healthz"
+	// adminPath is the subtree the admin interface owns.
+	adminPath = "/admin/"
 	// healthPingTimeout bounds the database ping so a hanging database
 	// yields 503 instead of a stuck health check.
 	healthPingTimeout = 2 * time.Second
@@ -35,9 +37,11 @@ func newHealthHandler(db pinger, logger *slog.Logger) http.Handler {
 	})
 }
 
-// newRouter returns the HTTP routes of the service.
-func newRouter(db pinger, logger *slog.Logger) http.Handler {
+// newRouter returns the HTTP routes of the service: the health check and
+// the admin interface below adminPath.
+func newRouter(db pinger, logger *slog.Logger, adminHandler http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle(http.MethodGet+" "+healthPath, newHealthHandler(db, logger))
+	mux.Handle(adminPath, adminHandler)
 	return mux
 }
