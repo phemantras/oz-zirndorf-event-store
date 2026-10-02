@@ -124,7 +124,7 @@ Kern-Anwendungsfälle hängen an `LocationService{repo LocationRepo}`; Admin sie
 - `CI= go test ./...` -- grün
 - `bash scripts/check-coverage.sh` -- 100 %
 - `go vet ./...` und golangci-lint v2.14.0 -- ohne Befund
-- `sqlc generate` (1.31.1) -- kein Diff. Lokal: Windows-Binary unter `C:\Users\andre\AppData\Local\Temp\claude\c--Users-andre-git-oz-zirndorf-event-store\06c20c5c-24b0-4c8b-aa4a-c5d4024f495d\scratchpad\sqlc.exe` (kein cgo, kein Docker); CI: `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1` auf Ubuntu.
+- `sqlc generate` (1.31.1) -- kein Diff. Lokal unter Windows: Release-Binary von sqlc 1.31.1 (kein cgo, kein Docker); CI: `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1` auf Ubuntu.
 
 **Manual checks (if no CLI):**
 - Postgres-Tests laufen lokal nicht (kein Docker), nur in der CI.
