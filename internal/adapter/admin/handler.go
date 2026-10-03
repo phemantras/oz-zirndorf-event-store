@@ -143,6 +143,9 @@ func (h *handler) routes() http.Handler {
 	protected.HandleFunc(http.MethodPost+" "+eventsPath, h.createEvent)
 	protected.HandleFunc(http.MethodGet+" "+eventPathPattern, h.showEvent)
 	protected.HandleFunc(http.MethodPost+" "+eventPathPattern, h.updateEvent)
+	protected.HandleFunc(http.MethodGet+" "+inlineLocationPath, h.openInlineLocation)
+	protected.HandleFunc(http.MethodGet+" "+inlineLocationCancelPath, h.cancelInlineLocation)
+	protected.HandleFunc(http.MethodPost+" "+inlineLocationPath, h.createInlineLocation)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(http.MethodGet+" "+loginPath, h.showLogin)
@@ -255,11 +258,16 @@ func (h *handler) showHome(w http.ResponseWriter, _ *http.Request) {
 	h.render(w, homeTemplate, http.StatusOK, homePage{})
 }
 
-// render executes page into a buffer first, so a template error yields a
-// clean 500 instead of a half-written page.
+// render executes page within the layout.
 func (h *handler) render(w http.ResponseWriter, page *template.Template, status int, data any) {
+	h.renderFragment(w, page, layoutTemplate, status, data)
+}
+
+// renderFragment executes the template name into a buffer first, so a
+// template error yields a clean 500 instead of a half-written response.
+func (h *handler) renderFragment(w http.ResponseWriter, templates *template.Template, name string, status int, data any) {
 	var body bytes.Buffer
-	if err := page.ExecuteTemplate(&body, layoutTemplate, data); err != nil {
+	if err := templates.ExecuteTemplate(&body, name, data); err != nil {
 		h.logger.Error(logMsgRenderFailed, "error", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 		return

@@ -1,0 +1,39 @@
+{{define "locationFields"}}
+  <label for="{{.IDPrefix}}name">Name</label>
+  <input id="{{.IDPrefix}}name" name="name" type="text"{{with .FormID}} form="{{.}}"{{end}} value="{{.Values.Name}}" aria-describedby="{{.IDPrefix}}name-hint" required>
+  {{with index .Errors "name"}}<p class="field-error">{{.}}</p>{{end}}
+  <p class="hint" id="{{.IDPrefix}}name-hint">{{.PrivacyHint}}</p>
+
+  <label for="{{.IDPrefix}}street">Straße und Hausnummer</label>
+  <input id="{{.IDPrefix}}street" name="street" type="text"{{with .FormID}} form="{{.}}"{{end}} value="{{.Values.Street}}" required>
+  {{with index .Errors "street"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <label for="{{.IDPrefix}}postalCode">PLZ</label>
+  <input id="{{.IDPrefix}}postalCode" name="postalCode" type="text"{{with .FormID}} form="{{.}}"{{end}} inputmode="numeric" value="{{.Values.PostalCode}}" required>
+  {{with index .Errors "postalCode"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <label for="{{.IDPrefix}}city">Ort</label>
+  <input id="{{.IDPrefix}}city" name="city" type="text"{{with .FormID}} form="{{.}}"{{end}} value="{{.Values.City}}" required>
+  {{with index .Errors "city"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <label for="{{.IDPrefix}}latitude">Breite</label>
+  <input id="{{.IDPrefix}}latitude" name="latitude" type="text"{{with .FormID}} form="{{.}}"{{end}} inputmode="decimal" value="{{.Values.Latitude}}" placeholder="49,4424" required>
+  {{with index .Errors "latitude"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <label for="{{.IDPrefix}}longitude">Länge</label>
+  <input id="{{.IDPrefix}}longitude" name="longitude" type="text"{{with .FormID}} form="{{.}}"{{end}} inputmode="decimal" value="{{.Values.Longitude}}" placeholder="10,9539" required>
+  {{with index .Errors "longitude"}}<p class="field-error">{{.}}</p>{{end}}
+  <div id="{{.IDPrefix}}location-map" class="location-map" data-location-map data-latitude-field="{{.IDPrefix}}latitude" data-longitude-field="{{.IDPrefix}}longitude" aria-label="Karte zum Setzen der Koordinaten" hidden></div>
+
+  <label for="{{.IDPrefix}}precision">Ortsgenauigkeit</label>
+  <select id="{{.IDPrefix}}precision" name="precision"{{with .FormID}} form="{{.}}"{{end}} required>
+    <option value="">Bitte auswählen</option>
+    {{range .Precisions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+    {{end}}
+  </select>
+  {{with index .Errors "precision"}}<p class="field-error">{{.}}</p>{{end}}
+
+  <label for="{{.IDPrefix}}note">Notiz (optional)</label>
+  <textarea id="{{.IDPrefix}}note" name="note"{{with .FormID}} form="{{.}}"{{end}} rows="3" aria-describedby="{{.IDPrefix}}note-hint">{{.Values.Note}}</textarea>
+  <p class="hint" id="{{.IDPrefix}}note-hint">{{.PrivacyHint}}</p>
+{{end}}

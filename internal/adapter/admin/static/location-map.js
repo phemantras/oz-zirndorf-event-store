@@ -1,14 +1,17 @@
-// location-map.js couples the map picker on the location form with the
-// latitude and longitude fields in both directions. It is only an input aid:
-// the core checks the coordinates again when the form is saved, and without
-// this script (or without Leaflet) the map stays hidden and the fields work
-// on their own.
+// location-map.js couples each map picker with its latitude and longitude
+// fields in both directions: on the location form and in the inline input
+// for a new location on the event form, which htmx loads later. It is only
+// an input aid: the core checks the coordinates again when the form is
+// saved, and without this script (or without Leaflet) the map stays hidden
+// and the fields work on their own.
 (function () {
   "use strict";
 
-  const MAP_ID = "location-map";
-  const LATITUDE_ID = "latitude";
-  const LONGITUDE_ID = "longitude";
+  // A map area names its fields by id in data attributes:
+  // <div data-location-map data-latitude-field="…" data-longitude-field="…">.
+  const MAP_AREA_SELECTOR = "[data-location-map]";
+  // htmx fires this event on every piece of content it has swapped in.
+  const HTMX_LOAD_EVENT = "htmx:load";
 
   // Without valid field values the map shows the centre of Zirndorf.
   const ZIRNDORF_CENTRE = [49.4424, 10.9539];
@@ -72,16 +75,20 @@
     }
   }
 
-  function initLocationMap() {
-    if (typeof L === "undefined") {
+  // initializedAreas keeps a map area from getting a second map, for
+  // example when htmx reports the initial page as loaded content.
+  const initializedAreas = new WeakSet();
+
+  function initLocationMap(mapArea) {
+    if (initializedAreas.has(mapArea)) {
       return;
     }
-    const mapArea = document.getElementById(MAP_ID);
-    const latitudeField = document.getElementById(LATITUDE_ID);
-    const longitudeField = document.getElementById(LONGITUDE_ID);
-    if (!mapArea || !latitudeField || !longitudeField) {
+    const latitudeField = document.getElementById(mapArea.dataset.latitudeField);
+    const longitudeField = document.getElementById(mapArea.dataset.longitudeField);
+    if (!latitudeField || !longitudeField) {
       return;
     }
+    initializedAreas.add(mapArea);
 
     // The map area is hidden in the HTML so that it never shows up empty
     // without this script; Leaflet needs it visible to measure its size.
@@ -143,5 +150,20 @@
     followField(longitudeField, LONGITUDE_LIMIT);
   }
 
-  initLocationMap();
+  // initLocationMapsWithin initializes every map area in root, including
+  // root itself.
+  function initLocationMapsWithin(root) {
+    if (typeof L === "undefined" || !(root instanceof Element)) {
+      return;
+    }
+    if (root.matches(MAP_AREA_SELECTOR)) {
+      initLocationMap(root);
+    }
+    root.querySelectorAll(MAP_AREA_SELECTOR).forEach(initLocationMap);
+  }
+
+  initLocationMapsWithin(document.documentElement);
+  document.addEventListener(HTMX_LOAD_EVENT, function (event) {
+    initLocationMapsWithin(event.target);
+  });
 })();

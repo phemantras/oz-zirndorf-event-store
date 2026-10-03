@@ -1,0 +1,28 @@
+{{define "newLocationClosed"}}<div id="new-location">
+  {{with .Notice}}<p class="hint" role="status">{{.}}</p>{{end}}
+  <p><a href="/admin/locations/new" hx-get="/admin/events/new-location" hx-target="#new-location" hx-swap="outerHTML">Neuer Ort</a></p>
+</div>{{end}}
+
+{{define "newLocationOpen"}}<div id="new-location">
+  <fieldset class="new-location">
+    <legend>Neuer Ort</legend>
+    {{with .Conflict}}<p class="error" role="alert">{{.Message}} <a href="{{.URL}}" target="_blank" rel="noopener">{{.Name}}</a></p>{{end}}
+{{template "locationFields" .Fields}}
+    <button type="submit" form="new-location-form">Ort speichern</button>
+    <button type="button" hx-get="/admin/events/new-location/cancel" hx-target="#new-location" hx-swap="outerHTML">Abbrechen</button>
+  </fieldset>
+</div>{{end}}
+
+{{define "locationChoice"}}<div id="location-choice"{{if .OutOfBand}} hx-swap-oob="true"{{end}}>
+  <label for="locationId">Ort</label>
+  <select id="locationId" name="locationId" required>
+    <option value="">Bitte auswählen</option>
+    {{range .Locations}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+    {{end}}
+  </select>
+  {{with .Error}}<p class="field-error">{{.}}</p>{{end}}
+  {{if not .Locations}}<p class="hint">{{.NoLocations}}</p>{{end}}
+</div>{{end}}
+
+{{define "newLocationSaved"}}{{template "newLocationClosed" .Area}}
+{{template "locationChoice" .Choice}}{{end}}

@@ -108,14 +108,26 @@ type locationRow struct {
 }
 
 // locationFormPage is the data of the form for a new or an existing
-// location. Values hold the input exactly as entered, so nothing is lost
-// on an error.
+// location.
 type locationFormPage struct {
-	Heading    string
-	Action     string
+	Heading  string
+	Action   string
+	Conflict *locationConflict
+	Fields   locationFields
+}
+
+// locationFields is the data of the location fields, shared by the location
+// form and the inline input on the event form. Values hold the input
+// exactly as entered, so nothing is lost on an error.
+type locationFields struct {
+	// IDPrefix keeps the element ids apart from those of a surrounding
+	// form; empty on the location form.
+	IDPrefix string
+	// FormID names the form the fields belong to when they are placed
+	// outside it; empty on the location form.
+	FormID     string
 	Values     core.LocationInput
 	Errors     map[string]string
-	Conflict   *locationConflict
 	Precisions []selectOption
 	// PrivacyHint is shown under name and note (NFR-4).
 	PrivacyHint string
@@ -192,14 +204,10 @@ func (h *handler) saveLocation(w http.ResponseWriter, r *http.Request, id string
 	case err == nil:
 		http.Redirect(w, r, locationsPath, http.StatusSeeOther)
 	case errors.As(err, &validation):
-		page.Errors = fieldErrorMessages(validation.Fields, locationFieldMessages)
+		page.Fields.Errors = fieldErrorMessages(validation.Fields, locationFieldMessages)
 		h.render(w, locationFormTemplate, http.StatusUnprocessableEntity, page)
 	case errors.As(err, &conflict):
-		page.Conflict = &locationConflict{
-			Message: msgNameConflict,
-			Name:    conflict.Existing.Name,
-			URL:     locationURL(conflict.Existing.ID),
-		}
+		page.Conflict = locationConflictOf(conflict)
 		h.render(w, locationFormTemplate, http.StatusConflict, page)
 	case errors.Is(err, core.ErrNotFound):
 		h.renderLocationNotFound(w)
@@ -219,27 +227,42 @@ func (h *handler) failLocationRequest(w http.ResponseWriter, err error) {
 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 
+// locationConflictOf names the location that already has the entered name.
+func locationConflictOf(conflict *core.LocationConflictError) *locationConflict {
+	return &locationConflict{
+		Message: msgNameConflict,
+		Name:    conflict.Existing.Name,
+		URL:     locationURL(conflict.Existing.ID),
+	}
+}
+
 // newLocationFormPage returns the form for a new location (empty id) or for
 // the location with id, filled with values.
 func newLocationFormPage(id string, values core.LocationInput) locationFormPage {
 	page := locationFormPage{
-		Heading:     headingNewLocation,
-		Action:      locationsPath,
-		Values:      values,
-		PrivacyHint: msgNoPersonalData,
+		Heading: headingNewLocation,
+		Action:  locationsPath,
+		Fields:  newLocationFields(locationFields{Values: values}),
 	}
 	if id != "" {
 		page.Heading = headingEditLocation
 		page.Action = locationURL(id)
 	}
+	return page
+}
+
+// newLocationFields completes fields with the precisions to choose from and
+// the privacy hint.
+func newLocationFields(fields locationFields) locationFields {
+	fields.PrivacyHint = msgNoPersonalData
 	for _, precision := range core.LocationPrecisions() {
-		page.Precisions = append(page.Precisions, selectOption{
+		fields.Precisions = append(fields.Precisions, selectOption{
 			Value:    string(precision),
 			Label:    precisionLabels[precision],
-			Selected: string(precision) == values.Precision,
+			Selected: string(precision) == fields.Values.Precision,
 		})
 	}
-	return page
+	return fields
 }
 
 // inputFromForm reads the location fields exactly as entered.
