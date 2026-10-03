@@ -22,3 +22,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-12-adresse-in-strasse-plz-und-ort-aufteilen.md`
   summary: AGENTS.md-TODO zu Codegen-Befehlen (sqlc 1.31.1) und CI-Prüfung „generierter Code aktuell“ per `bmad-project-context`-Refresh eintragen.
   evidence: Story 1.12 hat sqlc-Code neu erzeugt; die CI prüft das bereits, AGENTS.md nennt den Befehl aber noch nicht.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-koordinaten-auf-der-karte-setzen.md`
+  summary: Kartenskript `location-map.js` für das per htmx geladene Ortsformular in Story 1.8 wiederverwendbar machen (Init-Funktion, Aufruf nach `htmx:afterSwap`, Leaflet im Event-Formular laden).
+  evidence: Das Skript ist eine IIFE, die einmal beim Laden mit festen IDs initialisiert; htmx-Teilantworten haben keinen `head`-Block, Leaflet würde dort weder geladen noch initialisiert.

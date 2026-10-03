@@ -22,8 +22,8 @@ const (
 //go:embed templates
 var templateFiles embed.FS
 
-// staticFiles holds htmx and later Leaflet, served below /admin/static/
-// instead of from a CDN.
+// staticFiles holds htmx, the vendored Leaflet and the map picker script,
+// served below /admin/static/ instead of from a CDN.
 //
 //go:embed static
 var staticFiles embed.FS

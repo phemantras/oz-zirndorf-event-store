@@ -23,6 +23,16 @@ const (
 	htmxPath         = staticPathPrefix + "htmx.min.js"
 )
 
+// Static files of the map picker on the location form. Leaflet is vendored
+// unchanged from the npm package leaflet@1.9.4.
+const (
+	leafletPathPrefix     = staticPathPrefix + "leaflet/"
+	leafletScriptPath     = leafletPathPrefix + "leaflet.js"
+	leafletStylePath      = leafletPathPrefix + "leaflet.css"
+	leafletMarkerIconPath = leafletPathPrefix + "images/marker-icon.png"
+	locationMapScriptPath = staticPathPrefix + "location-map.js"
+)
+
 // Names of the login form fields.
 const (
 	loginFieldUser     = "username"

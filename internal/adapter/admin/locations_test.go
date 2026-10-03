@@ -574,6 +574,61 @@ func TestEditFormShowsStoredValues(t *testing.T) {
 	)
 }
 
+// mapAssets are the tags that load the map picker on the location form.
+var mapAssets = []string{
+	`<link rel="stylesheet" href="` + leafletStylePath + `">`,
+	`<script src="` + leafletScriptPath + `" defer></script>`,
+	`<script src="` + locationMapScriptPath + `" defer></script>`,
+}
+
+func TestLocationFormsLoadMapPickerWithHiddenMapArea(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	invalid := hallForm()
+	invalid.Set(core.LocationFieldLatitude, "91")
+	pages := map[string]*httptest.ResponseRecorder{
+		"new form":      ts.get(newLocationPath),
+		"edit form":     ts.get(locationPath(hall.ID)),
+		"form on error": ts.post(locationsPath, invalid),
+	}
+	for name, rec := range pages {
+		t.Run(name, func(t *testing.T) {
+			assertBodyContains(t, rec, mapAssets...)
+			assertBodyContains(t, rec, `<div id="location-map" aria-label="Karte zum Setzen der Koordinaten" hidden></div>`)
+		})
+	}
+}
+
+func TestMapAreaFollowsCoordinateFields(t *testing.T) {
+	ts := newTestServer(t)
+
+	body := html.UnescapeString(ts.get(newLocationPath).Body.String())
+
+	latitude := strings.Index(body, `id="latitude"`)
+	longitude := strings.Index(body, `id="longitude"`)
+	mapArea := strings.Index(body, `id="location-map"`)
+	precision := strings.Index(body, `id="precision"`)
+	if latitude < 0 || latitude > longitude || longitude > mapArea || mapArea > precision {
+		t.Errorf("positions = %d, %d, %d, %d, want latitude field, longitude field, map, precision",
+			latitude, longitude, mapArea, precision)
+	}
+}
+
+func TestPagesWithoutLocationFormLoadNoLeaflet(t *testing.T) {
+	ts := newTestServer(t)
+	pages := map[string]*httptest.ResponseRecorder{
+		"login":         ts.do(httptest.NewRequest(http.MethodGet, loginPath, nil)),
+		"home":          ts.get(homePath),
+		"location list": ts.get(locationsPath),
+		"not found":     ts.get(locationPath("missing")),
+	}
+	for name, rec := range pages {
+		t.Run(name, func(t *testing.T) {
+			assertBodyLacks(t, rec, "leaflet", locationMapScriptPath, `id="location-map"`)
+		})
+	}
+}
+
 func TestEditFormActionUsesStoredIDForDifferentlySpelledID(t *testing.T) {
 	ts := newTestServer(t)
 	hall := ts.seed(t, hallName)

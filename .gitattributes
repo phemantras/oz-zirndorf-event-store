@@ -1,2 +1,4 @@
 * text=auto eol=lf
 *.sh text eol=lf
+# Vendored Leaflet stays byte-identical to the npm package (CRLF included).
+internal/adapter/admin/static/leaflet/** -text

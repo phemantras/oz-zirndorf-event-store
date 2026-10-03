@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{template "title" .}} · OZ Zirndorf Event Store</title>
 <script src="/admin/static/htmx.min.js" defer></script>
+{{block "head" .}}{{end}}
 <style>
   body { font-family: system-ui, sans-serif; line-height: 1.5; margin: 0; color: #1a1a1a; background: #fafafa; }
   header { padding: 0.75rem 1rem; background: #1f4e79; color: #fff; font-weight: 600; }
@@ -17,6 +18,8 @@
   .hint { margin: 0.25rem 0 0; font-size: 0.9rem; color: #555; }
   .field-error { margin: 0.25rem 0 0; color: #b00020; font-weight: 600; }
   button { margin-top: 1.25rem; padding: 0.5rem 1rem; font: inherit; cursor: pointer; }
+  [aria-invalid="true"] { border: 2px solid #b00020; outline-color: #b00020; }
+  #location-map { height: 20rem; margin-top: 1rem; border: 1px solid #ddd; }
   .error { padding: 0.5rem 0.75rem; border-left: 4px solid #b00020; background: #fdecee; color: #b00020; }
 </style>
 </head>
