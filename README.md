@@ -109,6 +109,8 @@ Alle 17 Entscheidungen mit Regeln stehen im [Architecture Spine](_bmad-output/pl
 | Hosting | [Railway](https://railway.com): ein Service für die App, einer für PostgreSQL |
 | CI | GitHub Actions. Railway deployt erst, wenn die CI grün ist. |
 
+htmx und Leaflet 1.9.4 liegen als Dateien unter `internal/adapter/admin/static/` und werden ins Programm eingebettet, kein CDN. Leaflet stammt unverändert aus dem npm-Paket `leaflet@1.9.4` (`dist/`, Lizenz in `static/leaflet/LICENSE`); `.gitattributes` schützt die Dateien vor Zeilenende-Umwandlung. Die Kartenkacheln kommen direkt von `tile.openstreetmap.org`. Das ist nach der [Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/) der OSM Foundation für geringe Nutzung wie diesen einen Admin erlaubt, verlangt aber den sichtbaren Hinweis „© OpenStreetMap-Mitwirkende“ mit Link auf die [Urheberseite](https://www.openstreetmap.org/copyright). Ohne JavaScript oder ohne Kacheln bleibt die Karte unsichtbar bzw. leer; Speichern über die Zahlenfelder funktioniert weiter.
+
 ## Projektstruktur
 
 ```text

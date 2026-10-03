@@ -1,4 +1,9 @@
 {{define "title"}}{{.Heading}}{{end}}
+{{define "head"}}
+<link rel="stylesheet" href="/admin/static/leaflet/leaflet.css">
+<script src="/admin/static/leaflet/leaflet.js" defer></script>
+<script src="/admin/static/location-map.js" defer></script>
+{{end}}
 {{define "content"}}
 <p><a href="/admin/locations">Zurück zur Ortsliste</a></p>
 <h1>{{.Heading}}</h1>
@@ -28,6 +33,7 @@
   <label for="longitude">Länge</label>
   <input id="longitude" name="longitude" type="text" inputmode="decimal" value="{{.Values.Longitude}}" placeholder="10,9539" required>
   {{with index .Errors "longitude"}}<p class="field-error">{{.}}</p>{{end}}
+  <div id="location-map" aria-label="Karte zum Setzen der Koordinaten" hidden></div>
 
   <label for="precision">Ortsgenauigkeit</label>
   <select id="precision" name="precision" required>

@@ -456,6 +456,36 @@ func TestStaticFilesAreServedWithoutSession(t *testing.T) {
 	}
 }
 
+func TestMapFilesAreServedWithoutSession(t *testing.T) {
+	tests := map[string]struct {
+		// contentType is matched as a substring: the MIME type of .js
+		// depends on the OS (text/ on Linux, application/ on Windows).
+		path, contentType, prefix string
+	}{
+		"Leaflet script": {leafletScriptPath, "javascript", "/* @preserve\n * Leaflet 1.9.4,"},
+		"Leaflet styles": {leafletStylePath, "text/css", "/* required styles */"},
+		"marker image":   {leafletMarkerIconPath, "image/png", "\x89PNG"},
+		"map script":     {locationMapScriptPath, "javascript", "// location-map.js couples"},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			ts := newTestServer(t)
+
+			rec := ts.do(httptest.NewRequest(http.MethodGet, tt.path, nil))
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+			}
+			if got := rec.Header().Get("Content-Type"); !strings.Contains(got, tt.contentType) {
+				t.Errorf("Content-Type = %q, want %q", got, tt.contentType)
+			}
+			if !strings.HasPrefix(rec.Body.String(), tt.prefix) {
+				t.Errorf("body does not start with %q", tt.prefix)
+			}
+		})
+	}
+}
+
 func TestAdminResponsesCarryNoCORSHeaders(t *testing.T) {
 	ts := newTestServer(t)
 	requests := []*http.Request{
