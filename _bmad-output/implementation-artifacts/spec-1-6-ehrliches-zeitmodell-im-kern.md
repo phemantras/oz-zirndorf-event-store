@@ -74,6 +74,7 @@ context:
 - `ToInstant` bestimmt den früheren Offset selbst: Offsets 24 h vor und nach dem Wandzeit-Wert nachschlagen, größeren Offset zuerst probieren. `LocalDate` gilt für die Jahre 1–9999.
 - Zone per `mustLoadZone` einmal geladen; Panik bei fehlender Zone per `recover` getestet. Der Kern bettet `time/tzdata` nicht ein (nur `cmd/eventstore` und die Kern-Tests).
 - Lokal verifiziert (2026-10-03): `CI= go test ./...`, Coverage-Gate 450/450, `go vet`, golangci-lint v2.14.0 ohne Befund.
+- Abnahme (2026-10-03): PR #15 mit grüner CI (inkl. Postgres-Tests) gemerged.
 
 ## Spec Change Log
 
