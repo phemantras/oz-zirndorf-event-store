@@ -54,7 +54,7 @@ func eventWithTimes(t *testing.T, locationID string, times core.EventTimes) core
 		t.Fatalf("EffectivePeriod: %v", err)
 	}
 	return core.Event{
-		Title: "Kirchweihmarkt", Type: core.EventTypeMarket, LocationID: locationID,
+		Title: "Kirchweihmarkt", TitleKey: "kirchweihmarkt", Type: core.EventTypeMarket, LocationID: locationID,
 		Times:  times,
 		Source: core.EventSource{Description: "Amtsblatt"},
 		Period: period,
@@ -98,6 +98,9 @@ func assertSameEvent(t *testing.T, got, want core.Event) {
 	}
 	if gotInput, wantInput := core.EventInputOf(got), core.EventInputOf(want); !reflect.DeepEqual(gotInput, wantInput) || got.ID != want.ID {
 		t.Errorf("event = %s %+v, want %s %+v", got.ID, gotInput, want.ID, wantInput)
+	}
+	if got.TitleKey != want.TitleKey {
+		t.Errorf("title key = %q, want %q", got.TitleKey, want.TitleKey)
 	}
 }
 
@@ -173,7 +176,7 @@ func TestEventRepoUpdateKeepsIDAndReplacesEveryColumn(t *testing.T) {
 
 	changed := minimalEvent(t, park.ID)
 	changed.ID = created.ID
-	changed.Title = "Weihnachtsmarkt"
+	changed.Title, changed.TitleKey = "Weihnachtsmarkt", "weihnachtsmarkt"
 	updated, err := fixture.repo.Update(ctx, changed)
 	if err != nil {
 		t.Fatalf("Update: %v", err)
@@ -186,22 +189,57 @@ func TestEventRepoUpdateKeepsIDAndReplacesEveryColumn(t *testing.T) {
 	assertSameEvent(t, got, changed)
 }
 
-func TestEventRepoUpdatePeriodChangesOnlyThePeriod(t *testing.T) {
+func TestEventRepoUpdateDerivedChangesOnlyPeriodAndTitleKey(t *testing.T) {
 	fixture := newEventFixture(t)
 	created := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
 	ctx := context.Background()
 
-	period := core.Period{Start: created.Period.Start.Add(-time.Hour), End: created.Period.End.Add(time.Hour)}
-	if err := fixture.repo.UpdatePeriod(ctx, created.ID, period); err != nil {
-		t.Fatalf("UpdatePeriod: %v", err)
+	derived := core.Derived{
+		Period:   core.Period{Start: created.Period.Start.Add(-time.Hour), End: created.Period.End.Add(time.Hour)},
+		TitleKey: "neuer schlüssel",
+	}
+	if err := fixture.repo.UpdateDerived(ctx, created.ID, derived); err != nil {
+		t.Fatalf("UpdateDerived: %v", err)
 	}
 	got, err := fixture.repo.Get(ctx, created.ID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
 	want := created
-	want.Period = period
+	want.Period, want.TitleKey = derived.Period, derived.TitleKey
 	assertSameEvent(t, got, want)
+}
+
+func TestEventRepoFindByDuplicateKeyMatchesAllThreeKeys(t *testing.T) {
+	fixture := newEventFixture(t)
+	park := createLocation(t, fixture.locations, parkLocation())
+	ctx := context.Background()
+	// A past Friday: the match is archived, and the query still finds it.
+	friday := core.LocalDate{Year: 2025, Month: time.October, Day: 17}
+	morning := eventWithTimes(t, fixture.hall.ID, core.EventTimes{StartDate: friday, StartTime: localTimeAt(9, 0)})
+	match := createEvent(t, fixture.repo, morning)
+	createEvent(t, fixture.repo, eventWithTimes(t, fixture.hall.ID, core.EventTimes{StartDate: friday.NextDay()}))
+	createEvent(t, fixture.repo, eventWithTimes(t, park.ID, core.EventTimes{StartDate: friday}))
+	otherTitle := eventWithTimes(t, fixture.hall.ID, core.EventTimes{StartDate: friday})
+	otherTitle.Title, otherTitle.TitleKey = "Flohmarkt", "flohmarkt"
+	createEvent(t, fixture.repo, otherTitle)
+
+	found, err := fixture.repo.FindByDuplicateKey(ctx, core.DuplicateKey{TitleKey: "kirchweihmarkt", StartDate: friday, LocationID: fixture.hall.ID})
+
+	if err != nil || len(found) != 1 {
+		t.Fatalf("FindByDuplicateKey = %+v, %v, want exactly the match", found, err)
+	}
+	assertSameEvent(t, found[0], match)
+}
+
+func TestEventRepoFindByDuplicateKeyRejectsMalformedLocationIDWithoutClaimingNotFound(t *testing.T) {
+	fixture := newEventFixture(t)
+
+	_, err := fixture.repo.FindByDuplicateKey(context.Background(), core.DuplicateKey{TitleKey: "kirchweihmarkt", LocationID: "kaputt"})
+
+	if err == nil || errors.Is(err, core.ErrNotFound) {
+		t.Errorf("err = %v, want a non-NotFound error", err)
+	}
 }
 
 func TestEventRepoReportsUnknownAndMalformedIDsAsNotFound(t *testing.T) {
@@ -217,8 +255,8 @@ func TestEventRepoReportsUnknownAndMalformedIDsAsNotFound(t *testing.T) {
 		if _, err := fixture.repo.Update(ctx, event); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("Update(%q) err = %v, want ErrNotFound", id, err)
 		}
-		if err := fixture.repo.UpdatePeriod(ctx, id, event.Period); !errors.Is(err, core.ErrNotFound) {
-			t.Errorf("UpdatePeriod(%q) err = %v, want ErrNotFound", id, err)
+		if err := fixture.repo.UpdateDerived(ctx, id, core.Derived{Period: event.Period}); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("UpdateDerived(%q) err = %v, want ErrNotFound", id, err)
 		}
 	}
 }
@@ -263,11 +301,15 @@ func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 	update.ID = unknownEventID
 
 	calls := map[string]func() error{
-		"List":         func() error { _, err := repo.List(ctx); return err },
-		"Get":          func() error { _, err := repo.Get(ctx, unknownEventID); return err },
-		"Create":       func() error { _, err := repo.Create(ctx, event); return err },
-		"Update":       func() error { _, err := repo.Update(ctx, update); return err },
-		"UpdatePeriod": func() error { return repo.UpdatePeriod(ctx, unknownEventID, event.Period) },
+		"List":          func() error { _, err := repo.List(ctx); return err },
+		"Get":           func() error { _, err := repo.Get(ctx, unknownEventID); return err },
+		"Create":        func() error { _, err := repo.Create(ctx, event); return err },
+		"Update":        func() error { _, err := repo.Update(ctx, update); return err },
+		"UpdateDerived": func() error { return repo.UpdateDerived(ctx, unknownEventID, core.Derived{Period: event.Period}) },
+		"FindByDuplicateKey": func() error {
+			_, err := repo.FindByDuplicateKey(ctx, core.DuplicateKey{LocationID: unknownLocationID})
+			return err
+		},
 	}
 	for name, call := range calls {
 		err := call()
@@ -287,13 +329,13 @@ func TestEventServiceRunsAgainstDatabase(t *testing.T) {
 		Title: "Kirchweihmarkt", Type: string(core.EventTypeMarket), LocationID: fixture.hall.ID,
 		StartDate: "2026-10-16", Source: core.EventSource{Description: "Amtsblatt"},
 	}
-	saved, err := service.SaveEvent(ctx, "", in)
+	saved, err := service.SaveEvent(ctx, "", in, core.RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
 	stale := saved.Period.End.Add(time.Hour)
-	if _, err := fixture.pool.Exec(ctx, "UPDATE events SET effective_end = $2 WHERE id = $1", saved.ID, stale); err != nil {
-		t.Fatalf("make period stale: %v", err)
+	if _, err := fixture.pool.Exec(ctx, "UPDATE events SET effective_end = $2, title_key = '' WHERE id = $1", saved.ID, stale); err != nil {
+		t.Fatalf("make derived values stale: %v", err)
 	}
 
 	failures, err := service.RecomputeDerived(ctx)
@@ -307,6 +349,23 @@ func TestEventServiceRunsAgainstDatabase(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Archived || entries[0].Location != fixture.hall || !entries[0].Event.Period.End.Equal(saved.Period.End) {
 		t.Errorf("entries = %+v, want the active market with its recomputed end", entries)
+	}
+	assertDuplicateCheckAgainstDatabase(t, service, in, saved.ID)
+}
+
+// assertDuplicateCheckAgainstDatabase saves in a second time: the
+// recomputed title key makes the first event a candidate until allowed.
+func assertDuplicateCheckAgainstDatabase(t *testing.T, service *core.EventService, in core.EventInput, firstID string) {
+	t.Helper()
+	ctx := context.Background()
+	in.Title, in.StartTime = " KIRCHWEIHMARKT ", "20:00"
+	_, err := service.SaveEvent(ctx, "", in, core.RejectDuplicates)
+	var suspect *core.DuplicateSuspectError
+	if !errors.As(err, &suspect) || len(suspect.Candidates) != 1 || suspect.Candidates[0].ID != firstID {
+		t.Fatalf("SaveEvent err = %v, want a suspect naming %s", err, firstID)
+	}
+	if _, err := service.SaveEvent(ctx, "", in, core.AllowDuplicates); err != nil {
+		t.Errorf("SaveEvent with AllowDuplicates: %v", err)
 	}
 }
 

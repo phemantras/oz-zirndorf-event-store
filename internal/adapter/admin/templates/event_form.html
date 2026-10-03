@@ -8,6 +8,12 @@
 <p><a href="/admin/events">Zurück zur Event-Liste</a></p>
 <h1>{{.Heading}}</h1>
 <form method="post" action="{{.Action}}" novalidate>
+  {{with .DuplicateWarning}}<div class="error duplicate-warning" role="alert">
+    <p>{{.Message}}</p>
+    <ul>
+{{range .Candidates}}      <li><a href="{{.URL}}" target="_blank" rel="noopener">{{.Title}}</a> ({{.Start}}{{with .Status}}, {{.}}{{end}})</li>
+{{end}}    </ul>
+  </div>{{end}}
   <label for="title">Titel</label>
   <input id="title" name="title" type="text" value="{{.Values.Title}}" aria-describedby="title-hint" required>
   {{with index .Errors "title"}}<p class="field-error">{{.}}</p>{{end}}
@@ -69,6 +75,10 @@
   </fieldset>
 
   <button type="submit">Speichern</button>
+  {{with .DuplicateWarning}}<p class="duplicate-warning">
+    <button type="submit" name="{{.ConfirmField}}" value="{{.ConfirmValue}}">Trotzdem speichern</button>
+    <button type="button" hx-on:click="document.querySelectorAll('.duplicate-warning').forEach(e => e.remove())">Abbrechen</button>
+  </p>{{end}}
 </form>
 <form id="new-location-form" hx-post="/admin/events/new-location" hx-target="#new-location" hx-swap="outerHTML" hx-sync="this:drop" novalidate></form>
 {{end}}

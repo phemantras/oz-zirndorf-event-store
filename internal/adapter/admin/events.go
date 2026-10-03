@@ -13,7 +13,7 @@ import (
 // EventUseCases are the core use cases behind the event pages. The admin
 // never gets the repository, so every write goes through the core (AD-6).
 type EventUseCases interface {
-	SaveEvent(ctx context.Context, id string, in core.EventInput) (core.Event, error)
+	SaveEvent(ctx context.Context, id string, in core.EventInput, policy core.DuplicatePolicy) (core.Event, error)
 	GetEvent(ctx context.Context, id string) (core.Event, error)
 	ListEvents(ctx context.Context, clock core.Clock) ([]core.EventListEntry, error)
 }
@@ -136,6 +136,8 @@ type eventFormPage struct {
 	// their messages; TimetableError is set when any entry has one.
 	Timetable      []timetableEntryView
 	TimetableError string
+	// DuplicateWarning is set when the input may duplicate stored events.
+	DuplicateWarning *duplicateWarning
 }
 
 // locationChoice is the data of the location select on the event form.
@@ -188,8 +190,9 @@ func (h *handler) updateEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveEvent hands the form to the core and translates its typed errors:
-// field messages, also per timetable entry (422), unknown event (404). A
-// body that is too large or has uneven timetable fields is a bad request.
+// field messages, also per timetable entry (422), suspected duplicates
+// (409), unknown event (404). A body that is too large or has uneven
+// timetable fields is a bad request.
 func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxEventFormBytes)
 	if err := r.ParseForm(); err != nil {
@@ -201,9 +204,10 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	_, err = h.events.SaveEvent(r.Context(), id, values)
+	_, err = h.events.SaveEvent(r.Context(), id, values, duplicatePolicyOf(r.PostForm))
 
 	var validation *core.ValidationError
+	var suspect *core.DuplicateSuspectError
 	switch {
 	case err == nil:
 		http.Redirect(w, r, eventsPath, http.StatusSeeOther)
@@ -216,6 +220,8 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 			timetableErrors: timetableErrors,
 		}
 		h.renderEventForm(w, r, http.StatusUnprocessableEntity, form)
+	case errors.As(err, &suspect):
+		h.renderEventForm(w, r, http.StatusConflict, eventForm{id: id, values: values, duplicates: suspect.Candidates})
 	case errors.Is(err, core.ErrNotFound):
 		h.renderEventNotFound(w)
 	default:
@@ -224,12 +230,14 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 // eventForm is what an event form shows: the event's id (empty for a new
-// one), the values and the messages per field and per timetable entry.
+// one), the values, the messages per field and per timetable entry and the
+// events the values may duplicate.
 type eventForm struct {
 	id              string
 	values          core.EventInput
 	errors          map[string]string
 	timetableErrors map[int]map[string]string
+	duplicates      []core.Event
 }
 
 // renderEventForm renders the form with the locations to choose from.
@@ -240,15 +248,16 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 		return
 	}
 	page := eventFormPage{
-		Heading:         headingNewEvent,
-		Action:          eventsPath,
-		Values:          form.values,
-		Errors:          form.errors,
-		LocationChoice:  locationChoiceOf(locations, form.values.LocationID, form.errors[core.EventFieldLocationID]),
-		AllDayValue:     allDayChecked,
-		PrivacyHint:     msgNoPersonalData,
-		UnknownTimeHint: msgUnknownTime,
-		Timetable:       timetableViews(form.values.Timetable, form.timetableErrors),
+		Heading:          headingNewEvent,
+		Action:           eventsPath,
+		Values:           form.values,
+		Errors:           form.errors,
+		LocationChoice:   locationChoiceOf(locations, form.values.LocationID, form.errors[core.EventFieldLocationID]),
+		AllDayValue:      allDayChecked,
+		PrivacyHint:      msgNoPersonalData,
+		UnknownTimeHint:  msgUnknownTime,
+		Timetable:        timetableViews(form.values.Timetable, form.timetableErrors),
+		DuplicateWarning: duplicateWarningOf(form.duplicates, h.clock),
 	}
 	if len(form.timetableErrors) > 0 {
 		page.TimetableError = msgTimetableProblems

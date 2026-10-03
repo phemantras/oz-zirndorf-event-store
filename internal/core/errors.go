@@ -14,6 +14,9 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrConflict means the input collides with an existing entity.
 	ErrConflict = errors.New("conflict")
+	// ErrDuplicateSuspect means the input looks like an event that already
+	// exists; saving it needs AllowDuplicates.
+	ErrDuplicateSuspect = errors.New("suspected duplicate")
 )
 
 // FieldProblem is the machine-readable reason a field was rejected.
@@ -81,3 +84,19 @@ func (e *LocationConflictError) Error() string {
 }
 
 func (e *LocationConflictError) Unwrap() error { return ErrConflict }
+
+// DuplicateSuspectError lists the stored events an input is suspected to
+// duplicate. It matches ErrDuplicateSuspect with errors.Is.
+type DuplicateSuspectError struct {
+	Candidates []Event
+}
+
+func (e *DuplicateSuspectError) Error() string {
+	ids := make([]string, 0, len(e.Candidates))
+	for _, candidate := range e.Candidates {
+		ids = append(ids, candidate.ID)
+	}
+	return "suspected duplicate of events " + strings.Join(ids, ", ")
+}
+
+func (e *DuplicateSuspectError) Unwrap() error { return ErrDuplicateSuspect }

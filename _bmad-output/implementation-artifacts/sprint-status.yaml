@@ -46,7 +46,8 @@ development_status:
   1-7-events-anlegen-bearbeiten-und-auflisten: done
   1-8-neuen-ort-direkt-beim-anlegen-eines-events: done
   1-9-ablaufplan-pflegen: done
-  1-10-warnung-bei-duplikatverdacht: backlog
+  1-10-warnung-bei-duplikatverdacht: review
+
   1-11-events-und-orte-löschen: backlog
   epic-1-retrospective: optional
 

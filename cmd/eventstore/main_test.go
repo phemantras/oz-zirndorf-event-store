@@ -441,7 +441,7 @@ func (emptyLocations) ListLocations(context.Context) ([]core.Location, error) {
 // available: there are no events.
 type emptyEvents struct{}
 
-func (emptyEvents) SaveEvent(context.Context, string, core.EventInput) (core.Event, error) {
+func (emptyEvents) SaveEvent(context.Context, string, core.EventInput, core.DuplicatePolicy) (core.Event, error) {
 	return core.Event{}, core.ErrNotFound
 }
 

@@ -102,6 +102,7 @@ func (r *EventRepo) Update(ctx context.Context, event core.Event) (core.Event, e
 	row, err := r.queries.UpdateEvent(ctx, db.UpdateEventParams{
 		ID:                uuid,
 		Title:             columns.Title,
+		TitleKey:          columns.TitleKey,
 		Type:              columns.Type,
 		LocationID:        columns.LocationID,
 		StartDate:         columns.StartDate,
@@ -144,23 +145,48 @@ func (r *EventRepo) withTimetable(ctx context.Context, row db.Event, entries []c
 	return event, nil
 }
 
-// UpdatePeriod replaces only the effective period of the event with id, or
+// FindByDuplicateKey returns all events with exactly the stored title key,
+// start date and location ID of key, without their timetable. The core
+// hands over the location ID as stored, so an unparsable one is a
+// programming error and not reported as core.ErrNotFound.
+func (r *EventRepo) FindByDuplicateKey(ctx context.Context, key core.DuplicateKey) ([]core.Event, error) {
+	var locationID pgtype.UUID
+	if err := locationID.Scan(key.LocationID); err != nil {
+		return nil, fmt.Errorf("location id %q of duplicate key: %w", key.LocationID, err)
+	}
+	rows, err := r.queries.FindEventsByDuplicateKey(ctx, db.FindEventsByDuplicateKeyParams{
+		TitleKey:   key.TitleKey,
+		StartDate:  dateParam(key.StartDate),
+		LocationID: locationID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("find events by duplicate key: %w", err)
+	}
+	events := make([]core.Event, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, eventFromRow(row))
+	}
+	return events, nil
+}
+
+// UpdateDerived replaces only the derived values of the event with id, or
 // yields core.ErrNotFound.
-func (r *EventRepo) UpdatePeriod(ctx context.Context, id string, period core.Period) error {
+func (r *EventRepo) UpdateDerived(ctx context.Context, id string, derived core.Derived) error {
 	uuid, err := parseID(eventKind, id)
 	if err != nil {
 		return err
 	}
-	affected, err := r.queries.UpdateEventPeriod(ctx, db.UpdateEventPeriodParams{
+	affected, err := r.queries.UpdateEventDerived(ctx, db.UpdateEventDerivedParams{
 		ID:             uuid,
-		EffectiveStart: instantParam(period.Start),
-		EffectiveEnd:   instantParam(period.End),
+		EffectiveStart: instantParam(derived.Period.Start),
+		EffectiveEnd:   instantParam(derived.Period.End),
+		TitleKey:       derived.TitleKey,
 	})
 	if err != nil {
-		return fmt.Errorf("update event period: %w", err)
+		return fmt.Errorf("update derived values of event: %w", err)
 	}
 	if affected == noRowsAffected {
-		return fmt.Errorf("update event period of %s: %w", id, core.ErrNotFound)
+		return fmt.Errorf("update derived values of event %s: %w", id, core.ErrNotFound)
 	}
 	return nil
 }
@@ -179,6 +205,7 @@ func eventColumnsOf(event core.Event) (eventColumns, error) {
 	}
 	return eventColumns{
 		Title:             event.Title,
+		TitleKey:          event.TitleKey,
 		Type:              string(event.Type),
 		LocationID:        locationID,
 		StartDate:         dateParam(event.Times.StartDate),
@@ -198,6 +225,7 @@ func eventFromRow(row db.Event) core.Event {
 	return core.Event{
 		ID:         row.ID.String(),
 		Title:      row.Title,
+		TitleKey:   row.TitleKey,
 		Type:       core.EventType(row.Type),
 		LocationID: row.LocationID.String(),
 		Times: core.EventTimes{
