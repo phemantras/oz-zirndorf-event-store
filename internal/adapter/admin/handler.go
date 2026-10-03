@@ -146,6 +146,7 @@ func (h *handler) routes() http.Handler {
 	protected.HandleFunc(http.MethodGet+" "+inlineLocationPath, h.openInlineLocation)
 	protected.HandleFunc(http.MethodGet+" "+inlineLocationCancelPath, h.cancelInlineLocation)
 	protected.HandleFunc(http.MethodPost+" "+inlineLocationPath, h.createInlineLocation)
+	protected.HandleFunc(http.MethodGet+" "+timetableEntryPath, h.showTimetableEntry)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(http.MethodGet+" "+loginPath, h.showLogin)

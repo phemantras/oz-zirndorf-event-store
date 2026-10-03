@@ -59,6 +59,15 @@
   {{with index .Errors "note"}}<p class="field-error">{{.}}</p>{{end}}
   <p class="hint" id="note-hint">{{.PrivacyHint}}</p>
 
+  <fieldset class="timetable">
+    <legend>Ablaufplan (optional)</legend>
+    {{with .TimetableError}}<p class="field-error" role="alert">{{.}}</p>{{end}}
+    <div id="timetable-entries">
+{{range .Timetable}}{{template "timetableEntry" .}}
+{{end}}    </div>
+    <button type="button" hx-get="/admin/events/timetable-entry" hx-target="#timetable-entries" hx-swap="beforeend">Programmpunkt hinzufügen</button>
+  </fieldset>
+
   <button type="submit">Speichern</button>
 </form>
 <form id="new-location-form" hx-post="/admin/events/new-location" hx-target="#new-location" hx-swap="outerHTML" hx-sync="this:drop" novalidate></form>

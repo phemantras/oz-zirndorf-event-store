@@ -99,6 +99,9 @@ type Event struct {
 	// Period is derived from Times by EffectivePeriod and stored with the
 	// event (AD-16).
 	Period Period
+	// Timetable is sorted chronologically and lies within Period; it never
+	// changes Period (AD-15).
+	Timetable []TimetableEntry
 }
 
 // EventInput is an event as entered by a person or an import. Dates arrive
@@ -115,12 +118,26 @@ type EventInput struct {
 	AllDay     bool
 	Source     EventSource
 	Note       string
+	// Timetable replaces the whole stored timetable on save (AD-15).
+	Timetable []TimetableEntryInput
 }
 
 // Canonicalize returns the input with every text normalized by
 // normalizeText: NFC-composed and trimmed, so a text of only whitespace is
-// empty, i.e. missing.
+// empty, i.e. missing. The timetable is sorted like a stored one.
 func (in EventInput) Canonicalize() EventInput {
+	canonical := in.normalized()
+	slices.SortStableFunc(canonical.Timetable, compareTimetableInputs)
+	return canonical
+}
+
+// normalized returns the input with every text normalized, keeping the
+// timetable in the order entered, so problems name entries by that order.
+func (in EventInput) normalized() EventInput {
+	var timetable []TimetableEntryInput
+	for _, entry := range in.Timetable {
+		timetable = append(timetable, entry.normalized())
+	}
 	return EventInput{
 		Title:      normalizeText(in.Title),
 		Type:       normalizeText(in.Type),
@@ -134,13 +151,23 @@ func (in EventInput) Canonicalize() EventInput {
 			Description: normalizeText(in.Source.Description),
 			URL:         normalizeText(in.Source.URL),
 		},
-		Note: normalizeText(in.Note),
+		Note:      normalizeText(in.Note),
+		Timetable: timetable,
 	}
 }
 
 // EventInputOf returns the input that describes a stored event, so an edit
 // form shows exactly what is stored.
 func EventInputOf(event Event) EventInput {
+	var timetable []TimetableEntryInput
+	for _, entry := range event.Timetable {
+		timetable = append(timetable, TimetableEntryInput{
+			Description: entry.Description,
+			Date:        dateText(entry.Date),
+			StartTime:   timeText(entry.StartTime),
+			EndTime:     timeText(entry.EndTime),
+		})
+	}
 	return EventInput{
 		Title:      event.Title,
 		Type:       string(event.Type),
@@ -152,6 +179,7 @@ func EventInputOf(event Event) EventInput {
 		AllDay:     event.Times.AllDay,
 		Source:     event.Source,
 		Note:       event.Note,
+		Timetable:  timetable,
 	}
 }
 
@@ -170,10 +198,11 @@ func timeText(timeOfDay *LocalTime) string {
 }
 
 // newEvent canonicalizes and validates input and returns the event without
-// ID, with its effective period. It returns every rejected field; whether
-// the location exists is checked by the caller.
+// ID, with its effective period and its timetable sorted. It returns every
+// rejected field, timetable entries by the index they were entered with;
+// whether the location exists is checked by the caller.
 func newEvent(in EventInput) (Event, []FieldError) {
-	in = in.Canonicalize()
+	in = in.normalized()
 	var problems []FieldError
 	report := func(field string, problem FieldProblem) {
 		problems = append(problems, FieldError{Field: field, Problem: problem})
@@ -204,6 +233,15 @@ func newEvent(in EventInput) (Event, []FieldError) {
 	if event.Source.URL != "" && !isHTTPLink(event.Source.URL) {
 		report(EventFieldSourceURL, ProblemInvalidFormat)
 	}
+	// Only a valid period bounds the timetable; otherwise the entries are
+	// checked for their own form only.
+	var bounds *Period
+	if timeProblems == nil {
+		bounds = &event.Period
+	}
+	var timetableProblems []FieldError
+	event.Timetable, timetableProblems = parseTimetable(in.Timetable, bounds)
+	problems = append(problems, timetableProblems...)
 	return event, problems
 }
 

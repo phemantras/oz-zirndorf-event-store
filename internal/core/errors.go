@@ -43,6 +43,9 @@ const (
 	// ProblemNotFound means the field refers to an entity that does not
 	// exist, such as an unknown location of an event.
 	ProblemNotFound FieldProblem = "notFound"
+	// ProblemOutsideEvent means a timetable entry does not lie within the
+	// effective period of its event.
+	ProblemOutsideEvent FieldProblem = "outsideEvent"
 )
 
 // FieldError names one rejected field and why it was rejected.

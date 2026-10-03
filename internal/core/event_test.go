@@ -1,6 +1,7 @@
 package core
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -60,7 +61,7 @@ func TestCanonicalizeTrimsAndComposesEveryText(t *testing.T) {
 		Source:     EventSource{Description: "Amtsblatt", URL: "https://zirndorf.de"},
 		Note:       "",
 	}
-	if got := in.Canonicalize(); got != want {
+	if got := in.Canonicalize(); !reflect.DeepEqual(got, want) {
 		t.Errorf("Canonicalize() = %+v, want %+v", got, want)
 	}
 }
@@ -86,7 +87,7 @@ func TestNewEventAcceptsValidInputAndComputesPeriod(t *testing.T) {
 		t.Errorf("period = [%v, %v), want [%v, %v)", got.Period.Start, got.Period.End, wantStart, wantEnd)
 	}
 	got.Period = Period{}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("newEvent = %+v, want %+v", got, want)
 	}
 }
@@ -268,7 +269,7 @@ func TestEventInputOfRoundTripsAStoredEvent(t *testing.T) {
 		t.Fatalf("newEvent problems = %v", problems)
 	}
 
-	if got := EventInputOf(event); got != in {
+	if got := EventInputOf(event); !reflect.DeepEqual(got, in) {
 		t.Errorf("EventInputOf = %+v, want %+v", got, in)
 	}
 	allDay := EventInputOf(Event{Times: EventTimes{StartDate: kirchweihFriday, AllDay: true}})

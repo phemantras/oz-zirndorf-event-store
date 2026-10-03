@@ -1,0 +1,21 @@
+{{define "timetableEntry"}}<fieldset class="timetable-entry">
+      <legend>Programmpunkt</legend>
+      <label>Beschreibung
+        <input name="timetable.description" type="text" value="{{.Values.Description}}" required>
+      </label>
+      {{with index .Errors "description"}}<p class="field-error">{{.}}</p>{{end}}
+      <label>Datum
+        <input name="timetable.date" type="date" value="{{.Values.Date}}" required>
+      </label>
+      {{with index .Errors "date"}}<p class="field-error">{{.}}</p>{{end}}
+      <label>Beginn-Uhrzeit (optional)
+        <input name="timetable.startTime" type="time" value="{{.Values.StartTime}}">
+      </label>
+      {{with index .Errors "startTime"}}<p class="field-error">{{.}}</p>{{end}}
+      <label>End-Uhrzeit (optional)
+        <input name="timetable.endTime" type="time" value="{{.Values.EndTime}}">
+      </label>
+      {{with index .Errors "endTime"}}<p class="field-error">{{.}}</p>{{end}}
+      <p class="hint">{{.UnknownTimeHint}} {{.EndsNextDayHint}}</p>
+      <button type="button" hx-on:click="this.closest('fieldset').remove()">Programmpunkt entfernen</button>
+    </fieldset>{{end}}

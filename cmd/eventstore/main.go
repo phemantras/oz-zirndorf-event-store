@@ -71,7 +71,7 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	logger.Info("database migrations applied", "count", applied)
 
 	locationRepo := postgres.NewLocationRepo(pool)
-	events := core.NewEventService(postgres.NewEventRepo(pool), locationRepo)
+	events := core.NewEventService(postgres.NewTxRunner(pool), postgres.NewEventRepo(pool), locationRepo)
 	if err := recomputeDerived(ctx, events, logger); err != nil {
 		return err
 	}
