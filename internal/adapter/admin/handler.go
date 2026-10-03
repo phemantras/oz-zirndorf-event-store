@@ -138,11 +138,13 @@ func (h *handler) routes() http.Handler {
 	protected.HandleFunc(http.MethodPost+" "+locationsPath, h.createLocation)
 	protected.HandleFunc(http.MethodGet+" "+locationPathPattern, h.showLocation)
 	protected.HandleFunc(http.MethodPost+" "+locationPathPattern, h.updateLocation)
+	protected.HandleFunc(http.MethodPost+" "+locationDeletePathPattern, h.deleteLocation)
 	protected.HandleFunc(http.MethodGet+" "+eventsPath, h.showEvents)
 	protected.HandleFunc(http.MethodGet+" "+newEventPath, h.showNewEvent)
 	protected.HandleFunc(http.MethodPost+" "+eventsPath, h.createEvent)
 	protected.HandleFunc(http.MethodGet+" "+eventPathPattern, h.showEvent)
 	protected.HandleFunc(http.MethodPost+" "+eventPathPattern, h.updateEvent)
+	protected.HandleFunc(http.MethodPost+" "+eventDeletePathPattern, h.deleteEvent)
 	protected.HandleFunc(http.MethodGet+" "+inlineLocationPath, h.openInlineLocation)
 	protected.HandleFunc(http.MethodGet+" "+inlineLocationCancelPath, h.cancelInlineLocation)
 	protected.HandleFunc(http.MethodPost+" "+inlineLocationPath, h.createInlineLocation)
@@ -196,12 +198,25 @@ func (h *handler) currentTime() time.Time {
 // redirectToLogin answers htmx requests with HX-Redirect, so the login page
 // is not swapped into a fragment, and everything else with 303.
 func redirectToLogin(w http.ResponseWriter, r *http.Request) {
+	redirectTo(w, r, loginPath, http.StatusUnauthorized)
+}
+
+// redirectAfterDelete sends the browser to the list at target once a record
+// is deleted: htmx with HX-Redirect, so the whole page is replaced,
+// everything else with 303.
+func redirectAfterDelete(w http.ResponseWriter, r *http.Request, target string) {
+	redirectTo(w, r, target, http.StatusNoContent)
+}
+
+// redirectTo answers htmx requests with HX-Redirect to target and
+// htmxStatus, everything else with 303 to target.
+func redirectTo(w http.ResponseWriter, r *http.Request, target string, htmxStatus int) {
 	if r.Header.Get(htmxRequestHeader) == htmxRequestTrue {
-		w.Header().Set(htmxRedirectHeader, loginPath)
-		w.WriteHeader(http.StatusUnauthorized)
+		w.Header().Set(htmxRedirectHeader, target)
+		w.WriteHeader(htmxStatus)
 		return
 	}
-	http.Redirect(w, r, loginPath, http.StatusSeeOther)
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 func (h *handler) showLogin(w http.ResponseWriter, r *http.Request) {

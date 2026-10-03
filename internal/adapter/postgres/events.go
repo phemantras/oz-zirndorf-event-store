@@ -11,7 +11,8 @@ import (
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
-// noRowsAffected is what an UPDATE reports when no row has the given id.
+// noRowsAffected is what an UPDATE or DELETE reports when no row has the
+// given id.
 const noRowsAffected = 0
 
 // EventRepo implements core.EventRepo on the events and timetable_entries
@@ -167,6 +168,40 @@ func (r *EventRepo) FindByDuplicateKey(ctx context.Context, key core.DuplicateKe
 		events = append(events, eventFromRow(row))
 	}
 	return events, nil
+}
+
+// Delete removes the event with id; its timetable goes with it by the
+// foreign key's ON DELETE CASCADE. A missing or unparsable id yields
+// core.ErrNotFound.
+func (r *EventRepo) Delete(ctx context.Context, id string) error {
+	uuid, err := parseID(eventKind, id)
+	if err != nil {
+		return err
+	}
+	affected, err := r.queries.DeleteEvent(ctx, uuid)
+	if err != nil {
+		return fmt.Errorf("delete event: %w", err)
+	}
+	if affected == noRowsAffected {
+		return fmt.Errorf("delete event %s: %w", id, core.ErrNotFound)
+	}
+	return nil
+}
+
+// CountByLocation returns how many events, archived ones included, refer
+// to the location with locationID. The core hands over the location ID as
+// stored, so an unparsable one is a programming error and not reported as
+// core.ErrNotFound.
+func (r *EventRepo) CountByLocation(ctx context.Context, locationID string) (int, error) {
+	var uuid pgtype.UUID
+	if err := uuid.Scan(locationID); err != nil {
+		return 0, fmt.Errorf("location id %q to count events of: %w", locationID, err)
+	}
+	count, err := r.queries.CountEventsByLocation(ctx, uuid)
+	if err != nil {
+		return 0, fmt.Errorf("count events of location: %w", err)
+	}
+	return int(count), nil
 }
 
 // UpdateDerived replaces only the derived values of the event with id, or

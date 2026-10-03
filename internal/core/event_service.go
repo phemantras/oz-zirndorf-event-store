@@ -11,9 +11,9 @@ import (
 )
 
 // EventRepo is the storage port for events. Only EventService calls
-// Create, Update and UpdateDerived; adapters never get the repository to
-// write past the core (AD-6). Events come with their timetable in no
-// particular order; the core sorts it.
+// Create, Update, Delete and UpdateDerived; adapters never get the
+// repository to write past the core (AD-6). Events come with their
+// timetable in no particular order; the core sorts it.
 type EventRepo interface {
 	// List returns all events in no particular order.
 	List(ctx context.Context) ([]Event, error)
@@ -26,6 +26,12 @@ type EventRepo interface {
 	// Update replaces the event with event.ID and its whole timetable, or
 	// yields ErrNotFound.
 	Update(ctx context.Context, event Event) (Event, error)
+	// Delete removes the event with id together with its timetable, or
+	// yields ErrNotFound.
+	Delete(ctx context.Context, id string) error
+	// CountByLocation returns how many events, archived ones included,
+	// refer to the location with locationID.
+	CountByLocation(ctx context.Context, locationID string) (int, error)
 	// FindByDuplicateKey returns all events, archived ones included, whose
 	// stored title key, start date and location ID equal key, without their
 	// timetable.
@@ -205,6 +211,37 @@ func writeEvent(ctx context.Context, events EventRepo, event Event) (Event, erro
 		return events.Create(ctx, event)
 	}
 	return events.Update(ctx, event)
+}
+
+// DeleteEvent removes the event with id together with its timetable in one
+// transaction, archived or not. It returns ErrNotFound for an unknown id,
+// such as an event deleted before. A successful delete clears the review
+// mark of the event.
+func (s *EventService) DeleteEvent(ctx context.Context, id string) error {
+	var deletedID string
+	err := s.tx.InTx(ctx, func(repos Repos) error {
+		var err error
+		deletedID, err = deleteEvent(ctx, repos, id)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	s.clearReview(deletedID)
+	return nil
+}
+
+// deleteEvent is the transaction-bound part of DeleteEvent. It returns the
+// ID of the deleted event as the repository spells it.
+func deleteEvent(ctx context.Context, repos Repos, id string) (string, error) {
+	current, err := repos.Events.Get(ctx, id)
+	if err != nil {
+		return "", fmt.Errorf("get event to delete: %w", err)
+	}
+	if err := repos.Events.Delete(ctx, current.ID); err != nil {
+		return "", fmt.Errorf("delete event: %w", err)
+	}
+	return current.ID, nil
 }
 
 // GetEvent returns the event with id and its timetable sorted, or

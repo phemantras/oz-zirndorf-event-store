@@ -7,8 +7,8 @@ import (
 )
 
 // LocationRepo is the storage port for locations. Only LocationService
-// calls Create and Update; adapters never get the repository to write past
-// the core (AD-6).
+// calls Create, Update and Delete; adapters never get the repository to
+// write past the core (AD-6).
 type LocationRepo interface {
 	// List returns all locations in no particular order.
 	List(ctx context.Context) ([]Location, error)
@@ -23,16 +23,51 @@ type LocationRepo interface {
 	// Update replaces the location with location.ID. A missing location
 	// yields ErrNotFound, a taken name key ErrConflict.
 	Update(ctx context.Context, location Location) (Location, error)
+	// Delete removes the location with id. A missing location yields
+	// ErrNotFound, a location events still refer to ErrConflict.
+	Delete(ctx context.Context, id string) error
 }
 
 // LocationService holds the location use cases.
 type LocationService struct {
+	tx   TxRunner
 	repo LocationRepo
 }
 
-// NewLocationService returns the location use cases backed by repo.
-func NewLocationService(repo LocationRepo) *LocationService {
-	return &LocationService{repo: repo}
+// NewLocationService returns the location use cases: deleting runs in
+// transactions of tx, saving and reading use repo directly.
+func NewLocationService(tx TxRunner, repo LocationRepo) *LocationService {
+	return &LocationService{tx: tx, repo: repo}
+}
+
+// DeleteLocation removes the location with id in one transaction. It
+// returns ErrNotFound for an unknown id, such as a location deleted before,
+// and *LocationInUseError with their number when events, archived ones
+// included, still refer to it. An event added concurrently after the count
+// makes the database refuse the delete; that yields a plain ErrConflict.
+func (s *LocationService) DeleteLocation(ctx context.Context, id string) error {
+	return s.tx.InTx(ctx, func(repos Repos) error {
+		return deleteLocation(ctx, repos, id)
+	})
+}
+
+// deleteLocation is the transaction-bound part of DeleteLocation.
+func deleteLocation(ctx context.Context, repos Repos, id string) error {
+	current, err := repos.Locations.Get(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get location to delete: %w", err)
+	}
+	eventCount, err := repos.Events.CountByLocation(ctx, current.ID)
+	if err != nil {
+		return fmt.Errorf("count events of location: %w", err)
+	}
+	if eventCount > 0 {
+		return &LocationInUseError{EventCount: eventCount}
+	}
+	if err := repos.Locations.Delete(ctx, current.ID); err != nil {
+		return fmt.Errorf("delete location: %w", err)
+	}
+	return nil
 }
 
 // SaveLocation creates a location when id is empty and otherwise updates

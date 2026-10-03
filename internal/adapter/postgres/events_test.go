@@ -306,6 +306,11 @@ func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 		"Create":        func() error { _, err := repo.Create(ctx, event); return err },
 		"Update":        func() error { _, err := repo.Update(ctx, update); return err },
 		"UpdateDerived": func() error { return repo.UpdateDerived(ctx, unknownEventID, core.Derived{Period: event.Period}) },
+		"Delete":        func() error { return repo.Delete(ctx, unknownEventID) },
+		"CountByLocation": func() error {
+			_, err := repo.CountByLocation(ctx, unknownLocationID)
+			return err
+		},
 		"FindByDuplicateKey": func() error {
 			_, err := repo.FindByDuplicateKey(ctx, core.DuplicateKey{LocationID: unknownLocationID})
 			return err

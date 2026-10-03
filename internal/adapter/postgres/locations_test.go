@@ -261,8 +261,8 @@ func TestLocationRepoStoresEmptyNonNullAddressForNewLocations(t *testing.T) {
 // PostgreSQL: a name that only collides after NormalizeKey is rejected with
 // the existing location.
 func TestLocationServiceReportsConflictAgainstDatabase(t *testing.T) {
-	repo, _ := migratedLocationRepo(t)
-	service := core.NewLocationService(repo)
+	repo, pool := migratedLocationRepo(t)
+	service := core.NewLocationService(postgres.NewTxRunner(pool), repo)
 	ctx := context.Background()
 	in := core.LocationInput{
 		Name: "Paul-Metz-Halle", Street: "Volkhardtstraße 2", PostalCode: "90513", City: "Zirndorf",
@@ -299,6 +299,7 @@ func TestLocationRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 		"FindByNameKey": func() error { _, err := repo.FindByNameKey(ctx, "x"); return err },
 		"Create":        func() error { _, err := repo.Create(ctx, hallLocation()); return err },
 		"Update":        func() error { _, err := repo.Update(ctx, update); return err },
+		"Delete":        func() error { return repo.Delete(ctx, unknownLocationID) },
 	}
 	for name, call := range calls {
 		err := call()

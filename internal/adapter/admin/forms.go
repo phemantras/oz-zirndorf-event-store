@@ -16,6 +16,24 @@ type selectOption struct {
 	Selected bool
 }
 
+// deletePathSuffix turns the path of a record into the path that deletes
+// it.
+const deletePathSuffix = "/delete"
+
+// logKeyID is the log attribute that names the deleted record.
+const logKeyID = "id"
+
+// deleteForm is the data of the delete button on the edit page of a record:
+// its own form after the edit form, so Enter in the edit form never
+// deletes, and a confirmation question before htmx sends it.
+type deleteForm struct {
+	Action  string
+	Confirm string
+	// Include selects the form whose unsaved input htmx sends along, so a
+	// refused delete shows it again; empty when nothing is shown again.
+	Include string
+}
+
 // notFoundPage is the data of the German 404 page.
 type notFoundPage struct {
 	Message   string

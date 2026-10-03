@@ -56,3 +56,12 @@ WHERE event_id = $1;
 INSERT INTO timetable_entries (event_id, description, date, start_time, end_time)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING id, event_id, description, date, start_time, end_time;
+
+-- name: DeleteEvent :execrows
+DELETE FROM events
+WHERE id = $1;
+
+-- name: CountEventsByLocation :one
+SELECT count(*)
+FROM events
+WHERE location_id = $1;

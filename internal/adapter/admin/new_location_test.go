@@ -113,7 +113,7 @@ func TestLayoutSwapsConflictAndValidationResponses(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			assertBodyContains(t, rec, `<meta name="htmx-config" content='{"responseHandling":[`+
 				`{"code":"204","swap":false},{"code":"[23]..","swap":true},`+
-				`{"code":"409|422","swap":true,"error":false},`+
+				`{"code":"404|409|422","swap":true,"error":false},`+
 				`{"code":"[45]..","swap":false,"error":true},{"code":"...","swap":false}]}'>`)
 		})
 	}

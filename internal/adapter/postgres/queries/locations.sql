@@ -27,3 +27,7 @@ SET name = $2, name_key = $3, street = $4, postal_code = $5, city = $6,
     latitude = $7, longitude = $8, precision = $9, note = $10
 WHERE id = $1
 RETURNING id, name, name_key, street, postal_code, city, latitude, longitude, precision, note;
+
+-- name: DeleteLocation :execrows
+DELETE FROM locations
+WHERE id = $1;

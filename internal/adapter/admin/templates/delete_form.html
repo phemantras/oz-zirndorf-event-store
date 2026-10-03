@@ -1,0 +1,3 @@
+{{define "deleteForm"}}{{with .}}<form method="post" action="{{.Action}}" hx-post="{{.Action}}"{{with .Include}} hx-include="{{.}}"{{end}} hx-confirm="{{.Confirm}}" hx-target="body">
+  <button type="submit">Löschen</button>
+</form>{{end}}{{end}}

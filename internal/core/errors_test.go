@@ -68,3 +68,21 @@ func TestFieldProblemNotFoundCode(t *testing.T) {
 		t.Errorf("ProblemNotFound = %q, want notFound", ProblemNotFound)
 	}
 }
+
+func TestLocationInUseErrorIsErrConflictAndCarriesEventCount(t *testing.T) {
+	err := fmt.Errorf("delete: %w", &LocationInUseError{EventCount: 3})
+
+	if !errors.Is(err, ErrConflict) {
+		t.Errorf("errors.Is(%v, ErrConflict) = false, want true", err)
+	}
+	if errors.Is(err, ErrValidation) || errors.Is(err, ErrNotFound) {
+		t.Errorf("%v also matches another sentinel", err)
+	}
+	var inUse *LocationInUseError
+	if !errors.As(err, &inUse) || inUse.EventCount != 3 {
+		t.Fatalf("errors.As did not recover the event count from %v", err)
+	}
+	if !strings.Contains(err.Error(), "3") {
+		t.Errorf("message %q does not name the event count", err.Error())
+	}
+}
