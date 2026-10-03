@@ -67,6 +67,24 @@ func (r *memoryEventRepo) FindByDuplicateKey(_ context.Context, key core.Duplica
 	return matches, nil
 }
 
+func (r *memoryEventRepo) Delete(_ context.Context, id string) error {
+	if _, ok := r.events[id]; !ok {
+		return core.ErrNotFound
+	}
+	delete(r.events, id)
+	return nil
+}
+
+func (r *memoryEventRepo) CountByLocation(_ context.Context, locationID string) (int, error) {
+	count := 0
+	for _, event := range r.events {
+		if event.LocationID == locationID {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (r *memoryEventRepo) UpdateDerived(_ context.Context, id string, derived core.Derived) error {
 	event := r.events[id]
 	event.Period, event.TitleKey = derived.Period, derived.TitleKey
@@ -87,6 +105,10 @@ func (f failingEvents) GetEvent(context.Context, string) (core.Event, error) {
 
 func (f failingEvents) ListEvents(context.Context, core.Clock) ([]core.EventListEntry, error) {
 	return nil, f.err
+}
+
+func (f failingEvents) DeleteEvent(context.Context, string) error {
+	return f.err
 }
 
 const (

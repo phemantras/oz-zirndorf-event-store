@@ -71,7 +71,8 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	logger.Info("database migrations applied", "count", applied)
 
 	locationRepo := postgres.NewLocationRepo(pool)
-	events := core.NewEventService(postgres.NewTxRunner(pool), postgres.NewEventRepo(pool), locationRepo)
+	tx := postgres.NewTxRunner(pool)
+	events := core.NewEventService(tx, postgres.NewEventRepo(pool), locationRepo)
 	if err := recomputeDerived(ctx, events, logger); err != nil {
 		return err
 	}
@@ -80,7 +81,7 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.ListenAddress(), err)
 	}
-	cases := useCases{locations: core.NewLocationService(locationRepo), events: events}
+	cases := useCases{locations: core.NewLocationService(tx, locationRepo), events: events}
 	return serve(ctx, newServer(pool, logger, newAdminHandler(cfg, logger, cases)), listener, logger)
 }
 

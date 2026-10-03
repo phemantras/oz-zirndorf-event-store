@@ -16,6 +16,7 @@ type EventUseCases interface {
 	SaveEvent(ctx context.Context, id string, in core.EventInput, policy core.DuplicatePolicy) (core.Event, error)
 	GetEvent(ctx context.Context, id string) (core.Event, error)
 	ListEvents(ctx context.Context, clock core.Clock) ([]core.EventListEntry, error)
+	DeleteEvent(ctx context.Context, id string) error
 }
 
 // Routes of the event pages.
@@ -24,6 +25,8 @@ const (
 	newEventPath     = eventsPath + "/new"
 	eventIDParam     = "id"
 	eventPathPattern = eventsPath + "/{" + eventIDParam + "}"
+	// eventDeletePathPattern deletes the event; only POST, never GET.
+	eventDeletePathPattern = eventPathPattern + deletePathSuffix
 	// maxEventFormBytes bounds the event form body; a real form with a long
 	// note and a festival programme of some dozen entries stays far below.
 	maxEventFormBytes = 64 << 10
@@ -55,9 +58,20 @@ const (
 	msgRepeatedHour     = "Das Ende muss nach dem Beginn liegen. In der doppelten Stunde der Zeitumstellung gilt die erste, die Sommerzeit."
 )
 
+// German texts of deleting an event.
+const (
+	msgEventGone = "Dieses Event ist nicht mehr vorhanden."
+	// msgConfirmDeleteEvent is the question before deleting, with the title.
+	msgConfirmDeleteEvent = "Event „%s“ wirklich löschen? Der Ablaufplan wird mit gelöscht."
+)
+
 // logMsgEventsFailed is logged when an event page fails for a reason the
 // admin cannot show as a field message.
 const logMsgEventsFailed = "admin event request failed"
+
+// logMsgEventDeleted is logged with the requested id after a delete, so an
+// accidental delete can be traced.
+const logMsgEventDeleted = "admin event deleted"
 
 // eventTypeLabels are the German names of the event type codes (FR-5).
 var eventTypeLabels = map[core.EventType]string{
@@ -138,6 +152,8 @@ type eventFormPage struct {
 	TimetableError string
 	// DuplicateWarning is set when the input may duplicate stored events.
 	DuplicateWarning *duplicateWarning
+	// Delete is set for an existing event only.
+	Delete *deleteForm
 }
 
 // locationChoice is the data of the location select on the event form.
@@ -229,6 +245,25 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 	}
 }
 
+// deleteEvent hands the deletion to the core and translates its typed
+// errors: an event that is no longer there is a German 404 page, never a
+// server error.
+func (h *handler) deleteEvent(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue(eventIDParam)
+	err := h.events.DeleteEvent(r.Context(), id)
+	switch {
+	case err == nil:
+		h.logger.Info(logMsgEventDeleted, logKeyID, id)
+		redirectAfterDelete(w, r, eventsPath)
+	case errors.Is(err, core.ErrNotFound):
+		h.render(w, notFoundTemplate, http.StatusNotFound, notFoundPage{
+			Message: msgEventGone, BackURL: eventsPath, BackLabel: backToEventList,
+		})
+	default:
+		h.failEventRequest(w, err)
+	}
+}
+
 // eventForm is what an event form shows: the event's id (empty for a new
 // one), the values, the messages per field and per timetable entry and the
 // events the values may duplicate.
@@ -265,6 +300,10 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 	if form.id != "" {
 		page.Heading = headingEditEvent
 		page.Action = eventURL(form.id)
+		page.Delete = &deleteForm{
+			Action:  eventURL(form.id) + deletePathSuffix,
+			Confirm: fmt.Sprintf(msgConfirmDeleteEvent, form.values.Title),
+		}
 	}
 	for _, eventType := range core.EventTypes() {
 		page.Types = append(page.Types, selectOption{

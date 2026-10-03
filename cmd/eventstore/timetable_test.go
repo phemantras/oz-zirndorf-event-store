@@ -109,3 +109,27 @@ func (s adminSession) post(t *testing.T, path string, form url.Values) int {
 	_ = resp.Body.Close()
 	return resp.StatusCode
 }
+
+// TestRunDeletesLocationThroughTheWiredTransaction deletes an unused
+// location in the admin of a running service and checks that it is gone
+// from PostgreSQL, so the location use cases have the transaction runner.
+func TestRunDeletesLocationThroughTheWiredTransaction(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	pool, locationID := insertTimetableLocation(t, databaseURL)
+	running := startRun(t, databaseURL, slog.New(slog.DiscardHandler))
+
+	path := adminLocationsPath + "/" + locationID + "/delete"
+	status := logIn(t, running.baseURL).post(t, path, url.Values{})
+	running.stop(t)
+
+	if status != http.StatusSeeOther {
+		t.Fatalf("POST %s: status = %d, want %d", path, status, http.StatusSeeOther)
+	}
+	var remaining int
+	if err := pool.QueryRow(context.Background(), "SELECT count(*) FROM locations WHERE id = $1", locationID).Scan(&remaining); err != nil {
+		t.Fatalf("count locations: %v", err)
+	}
+	if remaining != 0 {
+		t.Error("the location was not deleted")
+	}
+}

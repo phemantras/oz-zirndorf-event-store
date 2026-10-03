@@ -13,8 +13,16 @@ import (
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
-// uniqueViolation is the SQLSTATE of a unique constraint violation.
-const uniqueViolation = "23505"
+// SQLSTATEs that translateError reports as core.ErrConflict.
+const (
+	// uniqueViolation is a unique constraint violation.
+	uniqueViolation = "23505"
+	// foreignKeyViolation is a foreign key violation.
+	foreignKeyViolation = "23503"
+	// restrictViolation is what PostgreSQL reports when ON DELETE RESTRICT
+	// refuses a delete, such as of a location that events refer to.
+	restrictViolation = "23001"
+)
 
 // LocationRepo implements core.LocationRepo on the locations table.
 type LocationRepo struct {
@@ -109,6 +117,24 @@ func (r *LocationRepo) Update(ctx context.Context, location core.Location) (core
 	return locationFromRow(locationRow(row)), nil
 }
 
+// Delete removes the location with id. A missing or unparsable id yields
+// core.ErrNotFound; a location events still refer to is refused by the
+// foreign key, which yields core.ErrConflict.
+func (r *LocationRepo) Delete(ctx context.Context, id string) error {
+	uuid, err := parseID(locationKind, id)
+	if err != nil {
+		return err
+	}
+	affected, err := r.queries.DeleteLocation(ctx, uuid)
+	if err != nil {
+		return translateError("delete location", err)
+	}
+	if affected == noRowsAffected {
+		return fmt.Errorf("delete location %s: %w", id, core.ErrNotFound)
+	}
+	return nil
+}
+
 // Kinds of IDs, named in the error of parseID.
 const (
 	locationKind = "location"
@@ -125,17 +151,31 @@ func parseID(kind, id string) (pgtype.UUID, error) {
 	return uuid, nil
 }
 
-// translateError maps a missing row to core.ErrNotFound and a unique
-// violation to core.ErrConflict, keeping the cause for the log.
+// translateError maps a missing row to core.ErrNotFound and a unique or
+// foreign key violation to core.ErrConflict, keeping the cause for the log.
 func translateError(action string, err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return fmt.Errorf("%s: %w", action, core.ErrNotFound)
 	}
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation {
+	if isConflict(err) {
 		return fmt.Errorf("%s: %w", action, errors.Join(core.ErrConflict, err))
 	}
 	return fmt.Errorf("%s: %w", action, err)
+}
+
+// isConflict reports whether err is a constraint violation that collides
+// with stored rows: a taken unique key or a foreign key still in use.
+func isConflict(err error) bool {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) {
+		return false
+	}
+	switch pgErr.Code {
+	case uniqueViolation, foreignKeyViolation, restrictViolation:
+		return true
+	default:
+		return false
+	}
 }
 
 // optionalText stores an empty note as NULL.

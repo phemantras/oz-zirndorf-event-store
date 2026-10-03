@@ -23,16 +23,18 @@ type fakeLocationRepo struct {
 	locations map[string]Location
 	nextID    string
 
-	listErr  error
-	getErr   error
-	findErr  error
-	writeErr error
+	listErr   error
+	getErr    error
+	findErr   error
+	writeErr  error
+	deleteErr error
 	// raceWinner is inserted right before the write, simulating another
 	// request that saved the same name_key after the pre-check.
 	raceWinner *Location
 
 	created []Location
 	updated []Location
+	deleted []string
 }
 
 func newFakeLocationRepo(locations ...Location) *fakeLocationRepo {
@@ -102,6 +104,18 @@ func (r *fakeLocationRepo) Update(_ context.Context, location Location) (Locatio
 	return location, nil
 }
 
+func (r *fakeLocationRepo) Delete(_ context.Context, id string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	if _, ok := r.locations[id]; !ok {
+		return ErrNotFound
+	}
+	delete(r.locations, id)
+	r.deleted = append(r.deleted, id)
+	return nil
+}
+
 // beforeWrite applies injected failures and the simulated race, and enforces
 // the unique name_key like the database does.
 func (r *fakeLocationRepo) beforeWrite(location Location) error {
@@ -118,6 +132,12 @@ func (r *fakeLocationRepo) beforeWrite(location Location) error {
 		}
 	}
 	return nil
+}
+
+// newLocationServiceOn returns the location use cases with a fake
+// transaction on locations and events.
+func newLocationServiceOn(locations *fakeLocationRepo, events *fakeEventRepo) *LocationService {
+	return NewLocationService(&fakeTx{repos: Repos{Events: events, Locations: locations}}, locations)
 }
 
 func hall() Location {
@@ -151,7 +171,7 @@ func assertConflictWith(t *testing.T, err error, want Location) {
 
 func TestSaveLocationCreatesNewLocationWhenIDIsEmpty(t *testing.T) {
 	repo := newFakeLocationRepo()
-	service := NewLocationService(repo)
+	service := newLocationServiceOn(repo, newFakeEventRepo())
 
 	saved, err := service.SaveLocation(context.Background(), "", validLocationInput())
 	if err != nil {
@@ -170,7 +190,7 @@ func TestSaveLocationRejectsInvalidInputWithoutWriting(t *testing.T) {
 	in := validLocationInput()
 	in.Name = "   "
 
-	_, err := NewLocationService(repo).SaveLocation(context.Background(), "", in)
+	_, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), "", in)
 
 	if !errors.Is(err, ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation", err)
@@ -185,7 +205,7 @@ func TestSaveLocationRejectsNameThatNormalizesToExistingKey(t *testing.T) {
 	in := validLocationInput()
 	in.Name = " paul-metz-halle "
 
-	_, err := NewLocationService(repo).SaveLocation(context.Background(), "", in)
+	_, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), "", in)
 
 	assertConflictWith(t, err, hall())
 	if len(repo.created) != 0 {
@@ -198,7 +218,7 @@ func TestSaveLocationRejectsRenamingIntoAnotherLocationsName(t *testing.T) {
 	in := validLocationInput()
 	in.Name = "PAUL-METZ-HALLE"
 
-	_, err := NewLocationService(repo).SaveLocation(context.Background(), parkID, in)
+	_, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), parkID, in)
 
 	assertConflictWith(t, err, hall())
 	if len(repo.updated) != 0 {
@@ -211,7 +231,7 @@ func TestSaveLocationKeepsOwnNameWithoutConflict(t *testing.T) {
 	in := validLocationInput()
 	in.PostalCode, in.City = "90522", "Oberasbach"
 
-	saved, err := NewLocationService(repo).SaveLocation(context.Background(), hallID, in)
+	saved, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), hallID, in)
 	if err != nil {
 		t.Fatalf("SaveLocation: %v", err)
 	}
@@ -223,7 +243,7 @@ func TestSaveLocationKeepsOwnNameWithoutConflict(t *testing.T) {
 func TestSaveLocationUsesStoredIDWhenIDIsSpelledDifferently(t *testing.T) {
 	repo := newFakeLocationRepo(hall())
 
-	saved, err := NewLocationService(repo).SaveLocation(context.Background(), strings.ToUpper(hallID), validLocationInput())
+	saved, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), strings.ToUpper(hallID), validLocationInput())
 	if err != nil {
 		t.Fatalf("SaveLocation: %v", err)
 	}
@@ -237,7 +257,7 @@ func TestSaveLocationRenameKeepsID(t *testing.T) {
 	in := validLocationInput()
 	in.Name = "Paul-Metz-Halle Zirndorf"
 
-	saved, err := NewLocationService(repo).SaveLocation(context.Background(), hallID, in)
+	saved, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), hallID, in)
 	if err != nil {
 		t.Fatalf("SaveLocation: %v", err)
 	}
@@ -251,7 +271,7 @@ func TestSaveLocationReportsUnknownIDAsNotFound(t *testing.T) {
 	in := validLocationInput()
 	in.Name = "   "
 
-	_, err := NewLocationService(repo).SaveLocation(context.Background(), otherID, in)
+	_, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), otherID, in)
 
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound before validation", err)
@@ -266,7 +286,7 @@ func TestSaveLocationTurnsDatabaseUniqueViolationIntoConflict(t *testing.T) {
 			repo := newFakeLocationRepo(park())
 			repo.raceWinner = &winner
 
-			_, err := NewLocationService(repo).SaveLocation(context.Background(), id, validLocationInput())
+			_, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), id, validLocationInput())
 
 			assertConflictWith(t, err, winner)
 		})
@@ -291,7 +311,7 @@ func TestSaveLocationPassesRepositoryFailuresOn(t *testing.T) {
 			in := validLocationInput()
 			in.Name = "Neuer Ort"
 
-			_, err := NewLocationService(repo).SaveLocation(context.Background(), tt.id, in)
+			_, err := newLocationServiceOn(repo, newFakeEventRepo()).SaveLocation(context.Background(), tt.id, in)
 
 			if err == nil {
 				t.Fatal("SaveLocation returned no error")
@@ -305,7 +325,7 @@ func TestSaveLocationPassesRepositoryFailuresOn(t *testing.T) {
 }
 
 func TestGetLocationReturnsStoredLocationOrNotFound(t *testing.T) {
-	service := NewLocationService(newFakeLocationRepo(hall()))
+	service := newLocationServiceOn(newFakeLocationRepo(hall()), newFakeEventRepo())
 
 	got, err := service.GetLocation(context.Background(), hallID)
 	if err != nil || got != hall() {
@@ -317,7 +337,7 @@ func TestGetLocationReturnsStoredLocationOrNotFound(t *testing.T) {
 }
 
 func TestListLocationsReturnsSortedLocations(t *testing.T) {
-	service := NewLocationService(newFakeLocationRepo(hall(), park()))
+	service := newLocationServiceOn(newFakeLocationRepo(hall(), park()), newFakeEventRepo())
 
 	got, err := service.ListLocations(context.Background())
 	if err != nil {
@@ -333,7 +353,87 @@ func TestListLocationsPassesRepositoryFailureOn(t *testing.T) {
 	repo := newFakeLocationRepo()
 	repo.listErr = errDatabaseDown
 
-	if _, err := NewLocationService(repo).ListLocations(context.Background()); !errors.Is(err, errDatabaseDown) {
+	if _, err := newLocationServiceOn(repo, newFakeEventRepo()).ListLocations(context.Background()); !errors.Is(err, errDatabaseDown) {
 		t.Errorf("err = %v, want %v", err, errDatabaseDown)
+	}
+}
+
+func TestDeleteLocationRemovesAnUnusedLocationInOneTransaction(t *testing.T) {
+	locations := newFakeLocationRepo(hall(), park())
+	events := newFakeEventRepo(storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday}))
+	tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+
+	err := NewLocationService(tx, locations).DeleteLocation(context.Background(), strings.ToUpper(parkID))
+	if err != nil {
+		t.Fatalf("DeleteLocation: %v", err)
+	}
+	if tx.runs != 1 || !slices.Equal(locations.deleted, []string{parkID}) {
+		t.Errorf("transactions = %d, deleted = %v, want %s deleted in one transaction", tx.runs, locations.deleted, parkID)
+	}
+}
+
+func TestDeleteLocationRefusesALocationEventsReferToWithTheirCount(t *testing.T) {
+	locations := newFakeLocationRepo(hall(), park())
+	events := newFakeEventRepo(
+		storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday}),
+		storedEvent(t, concertID, "Konzert", EventTimes{StartDate: kirchweihMonday}),
+		storedEvent(t, newEventID, "Flohmarkt", EventTimes{StartDate: kirchweihFriday}),
+	)
+
+	err := newLocationServiceOn(locations, events).DeleteLocation(context.Background(), hallID)
+
+	var inUse *LocationInUseError
+	if !errors.As(err, &inUse) || inUse.EventCount != 3 || !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v, want *LocationInUseError with 3 events", err)
+	}
+	if len(locations.deleted) != 0 {
+		t.Errorf("deleted = %v, want nothing", locations.deleted)
+	}
+}
+
+func TestDeleteLocationReportsAnUnknownLocationAsNotFound(t *testing.T) {
+	locations := newFakeLocationRepo(hall())
+
+	err := newLocationServiceOn(locations, newFakeEventRepo()).DeleteLocation(context.Background(), otherID)
+
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+	if len(locations.deleted) != 0 {
+		t.Errorf("deleted = %v, want nothing", locations.deleted)
+	}
+}
+
+func TestDeleteLocationReportsAnEventAddedConcurrentlyAsPlainConflict(t *testing.T) {
+	locations := newFakeLocationRepo(park())
+	locations.deleteErr = ErrConflict
+
+	err := newLocationServiceOn(locations, newFakeEventRepo()).DeleteLocation(context.Background(), parkID)
+
+	var inUse *LocationInUseError
+	if !errors.Is(err, ErrConflict) || errors.As(err, &inUse) {
+		t.Errorf("err = %v, want ErrConflict without event count", err)
+	}
+}
+
+func TestDeleteLocationPassesFailuresOn(t *testing.T) {
+	tests := map[string]func(*fakeTx, *fakeLocationRepo, *fakeEventRepo){
+		"begin":  func(tx *fakeTx, _ *fakeLocationRepo, _ *fakeEventRepo) { tx.beginErr = errDatabaseDown },
+		"get":    func(_ *fakeTx, l *fakeLocationRepo, _ *fakeEventRepo) { l.getErr = errDatabaseDown },
+		"count":  func(_ *fakeTx, _ *fakeLocationRepo, e *fakeEventRepo) { e.countErr = errDatabaseDown },
+		"delete": func(_ *fakeTx, l *fakeLocationRepo, _ *fakeEventRepo) { l.deleteErr = errDatabaseDown },
+	}
+	for name, inject := range tests {
+		t.Run(name, func(t *testing.T) {
+			locations, events := newFakeLocationRepo(park()), newFakeEventRepo()
+			tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+			inject(tx, locations, events)
+
+			err := NewLocationService(tx, locations).DeleteLocation(context.Background(), parkID)
+
+			if !errors.Is(err, errDatabaseDown) {
+				t.Errorf("err = %v, want %v", err, errDatabaseDown)
+			}
+		})
 	}
 }

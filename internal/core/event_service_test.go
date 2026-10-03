@@ -24,10 +24,13 @@ type fakeEventRepo struct {
 	getErr           error
 	writeErr         error
 	findErr          error
+	deleteErr        error
+	countErr         error
 	updateDerivedErr map[string]error
 
 	created        []Event
 	updated        []Event
+	deleted        []string
 	derivedUpdated []string
 	findCalls      int
 }
@@ -99,6 +102,31 @@ func (r *fakeEventRepo) FindByDuplicateKey(_ context.Context, key DuplicateKey) 
 		}
 	}
 	return matches, nil
+}
+
+func (r *fakeEventRepo) Delete(_ context.Context, id string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	if _, ok := r.events[id]; !ok {
+		return ErrNotFound
+	}
+	delete(r.events, id)
+	r.deleted = append(r.deleted, id)
+	return nil
+}
+
+func (r *fakeEventRepo) CountByLocation(_ context.Context, locationID string) (int, error) {
+	if r.countErr != nil {
+		return 0, r.countErr
+	}
+	count := 0
+	for _, event := range r.events {
+		if event.LocationID == locationID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (r *fakeEventRepo) UpdateDerived(_ context.Context, id string, derived Derived) error {
@@ -637,5 +665,83 @@ func TestReadingEventsSortsTheirTimetable(t *testing.T) {
 	}
 	if descriptions := timetableDescriptions(entries[0].Event.Timetable); !slices.Equal(descriptions, want) {
 		t.Errorf("ListEvents timetable = %v, want %v", descriptions, want)
+	}
+}
+
+func TestDeleteEventRemovesTheStoredEventInOneTransaction(t *testing.T) {
+	market := storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday})
+	market.Timetable = []TimetableEntry{{ID: "1", Description: "Bieranstich", Date: kirchweihFriday}}
+	concert := storedEvent(t, concertID, "Konzert", EventTimes{StartDate: kirchweihFriday})
+	events, locations := newFakeEventRepo(market, concert), newFakeLocationRepo(hall())
+	tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+
+	err := NewEventService(tx, events, locations).DeleteEvent(context.Background(), strings.ToUpper(marketID))
+	if err != nil {
+		t.Fatalf("DeleteEvent: %v", err)
+	}
+	if tx.runs != 1 || !slices.Equal(events.deleted, []string{marketID}) {
+		t.Errorf("transactions = %d, deleted = %v, want %s deleted in one transaction", tx.runs, events.deleted, marketID)
+	}
+	if _, ok := events.events[concertID]; !ok {
+		t.Error("another event was deleted")
+	}
+}
+
+func TestDeleteEventReportsAnUnknownEventAsNotFound(t *testing.T) {
+	events := newFakeEventRepo()
+
+	err := newTestEventService(events, hall()).DeleteEvent(context.Background(), marketID)
+
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("err = %v, want ErrNotFound", err)
+	}
+	if len(events.deleted) != 0 {
+		t.Errorf("deleted = %v, want nothing", events.deleted)
+	}
+}
+
+func TestDeleteEventClearsTheReviewMark(t *testing.T) {
+	repo := newFakeEventRepo(brokenEvent(t, marketID), brokenEvent(t, concertID))
+	service := newTestEventService(repo, hall())
+	ctx := context.Background()
+	if _, err := service.RecomputeDerived(ctx); err != nil {
+		t.Fatalf("RecomputeDerived: %v", err)
+	}
+
+	if err := service.DeleteEvent(ctx, strings.ToUpper(marketID)); err != nil {
+		t.Fatalf("DeleteEvent: %v", err)
+	}
+	if service.needsReview(marketID) || !service.needsReview(concertID) {
+		t.Errorf("review marks: %s = %v, %s = %v, want only %s marked",
+			marketID, service.needsReview(marketID), concertID, service.needsReview(concertID), concertID)
+	}
+}
+
+func TestDeleteEventPassesFailuresOnAndKeepsTheReviewMark(t *testing.T) {
+	tests := map[string]func(*fakeTx, *fakeEventRepo){
+		"begin":  func(tx *fakeTx, _ *fakeEventRepo) { tx.beginErr = errDatabaseDown },
+		"get":    func(_ *fakeTx, e *fakeEventRepo) { e.getErr = errDatabaseDown },
+		"delete": func(_ *fakeTx, e *fakeEventRepo) { e.deleteErr = errDatabaseDown },
+	}
+	for name, inject := range tests {
+		t.Run(name, func(t *testing.T) {
+			events, locations := newFakeEventRepo(brokenEvent(t, marketID)), newFakeLocationRepo(hall())
+			tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+			service := NewEventService(tx, events, locations)
+			ctx := context.Background()
+			if _, err := service.RecomputeDerived(ctx); err != nil {
+				t.Fatalf("RecomputeDerived: %v", err)
+			}
+			inject(tx, events)
+
+			err := service.DeleteEvent(ctx, marketID)
+
+			if !errors.Is(err, errDatabaseDown) {
+				t.Errorf("err = %v, want %v", err, errDatabaseDown)
+			}
+			if !service.needsReview(marketID) {
+				t.Error("a failed delete cleared the review mark")
+			}
+		})
 	}
 }

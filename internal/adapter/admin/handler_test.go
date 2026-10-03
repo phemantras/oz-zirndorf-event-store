@@ -53,14 +53,15 @@ func newTestServer(t *testing.T) *testServer {
 		locations: newMemoryLocationRepo(),
 		events:    newMemoryEventRepo(),
 	}
-	ts.eventService = core.NewEventService(memoryTx{repos: core.Repos{Events: ts.events, Locations: ts.locations}}, ts.events, ts.locations)
+	tx := memoryTx{repos: core.Repos{Events: ts.events, Locations: ts.locations}}
+	ts.eventService = core.NewEventService(tx, ts.events, ts.locations)
 	ts.handler = newHandler(Config{
 		User:          testUser,
 		PasswordHash:  hash,
 		SessionSecret: testSecret,
 		Logger:        slog.New(slog.NewJSONHandler(ts.logs, nil)),
 		Now:           ts.clock.now,
-		Locations:     core.NewLocationService(ts.locations),
+		Locations:     core.NewLocationService(tx, ts.locations),
 		Events:        ts.eventService,
 		Clock:         ts.clock,
 	})

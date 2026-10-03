@@ -11,6 +11,19 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countEventsByLocation = `-- name: CountEventsByLocation :one
+SELECT count(*)
+FROM events
+WHERE location_id = $1
+`
+
+func (q *Queries) CountEventsByLocation(ctx context.Context, locationID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countEventsByLocation, locationID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createEvent = `-- name: CreateEvent :one
 INSERT INTO events (title, title_key, type, location_id, start_date, start_time, end_date, end_time, all_day,
                     source_description, source_url, note, effective_start, effective_end)
@@ -106,6 +119,19 @@ func (q *Queries) CreateTimetableEntry(ctx context.Context, arg CreateTimetableE
 		&i.EndTime,
 	)
 	return i, err
+}
+
+const deleteEvent = `-- name: DeleteEvent :execrows
+DELETE FROM events
+WHERE id = $1
+`
+
+func (q *Queries) DeleteEvent(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteEvent, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const deleteTimetableEntriesOfEvent = `-- name: DeleteTimetableEntriesOfEvent :exec

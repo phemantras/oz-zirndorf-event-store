@@ -70,6 +70,19 @@ func (q *Queries) CreateLocation(ctx context.Context, arg CreateLocationParams) 
 	return i, err
 }
 
+const deleteLocation = `-- name: DeleteLocation :execrows
+DELETE FROM locations
+WHERE id = $1
+`
+
+func (q *Queries) DeleteLocation(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLocation, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const findLocationByNameKey = `-- name: FindLocationByNameKey :one
 SELECT id, name, name_key, street, postal_code, city, latitude, longitude, precision, note
 FROM locations

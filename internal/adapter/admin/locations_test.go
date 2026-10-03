@@ -23,6 +23,9 @@ type memoryLocationRepo struct {
 	// raceWinner is inserted right before the next write, simulating a
 	// concurrent save that slipped past the core's name pre-check.
 	raceWinner *core.Location
+	// deleteErr is what the next delete returns instead of deleting,
+	// simulating the foreign key that refuses a location in use.
+	deleteErr error
 }
 
 func newMemoryLocationRepo() *memoryLocationRepo {
@@ -75,6 +78,17 @@ func (r *memoryLocationRepo) Update(ctx context.Context, location core.Location)
 	return location, nil
 }
 
+func (r *memoryLocationRepo) Delete(_ context.Context, id string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	if _, ok := r.locations[id]; !ok {
+		return core.ErrNotFound
+	}
+	delete(r.locations, id)
+	return nil
+}
+
 // checkUnique enforces the unique name_key like the database does.
 func (r *memoryLocationRepo) checkUnique(location core.Location) error {
 	if r.raceWinner != nil {
@@ -103,6 +117,10 @@ func (f failingLocations) GetLocation(context.Context, string) (core.Location, e
 
 func (f failingLocations) ListLocations(context.Context) ([]core.Location, error) {
 	return nil, f.err
+}
+
+func (f failingLocations) DeleteLocation(context.Context, string) error {
+	return f.err
 }
 
 var errStorageDown = errors.New("storage down")

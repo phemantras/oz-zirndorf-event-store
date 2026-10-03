@@ -8,8 +8,10 @@
 <p><a href="/admin/locations">Zurück zur Ortsliste</a></p>
 <h1>{{.Heading}}</h1>
 {{with .Conflict}}<p class="error" role="alert">{{.Message}} <a href="{{.URL}}">{{.Name}}</a></p>{{end}}
-<form method="post" action="{{.Action}}" novalidate>
+{{with .InUse}}<p class="error" role="alert">{{.}}</p>{{end}}
+<form id="{{.FormID}}" method="post" action="{{.Action}}" novalidate>
 {{template "locationFields" .Fields}}
   <button type="submit">Speichern</button>
 </form>
+{{template "deleteForm" .Delete}}
 {{end}}

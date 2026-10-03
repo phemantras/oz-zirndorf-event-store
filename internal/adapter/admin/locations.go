@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"slices"
@@ -19,6 +20,7 @@ type LocationUseCases interface {
 	SaveLocation(ctx context.Context, id string, in core.LocationInput) (core.Location, error)
 	GetLocation(ctx context.Context, id string) (core.Location, error)
 	ListLocations(ctx context.Context) ([]core.Location, error)
+	DeleteLocation(ctx context.Context, id string) error
 }
 
 // Routes of the location pages.
@@ -27,6 +29,11 @@ const (
 	newLocationPath     = locationsPath + "/new"
 	locationIDParam     = "id"
 	locationPathPattern = locationsPath + "/{" + locationIDParam + "}"
+	// locationDeletePathPattern deletes the location; only POST, never GET.
+	locationDeletePathPattern = locationPathPattern + deletePathSuffix
+	// locationFormID names the edit form, whose unsaved input the delete
+	// form sends along.
+	locationFormID = "location-form"
 	// maxLocationFormBytes bounds the location form body; a real form with
 	// a long note stays far below.
 	maxLocationFormBytes = 16 << 10
@@ -58,12 +65,29 @@ const (
 	headingEditLocation = "Ort bearbeiten"
 	msgNameConflict     = "Es gibt bereits einen Ort mit diesem Namen:"
 	msgLocationNotFound = "Ort nicht gefunden."
-	backToLocationList  = "Zurück zur Ortsliste"
+	msgLocationGone     = "Dieser Ort ist nicht mehr vorhanden."
+	// msgConfirmDeleteLocation is the question before deleting, with the
+	// name.
+	msgConfirmDeleteLocation = "Ort „%s“ wirklich löschen?"
+	// The messages for a location that events still refer to: with their
+	// number from the core, or without it when the database refused the
+	// delete for an event added meanwhile.
+	msgLocationInUseOne  = "Dieser Ort kann nicht gelöscht werden, weil noch 1 Event auf ihn verweist."
+	msgLocationInUseMany = "Dieser Ort kann nicht gelöscht werden, weil noch %d Events auf ihn verweisen."
+	msgLocationStillUsed = "Dieser Ort wird noch von Events verwendet und kann nicht gelöscht werden."
+	backToLocationList   = "Zurück zur Ortsliste"
 )
+
+// singleEvent is the event count that takes the singular message.
+const singleEvent = 1
 
 // logMsgLocationsFailed is logged when a location use case fails for a
 // reason the admin cannot show as a field message.
 const logMsgLocationsFailed = "admin location request failed"
+
+// logMsgLocationDeleted is logged with the requested id after a delete, so
+// an accidental delete can be traced.
+const logMsgLocationDeleted = "admin location deleted"
 
 // precisionLabels are the German names of the precision codes.
 var precisionLabels = map[core.LocationPrecision]string{
@@ -112,8 +136,13 @@ type locationRow struct {
 type locationFormPage struct {
 	Heading  string
 	Action   string
+	FormID   string
 	Conflict *locationConflict
-	Fields   locationFields
+	// InUse is the message when events still refer to the location.
+	InUse  string
+	Fields locationFields
+	// Delete is set for an existing location only.
+	Delete *deleteForm
 }
 
 // locationFields is the data of the location fields, shared by the location
@@ -216,6 +245,79 @@ func (h *handler) saveLocation(w http.ResponseWriter, r *http.Request, id string
 	}
 }
 
+// deleteLocation hands the deletion to the core and translates its typed
+// errors: a location events refer to shows the form again with a message
+// (409), one that is no longer there a German 404 page.
+func (h *handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxLocationFormBytes)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	id := r.PathValue(locationIDParam)
+	err := h.locations.DeleteLocation(r.Context(), id)
+
+	var inUse *core.LocationInUseError
+	switch {
+	case err == nil:
+		h.logger.Info(logMsgLocationDeleted, logKeyID, id)
+		redirectAfterDelete(w, r, locationsPath)
+	case errors.As(err, &inUse):
+		h.renderLocationInUse(w, r, id, locationInUseMessage(inUse.EventCount))
+	case errors.Is(err, core.ErrConflict):
+		h.renderLocationInUse(w, r, id, msgLocationStillUsed)
+	case errors.Is(err, core.ErrNotFound):
+		h.renderLocationGone(w)
+	default:
+		h.failLocationRequest(w, err)
+	}
+}
+
+// renderLocationInUse shows the form of the location with id again with
+// message, keeping the input.
+func (h *handler) renderLocationInUse(w http.ResponseWriter, r *http.Request, id, message string) {
+	values, err := h.locationValuesShownAgain(r, id)
+	if errors.Is(err, core.ErrNotFound) {
+		h.renderLocationGone(w)
+		return
+	}
+	if err != nil {
+		h.failLocationRequest(w, err)
+		return
+	}
+	page := newLocationFormPage(id, values)
+	page.InUse = message
+	h.render(w, locationFormTemplate, http.StatusConflict, page)
+}
+
+// locationValuesShownAgain returns the unsaved input htmx sent along with
+// the delete, or the stored location when nothing was sent (no
+// JavaScript).
+func (h *handler) locationValuesShownAgain(r *http.Request, id string) (core.LocationInput, error) {
+	if r.PostForm.Has(core.LocationFieldName) {
+		return inputFromForm(r.PostForm), nil
+	}
+	location, err := h.locations.GetLocation(r.Context(), id)
+	if err != nil {
+		return core.LocationInput{}, fmt.Errorf("load location refused for deletion: %w", err)
+	}
+	return inputFromLocation(location), nil
+}
+
+// locationInUseMessage names how many events refer to the location.
+func locationInUseMessage(eventCount int) string {
+	if eventCount == singleEvent {
+		return msgLocationInUseOne
+	}
+	return fmt.Sprintf(msgLocationInUseMany, eventCount)
+}
+
+func (h *handler) renderLocationGone(w http.ResponseWriter) {
+	h.render(w, notFoundTemplate, http.StatusNotFound, notFoundPage{
+		Message: msgLocationGone, BackURL: locationsPath, BackLabel: backToLocationList,
+	})
+}
+
 func (h *handler) renderLocationNotFound(w http.ResponseWriter) {
 	h.render(w, notFoundTemplate, http.StatusNotFound, notFoundPage{
 		Message: msgLocationNotFound, BackURL: locationsPath, BackLabel: backToLocationList,
@@ -242,11 +344,17 @@ func newLocationFormPage(id string, values core.LocationInput) locationFormPage 
 	page := locationFormPage{
 		Heading: headingNewLocation,
 		Action:  locationsPath,
+		FormID:  locationFormID,
 		Fields:  newLocationFields(locationFields{Values: values}),
 	}
 	if id != "" {
 		page.Heading = headingEditLocation
 		page.Action = locationURL(id)
+		page.Delete = &deleteForm{
+			Action:  locationURL(id) + deletePathSuffix,
+			Confirm: fmt.Sprintf(msgConfirmDeleteLocation, values.Name),
+			Include: "#" + locationFormID,
+		}
 	}
 	return page
 }

@@ -27,6 +27,8 @@ const (
 	// timetableEntryFile holds one timetable entry, shown on the event form
 	// and appended to it by htmx.
 	timetableEntryFile = templateDir + "timetable_entry.html"
+	// deleteFormFile holds the delete button of the edit pages.
+	deleteFormFile = templateDir + "delete_form.html"
 )
 
 //go:embed templates
@@ -42,10 +44,10 @@ var (
 	loginTemplate        = parsePage(loginPageFile)
 	homeTemplate         = parsePage(homePageFile)
 	locationsTemplate    = parsePage(locationsFile)
-	locationFormTemplate = parsePage(locationFormFile, locationFieldsFile)
+	locationFormTemplate = parsePage(locationFormFile, locationFieldsFile, deleteFormFile)
 	notFoundTemplate     = parsePage(notFoundFile)
 	eventsTemplate       = parsePage(eventsFile)
-	eventFormTemplate    = parsePage(eventFormFile, locationFieldsFile, newLocationFile, timetableEntryFile)
+	eventFormTemplate    = parsePage(eventFormFile, locationFieldsFile, newLocationFile, timetableEntryFile, deleteFormFile)
 	// newLocationTemplate holds the fragments that htmx swaps into the
 	// event form.
 	newLocationTemplate = parseFragments(newLocationFile, locationFieldsFile)

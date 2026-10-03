@@ -437,6 +437,10 @@ func (emptyLocations) ListLocations(context.Context) ([]core.Location, error) {
 	return nil, nil
 }
 
+func (emptyLocations) DeleteLocation(context.Context, string) error {
+	return core.ErrNotFound
+}
+
 // emptyEvents stands in for the event use cases where no database is
 // available: there are no events.
 type emptyEvents struct{}
@@ -451,6 +455,10 @@ func (emptyEvents) GetEvent(context.Context, string) (core.Event, error) {
 
 func (emptyEvents) ListEvents(context.Context, core.Clock) ([]core.EventListEntry, error) {
 	return nil, nil
+}
+
+func (emptyEvents) DeleteEvent(context.Context, string) error {
+	return core.ErrNotFound
 }
 
 func emptyUseCases() useCases {
