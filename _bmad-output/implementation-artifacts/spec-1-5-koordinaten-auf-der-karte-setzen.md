@@ -71,6 +71,7 @@ context:
 - Skript prüft Zahlen wie `strconv.ParseFloat` (Dezimalschreibweise, kein `0x10`/`Infinity`).
 - Matrix-Zeilen sind Browserverhalten; laut Entscheidung ohne JS-Tests, Abnahme von Hand. Go-Tests decken Einbindung, versteckte Kartenfläche, Auslieferung und Formular nach Fehler ab. Der Subagent hat das Skript zusätzlich einmalig mit einer Fake-Leaflet-Umgebung unter Node durchgespielt (nicht eingecheckt).
 - Lokal verifiziert (2026-10-03): `CI= go test ./...`, Coverage-Gate 355/355, `go vet`, golangci-lint v2.14.0 ohne Befund.
+- Abnahme (2026-10-03, nach Merge von PR #13): CI auf dem PR grün inkl. Postgres-Tests. Auf der Railway-Domain im Browser von Andreas bestätigt: alle Matrix-Zeilen inkl. Speichern ohne JavaScript.
 
 ## Spec Change Log
 
