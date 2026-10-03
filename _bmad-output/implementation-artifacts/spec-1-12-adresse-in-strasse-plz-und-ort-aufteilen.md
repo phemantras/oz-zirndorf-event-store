@@ -71,6 +71,7 @@ context:
 - sqlc erzeugt je Abfrage eine eigene Row-Struktur; `postgres/locations.go` konvertiert sie in `locationRow` (= `db.GetLocationRow`) und bildet sie über eine `locationFromRow` ab.
 - Migrationstest `TestMigrateKeepsLegacyLocationsWhenSplittingAddress` migriert in einem eigenen Schema bis Version 2, legt einen Altort an und migriert weiter.
 - Lokal verifiziert (2026-10-02): `CI= go test ./...`, Coverage-Gate 355/355, `go vet`, golangci-lint v2.14.0 ohne Befund, `sqlc generate` ohne Diff. Postgres-Tests nur in der CI (kein Docker).
+- Abnahme (2026-10-03, nach Merge von PR #12): CI auf dem PR grün inkl. Postgres-Tests; von Andreas bestätigt.
 
 ## Spec Change Log
 

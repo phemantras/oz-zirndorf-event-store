@@ -28,6 +28,18 @@ const (
 	// ProblemInvalidFormat means the text does not have the required shape,
 	// such as a postal code that is not five digits.
 	ProblemInvalidFormat FieldProblem = "invalidFormat"
+	// ProblemConflictsWithAllDay means a time was given for an all-day event.
+	ProblemConflictsWithAllDay FieldProblem = "conflictsWithAllDay"
+	// ProblemNotAfterStart means the effective end is not after the
+	// effective start.
+	ProblemNotAfterStart FieldProblem = "notAfterStart"
+	// ProblemNotAfterStartRepeatedHour is ProblemNotAfterStart where start or
+	// end lies in the hour that repeats when daylight saving time ends; the
+	// earlier offset was taken, which may not be what was meant.
+	ProblemNotAfterStartRepeatedHour FieldProblem = "notAfterStartRepeatedHour"
+	// ProblemNonexistentTime means the local time falls into the gap when
+	// daylight saving time starts.
+	ProblemNonexistentTime FieldProblem = "nonexistentTime"
 )
 
 // FieldError names one rejected field and why it was rejected.
