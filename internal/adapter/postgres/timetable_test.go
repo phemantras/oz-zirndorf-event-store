@@ -252,7 +252,7 @@ func TestEventServiceSavesTimetableAgainstDatabase(t *testing.T) {
 			{Description: "Bieranstich", Date: "2026-10-16", StartTime: "18:00"},
 		},
 	}
-	saved, err := service.SaveEvent(ctx, "", in)
+	saved, err := service.SaveEvent(ctx, "", in, core.RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
@@ -264,14 +264,14 @@ func TestEventServiceSavesTimetableAgainstDatabase(t *testing.T) {
 	if len(got.Timetable) != 2 || got.Timetable[0].Description != "Bieranstich" || got.Timetable[1].Description != "Disco" {
 		t.Fatalf("timetable = %+v, want Bieranstich before Disco", got.Timetable)
 	}
-	resaved, err := service.SaveEvent(ctx, saved.ID, core.EventInputOf(got))
+	resaved, err := service.SaveEvent(ctx, saved.ID, core.EventInputOf(got), core.RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent again: %v", err)
 	}
 	assertSameEvent(t, resaved, got)
 
 	in.EndDate, in.EndTime = "2026-10-16", "23:00"
-	_, err = service.SaveEvent(ctx, saved.ID, in)
+	_, err = service.SaveEvent(ctx, saved.ID, in, core.RejectDuplicates)
 	var validation *core.ValidationError
 	if !errors.As(err, &validation) {
 		t.Fatalf("SaveEvent with shortened event err = %v, want a validation error", err)

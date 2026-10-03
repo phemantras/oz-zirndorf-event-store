@@ -57,9 +57,19 @@ func (r *memoryEventRepo) Update(_ context.Context, event core.Event) (core.Even
 	return event, nil
 }
 
-func (r *memoryEventRepo) UpdatePeriod(_ context.Context, id string, period core.Period) error {
+func (r *memoryEventRepo) FindByDuplicateKey(_ context.Context, key core.DuplicateKey) ([]core.Event, error) {
+	var matches []core.Event
+	for _, event := range r.events {
+		if event.TitleKey == key.TitleKey && event.Times.StartDate == key.StartDate && event.LocationID == key.LocationID {
+			matches = append(matches, event)
+		}
+	}
+	return matches, nil
+}
+
+func (r *memoryEventRepo) UpdateDerived(_ context.Context, id string, derived core.Derived) error {
 	event := r.events[id]
-	event.Period = period
+	event.Period, event.TitleKey = derived.Period, derived.TitleKey
 	r.events[id] = event
 	return nil
 }
@@ -67,7 +77,7 @@ func (r *memoryEventRepo) UpdatePeriod(_ context.Context, id string, period core
 // failingEvents answers every use case with err.
 type failingEvents struct{ err error }
 
-func (f failingEvents) SaveEvent(context.Context, string, core.EventInput) (core.Event, error) {
+func (f failingEvents) SaveEvent(context.Context, string, core.EventInput, core.DuplicatePolicy) (core.Event, error) {
 	return core.Event{}, f.err
 }
 

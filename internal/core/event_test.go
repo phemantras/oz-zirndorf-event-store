@@ -76,6 +76,7 @@ func TestNewEventAcceptsValidInputAndComputesPeriod(t *testing.T) {
 	}
 	want := Event{
 		Title:      "Kirchweihmarkt",
+		TitleKey:   "kirchweihmarkt",
 		Type:       EventTypeMarket,
 		LocationID: hallID,
 		Times:      EventTimes{StartDate: kirchweihFriday},

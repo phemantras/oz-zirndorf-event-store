@@ -34,3 +34,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-8-neuer-ort-beim-anlegen-eines-events.md`
   summary: Browser-Tests für das Admin-JavaScript (`location-map.js`, htmx-Austausch inkl. `htmx-config` für 409/422 und OOB-Ortsauswahl) einführen.
   evidence: Das Repo hat kein JS-/Browser-Test-Setup; ein Tippfehler in `dataset.latitudeField`, ein fehlender `htmx:load`-Hook oder eine falsch sortierte `responseHandling`-Regel bliebe bei grüner CI unentdeckt (Review Story 1.8). Bis dahin deckt nur die manuelle Browserprüfung das ab.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-10-warnung-bei-duplikatverdacht.md`
+  summary: Contract-Schritt für `events.title_key` (AD-17): neue Migration entfernt den Default `''`, sobald ein Deploy mit Story 1.10 alle Schlüssel per `RecomputeDerived` nachgezogen hat; gut mit dem Contract-Schritt der Adress-Migration bündelbar.
+  evidence: Migration `00006` legt `title_key` mit Default `''` an, damit älterer Code nach einem Rollback weiter schreiben kann; der Default ist danach überflüssig.

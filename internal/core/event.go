@@ -88,8 +88,11 @@ type EventSource struct {
 // Event is a dated happening at a location. It refers to its location by ID
 // and never copies the address or coordinates.
 type Event struct {
-	ID         string
-	Title      string
+	ID    string
+	Title string
+	// TitleKey is NormalizeKey(Title), stored with the event to find
+	// duplicates (AD-11).
+	TitleKey   string
 	Type       EventType
 	LocationID string
 	Times      EventTimes
@@ -210,6 +213,7 @@ func newEvent(in EventInput) (Event, []FieldError) {
 
 	event := Event{
 		Title:      in.Title,
+		TitleKey:   NormalizeKey(in.Title),
 		LocationID: in.LocationID,
 		Source:     in.Source,
 		Note:       in.Note,

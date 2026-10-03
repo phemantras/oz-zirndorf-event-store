@@ -12,15 +12,16 @@ import (
 )
 
 const createEvent = `-- name: CreateEvent :one
-INSERT INTO events (title, type, location_id, start_date, start_time, end_date, end_time, all_day,
+INSERT INTO events (title, title_key, type, location_id, start_date, start_time, end_date, end_time, all_day,
                     source_description, source_url, note, effective_start, effective_end)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-          source_description, source_url, note, effective_start, effective_end
+          source_description, source_url, note, effective_start, effective_end, title_key
 `
 
 type CreateEventParams struct {
 	Title             string
+	TitleKey          string
 	Type              string
 	LocationID        pgtype.UUID
 	StartDate         pgtype.Date
@@ -38,6 +39,7 @@ type CreateEventParams struct {
 func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event, error) {
 	row := q.db.QueryRow(ctx, createEvent,
 		arg.Title,
+		arg.TitleKey,
 		arg.Type,
 		arg.LocationID,
 		arg.StartDate,
@@ -67,6 +69,7 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 		&i.Note,
 		&i.EffectiveStart,
 		&i.EffectiveEnd,
+		&i.TitleKey,
 	)
 	return i, err
 }
@@ -115,9 +118,58 @@ func (q *Queries) DeleteTimetableEntriesOfEvent(ctx context.Context, eventID pgt
 	return err
 }
 
+const findEventsByDuplicateKey = `-- name: FindEventsByDuplicateKey :many
+SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
+       source_description, source_url, note, effective_start, effective_end, title_key
+FROM events
+WHERE title_key = $1 AND start_date = $2 AND location_id = $3
+`
+
+type FindEventsByDuplicateKeyParams struct {
+	TitleKey   string
+	StartDate  pgtype.Date
+	LocationID pgtype.UUID
+}
+
+func (q *Queries) FindEventsByDuplicateKey(ctx context.Context, arg FindEventsByDuplicateKeyParams) ([]Event, error) {
+	rows, err := q.db.Query(ctx, findEventsByDuplicateKey, arg.TitleKey, arg.StartDate, arg.LocationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Event
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Type,
+			&i.LocationID,
+			&i.StartDate,
+			&i.StartTime,
+			&i.EndDate,
+			&i.EndTime,
+			&i.AllDay,
+			&i.SourceDescription,
+			&i.SourceUrl,
+			&i.Note,
+			&i.EffectiveStart,
+			&i.EffectiveEnd,
+			&i.TitleKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getEvent = `-- name: GetEvent :one
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end
+       source_description, source_url, note, effective_start, effective_end, title_key
 FROM events
 WHERE id = $1
 `
@@ -140,6 +192,7 @@ func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (Event, error) {
 		&i.Note,
 		&i.EffectiveStart,
 		&i.EffectiveEnd,
+		&i.TitleKey,
 	)
 	return i, err
 }
@@ -147,7 +200,7 @@ func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (Event, error) {
 const listEvents = `-- name: ListEvents :many
 
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end
+       source_description, source_url, note, effective_start, effective_end, title_key
 FROM events
 `
 
@@ -177,6 +230,7 @@ func (q *Queries) ListEvents(ctx context.Context) ([]Event, error) {
 			&i.Note,
 			&i.EffectiveStart,
 			&i.EffectiveEnd,
+			&i.TitleKey,
 		); err != nil {
 			return nil, err
 		}
@@ -255,17 +309,18 @@ func (q *Queries) ListTimetableEntriesOfEvent(ctx context.Context, eventID pgtyp
 
 const updateEvent = `-- name: UpdateEvent :one
 UPDATE events
-SET title = $2, type = $3, location_id = $4, start_date = $5, start_time = $6,
-    end_date = $7, end_time = $8, all_day = $9, source_description = $10,
-    source_url = $11, note = $12, effective_start = $13, effective_end = $14
+SET title = $2, title_key = $3, type = $4, location_id = $5, start_date = $6, start_time = $7,
+    end_date = $8, end_time = $9, all_day = $10, source_description = $11,
+    source_url = $12, note = $13, effective_start = $14, effective_end = $15
 WHERE id = $1
 RETURNING id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-          source_description, source_url, note, effective_start, effective_end
+          source_description, source_url, note, effective_start, effective_end, title_key
 `
 
 type UpdateEventParams struct {
 	ID                pgtype.UUID
 	Title             string
+	TitleKey          string
 	Type              string
 	LocationID        pgtype.UUID
 	StartDate         pgtype.Date
@@ -284,6 +339,7 @@ func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event
 	row := q.db.QueryRow(ctx, updateEvent,
 		arg.ID,
 		arg.Title,
+		arg.TitleKey,
 		arg.Type,
 		arg.LocationID,
 		arg.StartDate,
@@ -313,24 +369,31 @@ func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event
 		&i.Note,
 		&i.EffectiveStart,
 		&i.EffectiveEnd,
+		&i.TitleKey,
 	)
 	return i, err
 }
 
-const updateEventPeriod = `-- name: UpdateEventPeriod :execrows
+const updateEventDerived = `-- name: UpdateEventDerived :execrows
 UPDATE events
-SET effective_start = $2, effective_end = $3
+SET effective_start = $2, effective_end = $3, title_key = $4
 WHERE id = $1
 `
 
-type UpdateEventPeriodParams struct {
+type UpdateEventDerivedParams struct {
 	ID             pgtype.UUID
 	EffectiveStart pgtype.Timestamptz
 	EffectiveEnd   pgtype.Timestamptz
+	TitleKey       string
 }
 
-func (q *Queries) UpdateEventPeriod(ctx context.Context, arg UpdateEventPeriodParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateEventPeriod, arg.ID, arg.EffectiveStart, arg.EffectiveEnd)
+func (q *Queries) UpdateEventDerived(ctx context.Context, arg UpdateEventDerivedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateEventDerived,
+		arg.ID,
+		arg.EffectiveStart,
+		arg.EffectiveEnd,
+		arg.TitleKey,
+	)
 	if err != nil {
 		return 0, err
 	}

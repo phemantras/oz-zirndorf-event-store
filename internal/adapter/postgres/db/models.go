@@ -23,6 +23,7 @@ type Event struct {
 	Note              pgtype.Text
 	EffectiveStart    pgtype.Timestamptz
 	EffectiveEnd      pgtype.Timestamptz
+	TitleKey          string
 }
 
 type Location struct {

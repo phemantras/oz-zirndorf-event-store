@@ -11,7 +11,7 @@ import (
 )
 
 // EventRepo is the storage port for events. Only EventService calls
-// Create, Update and UpdatePeriod; adapters never get the repository to
+// Create, Update and UpdateDerived; adapters never get the repository to
 // write past the core (AD-6). Events come with their timetable in no
 // particular order; the core sorts it.
 type EventRepo interface {
@@ -26,9 +26,20 @@ type EventRepo interface {
 	// Update replaces the event with event.ID and its whole timetable, or
 	// yields ErrNotFound.
 	Update(ctx context.Context, event Event) (Event, error)
-	// UpdatePeriod replaces only the stored effective period of the event
+	// FindByDuplicateKey returns all events, archived ones included, whose
+	// stored title key, start date and location ID equal key, without their
+	// timetable.
+	FindByDuplicateKey(ctx context.Context, key DuplicateKey) ([]Event, error)
+	// UpdateDerived replaces only the stored derived values of the event
 	// with id, or yields ErrNotFound.
-	UpdatePeriod(ctx context.Context, id string, period Period) error
+	UpdateDerived(ctx context.Context, id string, derived Derived) error
+}
+
+// Derived are the values of an event that the core derives from its input
+// and stores with it (AD-16).
+type Derived struct {
+	Period   Period
+	TitleKey string
 }
 
 // Repos are the repositories of one transaction.
@@ -84,13 +95,16 @@ func NewEventService(tx TxRunner, events EventRepo, locations LocationRepo) *Eve
 // event with id, keeping its ID. Event and timetable are written in one
 // transaction, the timetable replacing the stored one (AD-15). It returns
 // ErrNotFound for an unknown id and *ValidationError listing every invalid
-// field, including an unknown location. A successful save clears the
-// review mark of the event.
-func (s *EventService) SaveEvent(ctx context.Context, id string, in EventInput) (Event, error) {
+// field, including an unknown location. Only a valid event is checked for
+// duplicates: under any policy but AllowDuplicates a suspected duplicate is
+// not saved and yields *DuplicateSuspectError (AD-11); an edit that keeps
+// the duplicate key is not checked. A successful save
+// clears the review mark of the event.
+func (s *EventService) SaveEvent(ctx context.Context, id string, in EventInput, policy DuplicatePolicy) (Event, error) {
 	var saved Event
 	err := s.tx.InTx(ctx, func(repos Repos) error {
 		var err error
-		saved, err = saveEvent(ctx, repos, id, in)
+		saved, err = saveEvent(ctx, repos, id, in, policy)
 		return err
 	})
 	if err != nil {
@@ -101,8 +115,8 @@ func (s *EventService) SaveEvent(ctx context.Context, id string, in EventInput) 
 }
 
 // saveEvent is the transaction-bound part of SaveEvent.
-func saveEvent(ctx context.Context, repos Repos, id string, in EventInput) (Event, error) {
-	storedID, err := storedEventID(ctx, repos.Events, id)
+func saveEvent(ctx context.Context, repos Repos, id string, in EventInput, policy DuplicatePolicy) (Event, error) {
+	current, err := eventToUpdate(ctx, repos.Events, id)
 	if err != nil {
 		return Event{}, err
 	}
@@ -116,7 +130,12 @@ func saveEvent(ctx context.Context, repos Repos, id string, in EventInput) (Even
 		return Event{}, &ValidationError{Fields: problems}
 	}
 
-	event.ID, event.LocationID = storedID, locationID
+	event.ID, event.LocationID = current.ID, locationID
+	if needsDuplicateCheck(policy, current, event) {
+		if err := rejectDuplicates(ctx, repos.Events, event); err != nil {
+			return Event{}, err
+		}
+	}
 	saved, err := writeEvent(ctx, repos.Events, event)
 	if err != nil {
 		return Event{}, fmt.Errorf("save event: %w", err)
@@ -125,17 +144,42 @@ func saveEvent(ctx context.Context, repos Repos, id string, in EventInput) (Even
 	return saved, nil
 }
 
-// storedEventID returns the ID of the event to update as the repository
-// spells it. An empty id stays empty: a new event is created.
-func storedEventID(ctx context.Context, events EventRepo, id string) (string, error) {
+// needsDuplicateCheck reports whether event must be checked for
+// duplicates before it replaces current (zero for a new event): not under
+// AllowDuplicates, and not for an edit that keeps the duplicate key, since
+// it creates no new duplicate and a twin confirmed earlier stays allowed.
+func needsDuplicateCheck(policy DuplicatePolicy, current, event Event) bool {
+	if policy == AllowDuplicates {
+		return false
+	}
+	return current.ID == "" || duplicateKeyOf(current) != duplicateKeyOf(event)
+}
+
+// rejectDuplicates yields *DuplicateSuspectError when stored events share
+// the duplicate key of event.
+func rejectDuplicates(ctx context.Context, events EventRepo, event Event) error {
+	candidates, err := FindDuplicateCandidates(ctx, events, event)
+	if err != nil {
+		return err
+	}
+	if len(candidates) > 0 {
+		return &DuplicateSuspectError{Candidates: candidates}
+	}
+	return nil
+}
+
+// eventToUpdate returns the stored event with id, its ID spelled as the
+// repository does. An empty id yields the zero event: a new event is
+// created.
+func eventToUpdate(ctx context.Context, events EventRepo, id string) (Event, error) {
 	if id == "" {
-		return "", nil
+		return Event{}, nil
 	}
 	current, err := events.Get(ctx, id)
 	if err != nil {
-		return "", fmt.Errorf("get event to update: %w", err)
+		return Event{}, fmt.Errorf("get event to update: %w", err)
 	}
-	return current.ID, nil
+	return current, nil
 }
 
 // storedLocationID returns the location ID as the repository spells it,
@@ -236,10 +280,10 @@ func compareListEntries(a, b EventListEntry) int {
 	return cmp.Or(byStart, cmp.Compare(a.Event.ID, b.Event.ID))
 }
 
-// RecomputeDerived recomputes the effective period of every event and
-// stores it where it changed (AD-16). An event that fails keeps its stored
-// values, is marked for review and is returned as failure; only a failing
-// list is an error.
+// RecomputeDerived recomputes the derived values of every event, effective
+// period and title key, and stores them where they changed (AD-16). An
+// event that fails keeps its stored values, is marked for review and is
+// returned as failure; only a failing list is an error.
 func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure, error) {
 	events, err := s.events.List(ctx)
 	if err != nil {
@@ -247,7 +291,7 @@ func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure
 	}
 	var failures []RecomputeFailure
 	for _, event := range events {
-		if err := s.recomputePeriod(ctx, event); err != nil {
+		if err := s.recomputeEvent(ctx, event); err != nil {
 			s.markForReview(event.ID)
 			failures = append(failures, RecomputeFailure{EventID: event.ID, Err: err})
 		}
@@ -255,18 +299,19 @@ func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure
 	return failures, nil
 }
 
-// recomputePeriod writes the event's period if the current rules derive
-// another one from its times.
-func (s *EventService) recomputePeriod(ctx context.Context, event Event) error {
+// recomputeEvent writes the event's derived values if the current rules
+// derive other ones from its times and title.
+func (s *EventService) recomputeEvent(ctx context.Context, event Event) error {
 	period, err := event.Times.EffectivePeriod()
 	if err != nil {
 		return fmt.Errorf("recompute effective period: %w", err)
 	}
-	if period.Start.Equal(event.Period.Start) && period.End.Equal(event.Period.End) {
+	titleKey := NormalizeKey(event.Title)
+	if period.Start.Equal(event.Period.Start) && period.End.Equal(event.Period.End) && titleKey == event.TitleKey {
 		return nil
 	}
-	if err := s.events.UpdatePeriod(ctx, event.ID, period); err != nil {
-		return fmt.Errorf("store effective period: %w", err)
+	if err := s.events.UpdateDerived(ctx, event.ID, Derived{Period: period, TitleKey: titleKey}); err != nil {
+		return fmt.Errorf("store derived values: %w", err)
 	}
 	return nil
 }

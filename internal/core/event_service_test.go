@@ -20,14 +20,16 @@ const (
 type fakeEventRepo struct {
 	events map[string]Event
 
-	listErr         error
-	getErr          error
-	writeErr        error
-	updatePeriodErr map[string]error
+	listErr          error
+	getErr           error
+	writeErr         error
+	findErr          error
+	updateDerivedErr map[string]error
 
 	created        []Event
 	updated        []Event
-	periodsUpdated []string
+	derivedUpdated []string
+	findCalls      int
 }
 
 func newFakeEventRepo(events ...Event) *fakeEventRepo {
@@ -81,14 +83,32 @@ func (r *fakeEventRepo) Update(_ context.Context, event Event) (Event, error) {
 	return event, nil
 }
 
-func (r *fakeEventRepo) UpdatePeriod(_ context.Context, id string, period Period) error {
-	if err := r.updatePeriodErr[id]; err != nil {
+func (r *fakeEventRepo) FindByDuplicateKey(_ context.Context, key DuplicateKey) ([]Event, error) {
+	r.findCalls++
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
+	all, err := r.List(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	var matches []Event
+	for _, event := range all {
+		if event.TitleKey == key.TitleKey && event.Times.StartDate == key.StartDate && event.LocationID == key.LocationID {
+			matches = append(matches, event)
+		}
+	}
+	return matches, nil
+}
+
+func (r *fakeEventRepo) UpdateDerived(_ context.Context, id string, derived Derived) error {
+	if err := r.updateDerivedErr[id]; err != nil {
 		return err
 	}
 	event := r.events[id]
-	event.Period = period
+	event.Period, event.TitleKey = derived.Period, derived.TitleKey
 	r.events[id] = event
-	r.periodsUpdated = append(r.periodsUpdated, id)
+	r.derivedUpdated = append(r.derivedUpdated, id)
 	return nil
 }
 
@@ -100,7 +120,7 @@ func storedEvent(t *testing.T, id, title string, times EventTimes) Event {
 		t.Fatalf("EffectivePeriod: %v", err)
 	}
 	return Event{
-		ID: id, Title: title, Type: EventTypeMarket, LocationID: hallID,
+		ID: id, Title: title, TitleKey: NormalizeKey(title), Type: EventTypeMarket, LocationID: hallID,
 		Times: times, Source: EventSource{Description: "Amtsblatt"}, Period: period,
 	}
 }
@@ -134,7 +154,7 @@ func newTestEventService(events *fakeEventRepo, locations ...Location) *EventSer
 func TestSaveEventCreatesEventWithComputedPeriod(t *testing.T) {
 	repo := newFakeEventRepo()
 
-	saved, err := newTestEventService(repo, hall()).SaveEvent(context.Background(), "", validEventInput())
+	saved, err := newTestEventService(repo, hall()).SaveEvent(context.Background(), "", validEventInput(), RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
@@ -152,7 +172,7 @@ func TestSaveEventStoresTheLocationIDAsTheRepositorySpellsIt(t *testing.T) {
 	in := validEventInput()
 	in.LocationID = strings.ToUpper(hallID)
 
-	saved, err := newTestEventService(repo, hall()).SaveEvent(context.Background(), "", in)
+	saved, err := newTestEventService(repo, hall()).SaveEvent(context.Background(), "", in, RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
@@ -167,7 +187,7 @@ func TestSaveEventUpdatesExistingEventKeepingItsID(t *testing.T) {
 	in := validEventInput()
 	in.Title, in.LocationID = "Kirchweih", parkID
 
-	saved, err := newTestEventService(repo, hall(), park()).SaveEvent(context.Background(), strings.ToUpper(marketID), in)
+	saved, err := newTestEventService(repo, hall(), park()).SaveEvent(context.Background(), strings.ToUpper(marketID), in, RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
@@ -181,7 +201,7 @@ func TestSaveEventReportsUnknownLocationTogetherWithOtherProblems(t *testing.T) 
 	in := validEventInput()
 	in.Title, in.LocationID = " ", otherID
 
-	_, err := newTestEventService(repo, hall()).SaveEvent(context.Background(), "", in)
+	_, err := newTestEventService(repo, hall()).SaveEvent(context.Background(), "", in, RejectDuplicates)
 
 	var validation *ValidationError
 	if !errors.As(err, &validation) {
@@ -202,7 +222,7 @@ func TestSaveEventDoesNotLookUpAMissingLocation(t *testing.T) {
 	in := validEventInput()
 	in.LocationID = ""
 
-	_, err := newEventServiceOn(newFakeEventRepo(), locations).SaveEvent(context.Background(), "", in)
+	_, err := newEventServiceOn(newFakeEventRepo(), locations).SaveEvent(context.Background(), "", in, RejectDuplicates)
 
 	var validation *ValidationError
 	if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{EventFieldLocationID, ProblemMissing}}) {
@@ -214,7 +234,7 @@ func TestSaveEventReportsUnknownEventAsNotFoundBeforeValidation(t *testing.T) {
 	in := validEventInput()
 	in.Title = ""
 
-	_, err := newTestEventService(newFakeEventRepo(), hall()).SaveEvent(context.Background(), otherID, in)
+	_, err := newTestEventService(newFakeEventRepo(), hall()).SaveEvent(context.Background(), otherID, in, RejectDuplicates)
 
 	if !errors.Is(err, ErrNotFound) || errors.Is(err, ErrValidation) {
 		t.Errorf("err = %v, want ErrNotFound", err)
@@ -237,7 +257,7 @@ func TestSaveEventPassesRepositoryFailuresOn(t *testing.T) {
 			locations := newFakeLocationRepo(hall())
 			tt.inject(events, locations)
 
-			_, err := newEventServiceOn(events, locations).SaveEvent(context.Background(), tt.id, validEventInput())
+			_, err := newEventServiceOn(events, locations).SaveEvent(context.Background(), tt.id, validEventInput(), AllowDuplicates)
 
 			if !errors.Is(err, errDatabaseDown) {
 				t.Errorf("err = %v, want %v", err, errDatabaseDown)
@@ -301,7 +321,7 @@ func TestListEventsShowsCorrectedDateAsActive(t *testing.T) {
 	if err != nil || len(before) != 1 || !before[0].Archived {
 		t.Fatalf("before = %+v, %v, want one archived event", before, err)
 	}
-	if _, err := service.SaveEvent(ctx, marketID, validEventInput()); err != nil {
+	if _, err := service.SaveEvent(ctx, marketID, validEventInput(), RejectDuplicates); err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
 	after, err := service.ListEvents(ctx, clock)
@@ -365,8 +385,8 @@ func TestRecomputeDerivedWritesOnlyChangedPeriods(t *testing.T) {
 	if err != nil || failures != nil {
 		t.Fatalf("RecomputeDerived = %v, %v, want no failures", failures, err)
 	}
-	if !slices.Equal(repo.periodsUpdated, []string{concertID}) {
-		t.Errorf("periods updated for %v, want only %s", repo.periodsUpdated, concertID)
+	if !slices.Equal(repo.derivedUpdated, []string{concertID}) {
+		t.Errorf("derived values updated for %v, want only %s", repo.derivedUpdated, concertID)
 	}
 	want := storedEvent(t, concertID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday}).Period
 	if got := repo.events[concertID].Period; !got.End.Equal(want.End) {
@@ -379,7 +399,7 @@ func TestRecomputeDerivedKeepsValuesOfFailingEventsAndMarksThemForReview(t *test
 	unwritable := staleEvent(t, concertID)
 	fine := storedEvent(t, newEventID, "Flohmarkt", EventTimes{StartDate: kirchweihMonday})
 	repo := newFakeEventRepo(broken, unwritable, fine)
-	repo.updatePeriodErr = map[string]error{concertID: errDatabaseDown}
+	repo.updateDerivedErr = map[string]error{concertID: errDatabaseDown}
 	service := newTestEventService(repo, hall())
 	ctx := context.Background()
 
@@ -415,12 +435,12 @@ func TestSuccessfulSaveClearsTheReviewMark(t *testing.T) {
 
 	in := validEventInput()
 	in.Title = ""
-	if _, err := service.SaveEvent(ctx, marketID, in); err == nil {
+	if _, err := service.SaveEvent(ctx, marketID, in, RejectDuplicates); err == nil {
 		t.Fatal("SaveEvent accepted an invalid event")
 	}
 	assertNeedsReview(t, service, map[string]bool{marketID: true, concertID: true})
 
-	if _, err := service.SaveEvent(ctx, strings.ToUpper(marketID), validEventInput()); err != nil {
+	if _, err := service.SaveEvent(ctx, strings.ToUpper(marketID), validEventInput(), RejectDuplicates); err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
 	assertNeedsReview(t, service, map[string]bool{marketID: false, concertID: true})
@@ -484,7 +504,7 @@ func TestSaveEventStoresTimetableSortedInOneTransaction(t *testing.T) {
 	tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
 	service := NewEventService(tx, events, locations)
 
-	saved, err := service.SaveEvent(context.Background(), "", festInput(festTimetable()...))
+	saved, err := service.SaveEvent(context.Background(), "", festInput(festTimetable()...), RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
@@ -499,7 +519,7 @@ func TestSaveEventStoresTimetableSortedInOneTransaction(t *testing.T) {
 		t.Errorf("returned timetable = %v, want %v", got, want)
 	}
 	withoutTimetable := festInput()
-	plain, err := service.SaveEvent(context.Background(), "", withoutTimetable)
+	plain, err := service.SaveEvent(context.Background(), "", withoutTimetable, AllowDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent without timetable: %v", err)
 	}
@@ -512,13 +532,13 @@ func TestSaveEventReplacesTheWholeTimetable(t *testing.T) {
 	repo := newFakeEventRepo()
 	service := newTestEventService(repo, hall())
 	ctx := context.Background()
-	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...))
+	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...), RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
 
 	in := festInput(entryInput("Kehraus", "2026-10-17", "20:00", ""))
-	if _, err := service.SaveEvent(ctx, created.ID, in); err != nil {
+	if _, err := service.SaveEvent(ctx, created.ID, in, RejectDuplicates); err != nil {
 		t.Fatalf("SaveEvent update: %v", err)
 	}
 	if got := timetableDescriptions(repo.events[created.ID].Timetable); !slices.Equal(got, []string{"Kehraus"}) {
@@ -530,7 +550,7 @@ func TestResavingAnUnchangedEventKeepsPeriodAndTimetable(t *testing.T) {
 	repo := newFakeEventRepo()
 	service := newTestEventService(repo, hall())
 	ctx := context.Background()
-	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...))
+	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...), RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
@@ -539,7 +559,7 @@ func TestResavingAnUnchangedEventKeepsPeriodAndTimetable(t *testing.T) {
 		t.Fatalf("GetEvent: %v", err)
 	}
 
-	resaved, err := service.SaveEvent(ctx, created.ID, EventInputOf(stored))
+	resaved, err := service.SaveEvent(ctx, created.ID, EventInputOf(stored), RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent again: %v", err)
 	}
@@ -555,14 +575,14 @@ func TestSaveEventRejectsEntryOutsideAShortenedEventWithoutWriting(t *testing.T)
 	repo := newFakeEventRepo()
 	service := newTestEventService(repo, hall())
 	ctx := context.Background()
-	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...))
+	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...), RejectDuplicates)
 	if err != nil {
 		t.Fatalf("SaveEvent: %v", err)
 	}
 	in := festInput(festTimetable()...)
 	in.EndDate = "2026-10-16"
 
-	_, err = service.SaveEvent(ctx, created.ID, in)
+	_, err = service.SaveEvent(ctx, created.ID, in, RejectDuplicates)
 
 	var validation *ValidationError
 	want := []FieldError{{TimetableField(0, TimetableFieldEndTime), ProblemOutsideEvent}, {TimetableField(2, TimetableFieldDate), ProblemOutsideEvent}}
@@ -582,7 +602,7 @@ func TestSaveEventPassesTransactionFailuresOnAndKeepsTheReviewMark(t *testing.T)
 		t.Fatalf("RecomputeDerived: %v", err)
 	}
 
-	_, err := service.SaveEvent(ctx, marketID, validEventInput())
+	_, err := service.SaveEvent(ctx, marketID, validEventInput(), RejectDuplicates)
 
 	if !errors.Is(err, errDatabaseDown) {
 		t.Errorf("err = %v, want %v", err, errDatabaseDown)
