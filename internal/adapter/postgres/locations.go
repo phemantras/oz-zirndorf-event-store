@@ -44,7 +44,7 @@ func (r *LocationRepo) List(ctx context.Context) ([]core.Location, error) {
 // Get returns the location with id. An id that is no UUID cannot exist, so
 // it yields core.ErrNotFound like a missing row.
 func (r *LocationRepo) Get(ctx context.Context, id string) (core.Location, error) {
-	uuid, err := parseID(id)
+	uuid, err := parseID(locationKind, id)
 	if err != nil {
 		return core.Location{}, err
 	}
@@ -87,7 +87,7 @@ func (r *LocationRepo) Create(ctx context.Context, location core.Location) (core
 // Update replaces the location with location.ID. A missing location yields
 // core.ErrNotFound, a taken name key core.ErrConflict.
 func (r *LocationRepo) Update(ctx context.Context, location core.Location) (core.Location, error) {
-	uuid, err := parseID(location.ID)
+	uuid, err := parseID(locationKind, location.ID)
 	if err != nil {
 		return core.Location{}, err
 	}
@@ -109,12 +109,18 @@ func (r *LocationRepo) Update(ctx context.Context, location core.Location) (core
 	return locationFromRow(locationRow(row)), nil
 }
 
-// parseID turns id into a UUID; an unparsable id is reported as
-// core.ErrNotFound because no row can have it.
-func parseID(id string) (pgtype.UUID, error) {
+// Kinds of IDs, named in the error of parseID.
+const (
+	locationKind = "location"
+	eventKind    = "event"
+)
+
+// parseID turns the id of an entity of kind into a UUID; an unparsable id
+// is reported as core.ErrNotFound because no row can have it.
+func parseID(kind, id string) (pgtype.UUID, error) {
 	var uuid pgtype.UUID
 	if err := uuid.Scan(id); err != nil {
-		return pgtype.UUID{}, fmt.Errorf("location id %q: %w", id, core.ErrNotFound)
+		return pgtype.UUID{}, fmt.Errorf("%s id %q: %w", kind, id, core.ErrNotFound)
 	}
 	return uuid, nil
 }

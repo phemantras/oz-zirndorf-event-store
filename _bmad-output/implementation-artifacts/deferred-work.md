@@ -25,3 +25,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-koordinaten-auf-der-karte-setzen.md`
   summary: Kartenskript `location-map.js` für das per htmx geladene Ortsformular in Story 1.8 wiederverwendbar machen (Init-Funktion, Aufruf nach `htmx:afterSwap`, Leaflet im Event-Formular laden).
   evidence: Das Skript ist eine IIFE, die einmal beim Laden mit festen IDs initialisiert; htmx-Teilantworten haben keinen `head`-Block, Leaflet würde dort weder geladen noch initialisiert.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-events-anlegen-bearbeiten-und-auflisten.md`
+  summary: Contract-Schritt der Adress-Migration (AD-17) als eigener PR: neue Migration entfernt `locations.address` und die Defaults von `street`, `postal_code`, `city`; vorher `pg_dump`.
+  evidence: Beim Spec-Umfang von Story 1.7 ausgegliedert (Entscheidung 2026-10-03); Produktionsorte sind laut Andreas vollständig gepflegt.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-events-anlegen-bearbeiten-und-auflisten.md`
+  summary: `RecomputeDerived` auch `name_key` der Orte neu berechnen lassen (AD-16, ENT-17), inklusive Umgang mit dabei entstehenden Namenskonflikten.
+  evidence: Story 1.7 deckt laut AC nur `effective*` ab, `title_key` folgt mit 1.10; `name_key` ist keiner Story zugeordnet.

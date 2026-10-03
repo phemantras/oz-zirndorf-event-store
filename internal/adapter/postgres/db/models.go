@@ -8,6 +8,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Event struct {
+	ID                pgtype.UUID
+	Title             string
+	Type              string
+	LocationID        pgtype.UUID
+	StartDate         pgtype.Date
+	StartTime         pgtype.Time
+	EndDate           pgtype.Date
+	EndTime           pgtype.Time
+	AllDay            bool
+	SourceDescription string
+	SourceUrl         pgtype.Text
+	Note              pgtype.Text
+	EffectiveStart    pgtype.Timestamptz
+	EffectiveEnd      pgtype.Timestamptz
+}
+
 type Location struct {
 	ID         pgtype.UUID
 	Name       string

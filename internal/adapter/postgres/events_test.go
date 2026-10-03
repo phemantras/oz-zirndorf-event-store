@@ -1,0 +1,315 @@
+package postgres_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
+	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
+)
+
+// unknownEventID is a valid UUIDv7 that no test inserts.
+const unknownEventID = "0192f0b1-0000-7000-8000-0000000001ff"
+
+// restrictViolation is the SQLSTATE of a delete that ON DELETE RESTRICT
+// prevents.
+const restrictViolation = "23001"
+
+// eventFixture is a migrated database with empty tables, one stored
+// location and the event repository.
+type eventFixture struct {
+	repo      *postgres.EventRepo
+	locations *postgres.LocationRepo
+	pool      *pgxpool.Pool
+	hall      core.Location
+}
+
+func newEventFixture(t *testing.T) eventFixture {
+	t.Helper()
+	locations, pool := migratedLocationRepo(t)
+	return eventFixture{
+		repo:      postgres.NewEventRepo(pool),
+		locations: locations,
+		pool:      pool,
+		hall:      createLocation(t, locations, hallLocation()),
+	}
+}
+
+func localTimeAt(hour, minute int) *core.LocalTime {
+	return &core.LocalTime{Hour: hour, Minute: minute}
+}
+
+// eventWithTimes returns an event at locationID with the period the core
+// derives from times.
+func eventWithTimes(t *testing.T, locationID string, times core.EventTimes) core.Event {
+	t.Helper()
+	period, err := times.EffectivePeriod()
+	if err != nil {
+		t.Fatalf("EffectivePeriod: %v", err)
+	}
+	return core.Event{
+		Title: "Kirchweihmarkt", Type: core.EventTypeMarket, LocationID: locationID,
+		Times:  times,
+		Source: core.EventSource{Description: "Amtsblatt"},
+		Period: period,
+	}
+}
+
+// fullEvent uses every column, including times, link and note.
+func fullEvent(t *testing.T, locationID string) core.Event {
+	t.Helper()
+	event := eventWithTimes(t, locationID, core.EventTimes{
+		StartDate: core.LocalDate{Year: 2026, Month: time.October, Day: 16}, StartTime: localTimeAt(19, 30),
+		EndDate: core.LocalDate{Year: 2026, Month: time.October, Day: 19}, EndTime: localTimeAt(23, 59),
+	})
+	event.Type = core.EventTypeFestival
+	event.Source.URL = "https://www.zirndorf.de/amtsblatt"
+	event.Note = "Mit Fahrgeschäften"
+	return event
+}
+
+// minimalEvent has only a start date; the other columns are NULL.
+func minimalEvent(t *testing.T, locationID string) core.Event {
+	t.Helper()
+	return eventWithTimes(t, locationID, core.EventTimes{StartDate: core.LocalDate{Year: 2026, Month: time.December, Day: 4}})
+}
+
+func createEvent(t *testing.T, repo *postgres.EventRepo, event core.Event) core.Event {
+	t.Helper()
+	created, err := repo.Create(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Create %q: %v", event.Title, err)
+	}
+	return created
+}
+
+// assertSameEvent compares events by value: times behind pointers and
+// instants with Equal, since PostgreSQL returns them in another zone.
+func assertSameEvent(t *testing.T, got, want core.Event) {
+	t.Helper()
+	if !got.Period.Start.Equal(want.Period.Start) || !got.Period.End.Equal(want.Period.End) {
+		t.Errorf("period = [%v, %v), want [%v, %v)", got.Period.Start, got.Period.End, want.Period.Start, want.Period.End)
+	}
+	if gotInput, wantInput := core.EventInputOf(got), core.EventInputOf(want); gotInput != wantInput || got.ID != want.ID {
+		t.Errorf("event = %s %+v, want %s %+v", got.ID, gotInput, want.ID, wantInput)
+	}
+}
+
+func TestEventRepoCreateGeneratesUUIDv7AndRoundTrips(t *testing.T) {
+	fixture := newEventFixture(t)
+	ctx := context.Background()
+
+	for _, event := range []core.Event{fullEvent(t, fixture.hall.ID), minimalEvent(t, fixture.hall.ID)} {
+		created := createEvent(t, fixture.repo, event)
+		if len(created.ID) <= uuidVersionIndex || created.ID[uuidVersionIndex] != '7' {
+			t.Errorf("id %q is not a UUIDv7", created.ID)
+		}
+		event.ID = created.ID
+		assertSameEvent(t, created, event)
+		got, err := fixture.repo.Get(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		assertSameEvent(t, got, event)
+	}
+}
+
+func TestEventRepoStoresUnknownTimesAndEmptyTextsAsNull(t *testing.T) {
+	fixture := newEventFixture(t)
+	created := createEvent(t, fixture.repo, minimalEvent(t, fixture.hall.ID))
+
+	var allNull bool
+	err := fixture.pool.QueryRow(context.Background(),
+		`SELECT start_time IS NULL AND end_date IS NULL AND end_time IS NULL AND source_url IS NULL AND note IS NULL
+		 FROM events WHERE id = $1`, created.ID).Scan(&allNull)
+	if err != nil {
+		t.Fatalf("read event: %v", err)
+	}
+	if !allNull {
+		t.Error("unknown times or empty texts were not stored as NULL")
+	}
+}
+
+func TestEventRepoStoresMidnightAsKnownTime(t *testing.T) {
+	fixture := newEventFixture(t)
+	event := minimalEvent(t, fixture.hall.ID)
+	event.Times.StartTime = localTimeAt(0, 0)
+
+	created := createEvent(t, fixture.repo, event)
+
+	if created.Times.StartTime == nil || *created.Times.StartTime != (core.LocalTime{}) {
+		t.Errorf("start time = %v, want 00:00", created.Times.StartTime)
+	}
+}
+
+func TestEventRepoListReturnsAllEvents(t *testing.T) {
+	fixture := newEventFixture(t)
+	full := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
+	minimal := createEvent(t, fixture.repo, minimalEvent(t, fixture.hall.ID))
+
+	got, err := fixture.repo.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("List returned %d events, want 2", len(got))
+	}
+	byID := map[string]core.Event{got[0].ID: got[0], got[1].ID: got[1]}
+	assertSameEvent(t, byID[full.ID], full)
+	assertSameEvent(t, byID[minimal.ID], minimal)
+}
+
+func TestEventRepoUpdateKeepsIDAndReplacesEveryColumn(t *testing.T) {
+	fixture := newEventFixture(t)
+	park := createLocation(t, fixture.locations, parkLocation())
+	created := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
+	ctx := context.Background()
+
+	changed := minimalEvent(t, park.ID)
+	changed.ID = created.ID
+	changed.Title = "Weihnachtsmarkt"
+	updated, err := fixture.repo.Update(ctx, changed)
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	assertSameEvent(t, updated, changed)
+	got, err := fixture.repo.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	assertSameEvent(t, got, changed)
+}
+
+func TestEventRepoUpdatePeriodChangesOnlyThePeriod(t *testing.T) {
+	fixture := newEventFixture(t)
+	created := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
+	ctx := context.Background()
+
+	period := core.Period{Start: created.Period.Start.Add(-time.Hour), End: created.Period.End.Add(time.Hour)}
+	if err := fixture.repo.UpdatePeriod(ctx, created.ID, period); err != nil {
+		t.Fatalf("UpdatePeriod: %v", err)
+	}
+	got, err := fixture.repo.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	want := created
+	want.Period = period
+	assertSameEvent(t, got, want)
+}
+
+func TestEventRepoReportsUnknownAndMalformedIDsAsNotFound(t *testing.T) {
+	fixture := newEventFixture(t)
+	ctx := context.Background()
+
+	for _, id := range []string{unknownEventID, "kaputt", ""} {
+		if _, err := fixture.repo.Get(ctx, id); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("Get(%q) err = %v, want ErrNotFound", id, err)
+		}
+		event := minimalEvent(t, fixture.hall.ID)
+		event.ID = id
+		if _, err := fixture.repo.Update(ctx, event); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("Update(%q) err = %v, want ErrNotFound", id, err)
+		}
+		if err := fixture.repo.UpdatePeriod(ctx, id, event.Period); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("UpdatePeriod(%q) err = %v, want ErrNotFound", id, err)
+		}
+	}
+}
+
+func TestEventRepoRejectsMalformedLocationIDWithoutClaimingNotFound(t *testing.T) {
+	fixture := newEventFixture(t)
+	created := createEvent(t, fixture.repo, minimalEvent(t, fixture.hall.ID))
+	ctx := context.Background()
+
+	broken := minimalEvent(t, "kaputt")
+	if _, err := fixture.repo.Create(ctx, broken); err == nil || errors.Is(err, core.ErrNotFound) {
+		t.Errorf("Create err = %v, want a non-NotFound error", err)
+	}
+	broken.ID = created.ID
+	if _, err := fixture.repo.Update(ctx, broken); err == nil || errors.Is(err, core.ErrNotFound) {
+		t.Errorf("Update err = %v, want a non-NotFound error", err)
+	}
+}
+
+func TestLocationWithEventCannotBeDeletedBySQL(t *testing.T) {
+	fixture := newEventFixture(t)
+	createEvent(t, fixture.repo, minimalEvent(t, fixture.hall.ID))
+
+	_, err := fixture.pool.Exec(context.Background(), "DELETE FROM locations WHERE id = $1", fixture.hall.ID)
+
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != restrictViolation {
+		t.Errorf("delete err = %v, want a restrict violation of the foreign key", err)
+	}
+}
+
+func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
+	pool, err := postgres.Connect(context.Background(), unreachableDatabaseURL)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer pool.Close()
+	repo := postgres.NewEventRepo(pool)
+	ctx := context.Background()
+	event := minimalEvent(t, unknownLocationID)
+	update := event
+	update.ID = unknownEventID
+
+	calls := map[string]func() error{
+		"List":         func() error { _, err := repo.List(ctx); return err },
+		"Get":          func() error { _, err := repo.Get(ctx, unknownEventID); return err },
+		"Create":       func() error { _, err := repo.Create(ctx, event); return err },
+		"Update":       func() error { _, err := repo.Update(ctx, update); return err },
+		"UpdatePeriod": func() error { return repo.UpdatePeriod(ctx, unknownEventID, event.Period) },
+	}
+	for name, call := range calls {
+		err := call()
+		if err == nil || errors.Is(err, core.ErrNotFound) {
+			t.Errorf("%s err = %v, want an untranslated database error", name, err)
+		}
+	}
+}
+
+// TestEventServiceRunsAgainstDatabase saves, lists and recomputes through
+// the core use cases on PostgreSQL.
+func TestEventServiceRunsAgainstDatabase(t *testing.T) {
+	fixture := newEventFixture(t)
+	service := core.NewEventService(fixture.repo, fixture.locations)
+	ctx := context.Background()
+	in := core.EventInput{
+		Title: "Kirchweihmarkt", Type: string(core.EventTypeMarket), LocationID: fixture.hall.ID,
+		StartDate: "2026-10-16", Source: core.EventSource{Description: "Amtsblatt"},
+	}
+	saved, err := service.SaveEvent(ctx, "", in)
+	if err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+	stale := saved.Period.End.Add(time.Hour)
+	if _, err := fixture.pool.Exec(ctx, "UPDATE events SET effective_end = $2 WHERE id = $1", saved.ID, stale); err != nil {
+		t.Fatalf("make period stale: %v", err)
+	}
+
+	failures, err := service.RecomputeDerived(ctx)
+	if err != nil || failures != nil {
+		t.Fatalf("RecomputeDerived = %v, %v, want no failures", failures, err)
+	}
+	clock := fixedClock(saved.Period.End.Add(-time.Minute))
+	entries, err := service.ListEvents(ctx, clock)
+	if err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Archived || entries[0].Location != fixture.hall || !entries[0].Event.Period.End.Equal(saved.Period.End) {
+		t.Errorf("entries = %+v, want the active market with its recomputed end", entries)
+	}
+}
+
+// fixedClock is a core.Clock that always shows the same instant.
+type fixedClock time.Time
+
+func (c fixedClock) Now() time.Time { return time.Time(c) }

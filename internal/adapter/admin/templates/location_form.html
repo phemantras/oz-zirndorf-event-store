@@ -38,7 +38,7 @@
   <label for="precision">Ortsgenauigkeit</label>
   <select id="precision" name="precision" required>
     <option value="">Bitte auswählen</option>
-    {{range .Precisions}}<option value="{{.Code}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+    {{range .Precisions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
     {{end}}
   </select>
   {{with index .Errors "precision"}}<p class="field-error">{{.}}</p>{{end}}

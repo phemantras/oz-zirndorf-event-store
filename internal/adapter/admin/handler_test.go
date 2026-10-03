@@ -33,8 +33,11 @@ type testServer struct {
 	clock          *fakeClock
 	logs           *bytes.Buffer
 	passwordChecks int
-	// locations is the in-memory storage behind the real core use cases.
-	locations *memoryLocationRepo
+	// locations and events are the in-memory storage behind the real core
+	// use cases.
+	locations    *memoryLocationRepo
+	events       *memoryEventRepo
+	eventService *core.EventService
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -48,7 +51,9 @@ func newTestServer(t *testing.T) *testServer {
 		clock:     &fakeClock{current: testLoginTime},
 		logs:      &bytes.Buffer{},
 		locations: newMemoryLocationRepo(),
+		events:    newMemoryEventRepo(),
 	}
+	ts.eventService = core.NewEventService(ts.events, ts.locations)
 	ts.handler = newHandler(Config{
 		User:          testUser,
 		PasswordHash:  hash,
@@ -56,6 +61,8 @@ func newTestServer(t *testing.T) *testServer {
 		Logger:        slog.New(slog.NewJSONHandler(ts.logs, nil)),
 		Now:           ts.clock.now,
 		Locations:     core.NewLocationService(ts.locations),
+		Events:        ts.eventService,
+		Clock:         ts.clock,
 	})
 	compare := ts.handler.comparePassword
 	ts.handler.comparePassword = func(hash, password []byte) error {

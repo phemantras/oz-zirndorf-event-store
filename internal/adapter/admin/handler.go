@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
 // Routes of the admin interface. Everything lives below adminPathPrefix.
@@ -83,6 +85,10 @@ type Config struct {
 	Now func() time.Time
 	// Locations are the core use cases behind the location pages.
 	Locations LocationUseCases
+	// Events are the core use cases behind the event pages.
+	Events EventUseCases
+	// Clock decides which events the list shows as archived.
+	Clock core.Clock
 }
 
 // handler serves the admin interface.
@@ -95,6 +101,8 @@ type handler struct {
 	now             func() time.Time
 	comparePassword func(hash, password []byte) error
 	locations       LocationUseCases
+	events          EventUseCases
+	clock           core.Clock
 }
 
 // NewHandler returns the admin interface for all paths below /admin/,
@@ -113,6 +121,8 @@ func newHandler(cfg Config) *handler {
 		now:             cfg.Now,
 		comparePassword: bcrypt.CompareHashAndPassword,
 		locations:       cfg.Locations,
+		events:          cfg.Events,
+		clock:           cfg.Clock,
 	}
 }
 
@@ -128,6 +138,11 @@ func (h *handler) routes() http.Handler {
 	protected.HandleFunc(http.MethodPost+" "+locationsPath, h.createLocation)
 	protected.HandleFunc(http.MethodGet+" "+locationPathPattern, h.showLocation)
 	protected.HandleFunc(http.MethodPost+" "+locationPathPattern, h.updateLocation)
+	protected.HandleFunc(http.MethodGet+" "+eventsPath, h.showEvents)
+	protected.HandleFunc(http.MethodGet+" "+newEventPath, h.showNewEvent)
+	protected.HandleFunc(http.MethodPost+" "+eventsPath, h.createEvent)
+	protected.HandleFunc(http.MethodGet+" "+eventPathPattern, h.showEvent)
+	protected.HandleFunc(http.MethodPost+" "+eventPathPattern, h.updateEvent)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(http.MethodGet+" "+loginPath, h.showLogin)

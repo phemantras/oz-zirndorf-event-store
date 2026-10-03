@@ -40,6 +40,9 @@ const (
 	// ProblemNonexistentTime means the local time falls into the gap when
 	// daylight saving time starts.
 	ProblemNonexistentTime FieldProblem = "nonexistentTime"
+	// ProblemNotFound means the field refers to an entity that does not
+	// exist, such as an unknown location of an event.
+	ProblemNotFound FieldProblem = "notFound"
 )
 
 // FieldError names one rejected field and why it was rejected.
