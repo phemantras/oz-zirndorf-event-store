@@ -40,7 +40,7 @@ development_status:
   1-2-auslieferung-auf-railway: done
   1-3-admin-anmeldung: done
   1-4-orte-anlegen-bearbeiten-und-auflisten: done
-  1-12-adresse-in-straße-plz-und-ort-aufteilen: review
+  1-12-adresse-in-straße-plz-und-ort-aufteilen: done
   1-5-koordinaten-auf-der-karte-setzen: done
   1-6-ehrliches-zeitmodell-im-kern: backlog
   1-7-events-anlegen-bearbeiten-und-auflisten: backlog
