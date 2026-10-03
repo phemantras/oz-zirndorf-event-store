@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,9 +14,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
@@ -109,6 +114,132 @@ func freePort(t *testing.T) string {
 }
 
 func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	running := startRun(t, databaseURL, slog.New(slog.DiscardHandler))
+
+	assertStatus(t, running.baseURL+adminLoginPath, http.StatusOK)
+	assertListsServedWithSession(t, running.baseURL)
+
+	running.stop(t)
+}
+
+// TestRunLogsEventsWhoseRecomputationFailsAndStartsAnyway stores an event
+// that today's rules reject (all day with a start time) and checks that the
+// start logs its ID and still serves (ENT-5).
+func TestRunLogsEventsWhoseRecomputationFailsAndStartsAnyway(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	brokenID := insertBrokenEvent(t, databaseURL)
+	logs := &syncBuffer{}
+
+	running := startRun(t, databaseURL, newLogger(logs))
+	// The admin must share the event use cases with the recomputation, or
+	// the review mark would be lost.
+	status, body := logIn(t, running.baseURL).get(t, adminEventsPath)
+	running.stop(t)
+
+	if !strings.Contains(logs.String(), logMsgRecomputeFailed) || !strings.Contains(logs.String(), brokenID) {
+		t.Errorf("log %q does not name the failed event %s", logs.String(), brokenID)
+	}
+	if status != http.StatusOK {
+		t.Fatalf("GET %s: status = %d, want %d", adminEventsPath, status, http.StatusOK)
+	}
+	link := `<a href="` + adminEventsPath + "/" + brokenID + `">` + brokenEventTitle + `</a>`
+	if row := tableRowWith(body, link); !strings.Contains(row, "prüfen") {
+		t.Errorf("row of the broken event %q is not marked prüfen; body: %s", row, body)
+	}
+}
+
+// tableRowWith returns the table row of page that contains text, or "".
+func tableRowWith(page, text string) string {
+	for _, row := range strings.Split(page, "<tr>") {
+		if before, _, found := strings.Cut(row, "</tr>"); found && strings.Contains(before, text) {
+			return before
+		}
+	}
+	return ""
+}
+
+// brokenEventTitle is the title of the event insertBrokenEvent stores.
+const brokenEventTitle = "Kaputt bei Startprüfung"
+
+// brokenLocationNameKey is the name key of the location insertBrokenEvent
+// stores; leftovers of an aborted run are removed before inserting.
+const brokenLocationNameKey = "startprüfung"
+
+// insertBrokenEvent migrates the test database and inserts a location with
+// an event that the core rejects, removing leftovers before and both
+// afterwards.
+func insertBrokenEvent(t *testing.T, databaseURL string) string {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := postgres.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := postgres.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	removeBrokenEvent(t, pool)
+	t.Cleanup(func() { removeBrokenEvent(t, pool) })
+	var locationID, eventID string
+	err = pool.QueryRow(ctx,
+		`INSERT INTO locations (name, name_key, street, postal_code, city, latitude, longitude, precision)
+		 VALUES ('Startprüfung', $1, 'Marktplatz', '90513', 'Zirndorf', 49.44, 10.95, 'area')
+		 RETURNING id::text`, brokenLocationNameKey).Scan(&locationID)
+	if err != nil {
+		t.Fatalf("insert location: %v", err)
+	}
+	err = pool.QueryRow(ctx,
+		`INSERT INTO events (title, type, location_id, start_date, start_time, all_day, source_description,
+		                     effective_start, effective_end)
+		 VALUES ($2, 'other', $1, '2026-10-16', '19:00', true, 'Test',
+		         '2026-10-16 17:00+00', '2026-10-16 22:00+00')
+		 RETURNING id::text`, locationID, brokenEventTitle).Scan(&eventID)
+	if err != nil {
+		t.Fatalf("insert event: %v", err)
+	}
+	return eventID
+}
+
+// removeBrokenEvent deletes the location of insertBrokenEvent and its
+// events, also leftovers of an aborted earlier run.
+func removeBrokenEvent(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := pool.Exec(ctx,
+		"DELETE FROM events WHERE location_id IN (SELECT id FROM locations WHERE name_key = $1)", brokenLocationNameKey)
+	if err != nil {
+		t.Errorf("delete events of the broken location: %v", err)
+	}
+	if _, err := pool.Exec(ctx, "DELETE FROM locations WHERE name_key = $1", brokenLocationNameKey); err != nil {
+		t.Errorf("delete broken location: %v", err)
+	}
+}
+
+// syncBuffer is a bytes.Buffer that the server goroutine may write while
+// the test reads it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// testDatabaseURL returns the PostgreSQL test database or skips the test
+// outside CI when there is none.
+func testDatabaseURL(t *testing.T) string {
+	t.Helper()
 	databaseURL := os.Getenv(testDatabaseURLVariable)
 	if databaseURL == "" {
 		if os.Getenv(ciVariable) != "" {
@@ -116,30 +247,43 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 		}
 		t.Skipf("%s not set, skipping PostgreSQL integration test", testDatabaseURLVariable)
 	}
+	return databaseURL
+}
+
+// runningService is a run in the background that answers on baseURL.
+type runningService struct {
+	baseURL string
+	cancel  context.CancelFunc
+	done    chan error
+}
+
+// startRun starts run against databaseURL on a free port and waits until
+// the health check answers with 200.
+func startRun(t *testing.T, databaseURL string, logger *slog.Logger) runningService {
+	t.Helper()
 	port := freePort(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	done := make(chan error, 1)
+	t.Cleanup(cancel)
+	running := runningService{baseURL: "http://127.0.0.1:" + port, cancel: cancel, done: make(chan error, 1)}
 	go func() {
-		done <- run(ctx, slog.New(slog.DiscardHandler), validEnv(map[string]string{
+		running.done <- run(ctx, logger, validEnv(map[string]string{
 			envDatabaseURL: databaseURL,
 			envPort:        port,
 		}))
 	}()
 
-	url := "http://127.0.0.1:" + port + healthPath
 	deadline := time.Now().Add(shutdownTimeout)
 	for {
-		resp, err := http.Get(url)
+		resp, err := http.Get(running.baseURL + healthPath)
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 			}
-			break
+			return running
 		}
 		select {
-		case err := <-done:
+		case err := <-running.done:
 			t.Fatalf("run returned before serving: %v", err)
 		default:
 		}
@@ -148,20 +292,38 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 		}
 		time.Sleep(healthPollInterval)
 	}
+}
 
-	baseURL := "http://127.0.0.1:" + port
-	assertStatus(t, baseURL+adminLoginPath, http.StatusOK)
-	assertLocationsServedWithSession(t, baseURL)
-
-	cancel()
-	if err := <-done; err != nil {
+// stop cancels the run and expects a clean shutdown.
+func (r runningService) stop(t *testing.T) {
+	t.Helper()
+	r.cancel()
+	if err := <-r.done; err != nil {
 		t.Errorf("run returned %v, want nil after shutdown", err)
 	}
 }
 
-// assertLocationsServedWithSession logs in at baseURL and checks that the
-// location list, wired to PostgreSQL, answers with the session.
-func assertLocationsServedWithSession(t *testing.T, baseURL string) {
+// assertListsServedWithSession logs in at baseURL and checks that the
+// location and event lists, wired to PostgreSQL, answer with the session.
+func assertListsServedWithSession(t *testing.T, baseURL string) {
+	t.Helper()
+	session := logIn(t, baseURL)
+	for _, path := range []string{adminLocationsPath, adminEventsPath} {
+		if status, _ := session.get(t, path); status != http.StatusOK {
+			t.Errorf("GET %s with session: status = %d, want %d", path, status, http.StatusOK)
+		}
+	}
+}
+
+// adminSession is a logged-in admin at baseURL.
+type adminSession struct {
+	baseURL string
+	client  *http.Client
+	cookie  *http.Cookie
+}
+
+// logIn logs in at baseURL with the configured credentials.
+func logIn(t *testing.T, baseURL string) adminSession {
 	t.Helper()
 	// The session cookie is Secure, so a cookie jar would drop it over plain
 	// HTTP; the test carries it by hand and stops at the login redirect.
@@ -179,20 +341,27 @@ func assertLocationsServedWithSession(t *testing.T, baseURL string) {
 		t.Fatalf("login: status = %d with %d cookies, want %d with the session cookie",
 			login.StatusCode, len(cookies), http.StatusSeeOther)
 	}
+	return adminSession{baseURL: baseURL, client: client, cookie: cookies[0]}
+}
 
-	req, err := http.NewRequest(http.MethodGet, baseURL+adminLocationsPath, nil)
+// get requests path with the session and returns status and body.
+func (s adminSession) get(t *testing.T, path string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, s.baseURL+path, nil)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
-	req.AddCookie(cookies[0])
-	resp, err := client.Do(req)
+	req.AddCookie(s.cookie)
+	resp, err := s.client.Do(req)
 	if err != nil {
-		t.Fatalf("GET %s: %v", adminLocationsPath, err)
+		t.Fatalf("GET %s: %v", path, err)
 	}
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("GET %s with session: status = %d, want %d", adminLocationsPath, resp.StatusCode, http.StatusOK)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
 	}
+	return resp.StatusCode, string(body)
 }
 
 func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
@@ -201,7 +370,7 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	logger := slog.New(slog.DiscardHandler)
-	server := newServer(&fakePinger{}, logger, newAdminHandler(validConfig(t), logger, emptyLocations{}))
+	server := newServer(&fakePinger{}, logger, newAdminHandler(validConfig(t), logger, emptyUseCases()))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- serve(ctx, server, listener, slog.New(slog.DiscardHandler)) }()
@@ -246,6 +415,9 @@ const adminLoginPath = "/admin/login"
 // adminLocationsPath lists the locations; it needs a session.
 const adminLocationsPath = "/admin/locations"
 
+// adminEventsPath lists the events; it needs a session.
+const adminEventsPath = "/admin/events"
+
 // validAdminPassword is the password behind validPasswordHash.
 const validAdminPassword = "richtig-und-lang"
 
@@ -263,6 +435,26 @@ func (emptyLocations) GetLocation(context.Context, string) (core.Location, error
 
 func (emptyLocations) ListLocations(context.Context) ([]core.Location, error) {
 	return nil, nil
+}
+
+// emptyEvents stands in for the event use cases where no database is
+// available: there are no events.
+type emptyEvents struct{}
+
+func (emptyEvents) SaveEvent(context.Context, string, core.EventInput) (core.Event, error) {
+	return core.Event{}, core.ErrNotFound
+}
+
+func (emptyEvents) GetEvent(context.Context, string) (core.Event, error) {
+	return core.Event{}, core.ErrNotFound
+}
+
+func (emptyEvents) ListEvents(context.Context, core.Clock) ([]core.EventListEntry, error) {
+	return nil, nil
+}
+
+func emptyUseCases() useCases {
+	return useCases{locations: emptyLocations{}, events: emptyEvents{}}
 }
 
 func validConfig(t *testing.T) config {
@@ -300,7 +492,7 @@ func TestRunFailsWithWeakSessionSecretWithoutLeakingIt(t *testing.T) {
 }
 
 func TestNewAdminHandlerLogsInWithConfiguredCredentials(t *testing.T) {
-	handler := newAdminHandler(validConfig(t), slog.New(slog.DiscardHandler), emptyLocations{})
+	handler := newAdminHandler(validConfig(t), slog.New(slog.DiscardHandler), emptyUseCases())
 	form := url.Values{"username": {validAdminUser}, "password": {validAdminPassword}}
 	login := httptest.NewRequest(http.MethodPost, adminLoginPath, strings.NewReader(form.Encode()))
 	login.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -323,11 +515,13 @@ func TestNewAdminHandlerLogsInWithConfiguredCredentials(t *testing.T) {
 	if homeRec.Code != http.StatusOK {
 		t.Errorf("home with session cookie: status = %d, want %d", homeRec.Code, http.StatusOK)
 	}
-	locations := httptest.NewRequest(http.MethodGet, adminLocationsPath, nil)
-	locations.AddCookie(cookies[0])
-	locationsRec := httptest.NewRecorder()
-	handler.ServeHTTP(locationsRec, locations)
-	if locationsRec.Code != http.StatusOK {
-		t.Errorf("locations with session cookie: status = %d, want %d", locationsRec.Code, http.StatusOK)
+	for _, path := range []string{adminLocationsPath, adminEventsPath} {
+		list := httptest.NewRequest(http.MethodGet, path, nil)
+		list.AddCookie(cookies[0])
+		listRec := httptest.NewRecorder()
+		handler.ServeHTTP(listRec, list)
+		if listRec.Code != http.StatusOK {
+			t.Errorf("%s with session cookie: status = %d, want %d", path, listRec.Code, http.StatusOK)
+		}
 	}
 }

@@ -62,3 +62,9 @@ func TestFieldProblemCodesOfTheTimeModel(t *testing.T) {
 		}
 	}
 }
+
+func TestFieldProblemNotFoundCode(t *testing.T) {
+	if ProblemNotFound != "notFound" {
+		t.Errorf("ProblemNotFound = %q, want notFound", ProblemNotFound)
+	}
+}

@@ -25,6 +25,12 @@ const (
 	minutesPerHour = 60
 )
 
+// Text forms of LocalDate and LocalTime: YYYY-MM-DD and HH:MM.
+const (
+	localDateFormat = "%04d-%02d-%02d"
+	localTimeFormat = "%02d:%02d"
+)
+
 // daysToNextDay is added to the day of month; time.Date carries it over
 // into the next month or year.
 const daysToNextDay = 1
@@ -76,6 +82,11 @@ func (d LocalDate) NextDay() LocalDate {
 	return dateOf(time.Date(d.Year, d.Month, d.Day+daysToNextDay, 0, 0, 0, 0, time.UTC))
 }
 
+// String returns the date as YYYY-MM-DD, the form the event input uses.
+func (d LocalDate) String() string {
+	return fmt.Sprintf(localDateFormat, d.Year, int(d.Month), d.Day)
+}
+
 func dateOf(t time.Time) LocalDate {
 	year, month, day := t.Date()
 	return LocalDate{Year: year, Month: month, Day: day}
@@ -91,6 +102,11 @@ type LocalTime struct {
 // IsValid reports whether the time lies between 00:00 and 23:59.
 func (lt LocalTime) IsValid() bool {
 	return lt.Hour >= 0 && lt.Hour < hoursPerDay && lt.Minute >= 0 && lt.Minute < minutesPerHour
+}
+
+// String returns the time as HH:MM, the form the event input uses.
+func (lt LocalTime) String() string {
+	return fmt.Sprintf(localTimeFormat, lt.Hour, lt.Minute)
 }
 
 // wallClock is a local date and time compared as one value.

@@ -1,0 +1,27 @@
+{{define "title"}}Events{{end}}
+{{define "content"}}
+<p><a href="/admin/">Übersicht</a></p>
+<h1>Events</h1>
+<p><a href="/admin/events/new">Neues Event</a></p>
+{{if .Events}}
+<table>
+  <thead>
+    <tr><th>Titel</th><th>Typ</th><th>Ort</th><th>Beginn</th><th>Ende</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+  {{range .Events}}
+    <tr>
+      <td><a href="{{.URL}}">{{.Title}}</a></td>
+      <td>{{.Type}}</td>
+      <td>{{.Location}}</td>
+      <td>{{.Start}}</td>
+      <td>{{.End}}</td>
+      <td>{{.Status}}{{if .NeedsReview}}, <strong class="review">prüfen</strong>{{end}}</td>
+    </tr>
+  {{end}}
+  </tbody>
+</table>
+{{else}}
+<p>Noch keine Events angelegt.</p>
+{{end}}
+{{end}}

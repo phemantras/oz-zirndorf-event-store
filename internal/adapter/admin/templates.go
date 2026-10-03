@@ -17,6 +17,8 @@ const (
 	locationsFile    = templateDir + "locations.html"
 	locationFormFile = templateDir + "location_form.html"
 	notFoundFile     = templateDir + "not_found.html"
+	eventsFile       = templateDir + "events.html"
+	eventFormFile    = templateDir + "event_form.html"
 )
 
 //go:embed templates
@@ -34,6 +36,8 @@ var (
 	locationsTemplate    = parsePage(locationsFile)
 	locationFormTemplate = parsePage(locationFormFile)
 	notFoundTemplate     = parsePage(notFoundFile)
+	eventsTemplate       = parsePage(eventsFile)
+	eventFormTemplate    = parsePage(eventFormFile)
 )
 
 // loginPage is the data of the login form.

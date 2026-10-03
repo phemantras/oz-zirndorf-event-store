@@ -58,9 +58,7 @@ const (
 	headingEditLocation = "Ort bearbeiten"
 	msgNameConflict     = "Es gibt bereits einen Ort mit diesem Namen:"
 	msgLocationNotFound = "Ort nicht gefunden."
-	msgNoPersonalData   = "Bitte keine Privatpersonen, Kontaktpersonen oder Telefonnummern eintragen."
-	// msgFieldInvalid covers a field problem without a specific message.
-	msgFieldInvalid = "Bitte diese Angabe prüfen."
+	backToLocationList  = "Zurück zur Ortsliste"
 )
 
 // logMsgLocationsFailed is logged when a location use case fails for a
@@ -75,9 +73,9 @@ var precisionLabels = map[core.LocationPrecision]string{
 	core.PrecisionDistrict: "nur Ortsteil",
 }
 
-// fieldMessages are the German messages for the field problems the core
-// reports for a location.
-var fieldMessages = map[core.FieldError]string{
+// locationFieldMessages are the German messages for the field problems the
+// core reports for a location.
+var locationFieldMessages = map[core.FieldError]string{
 	{Field: core.LocationFieldName, Problem: core.ProblemMissing}:             "Bitte einen Namen angeben.",
 	{Field: core.LocationFieldStreet, Problem: core.ProblemMissing}:           "Bitte Straße und Hausnummer angeben.",
 	{Field: core.LocationFieldPostalCode, Problem: core.ProblemMissing}:       "Bitte eine PLZ angeben.",
@@ -118,7 +116,7 @@ type locationFormPage struct {
 	Values     core.LocationInput
 	Errors     map[string]string
 	Conflict   *locationConflict
-	Precisions []precisionOption
+	Precisions []selectOption
 	// PrivacyHint is shown under name and note (NFR-4).
 	PrivacyHint string
 }
@@ -128,18 +126,6 @@ type locationConflict struct {
 	Message string
 	Name    string
 	URL     string
-}
-
-type precisionOption struct {
-	Code     string
-	Label    string
-	Selected bool
-}
-
-// notFoundPage is the data of the German 404 page.
-type notFoundPage struct {
-	Message string
-	BackURL string
 }
 
 func (h *handler) showLocations(w http.ResponseWriter, r *http.Request) {
@@ -206,7 +192,7 @@ func (h *handler) saveLocation(w http.ResponseWriter, r *http.Request, id string
 	case err == nil:
 		http.Redirect(w, r, locationsPath, http.StatusSeeOther)
 	case errors.As(err, &validation):
-		page.Errors = fieldErrorMessages(validation.Fields)
+		page.Errors = fieldErrorMessages(validation.Fields, locationFieldMessages)
 		h.render(w, locationFormTemplate, http.StatusUnprocessableEntity, page)
 	case errors.As(err, &conflict):
 		page.Conflict = &locationConflict{
@@ -223,7 +209,9 @@ func (h *handler) saveLocation(w http.ResponseWriter, r *http.Request, id string
 }
 
 func (h *handler) renderLocationNotFound(w http.ResponseWriter) {
-	h.render(w, notFoundTemplate, http.StatusNotFound, notFoundPage{Message: msgLocationNotFound, BackURL: locationsPath})
+	h.render(w, notFoundTemplate, http.StatusNotFound, notFoundPage{
+		Message: msgLocationNotFound, BackURL: locationsPath, BackLabel: backToLocationList,
+	})
 }
 
 func (h *handler) failLocationRequest(w http.ResponseWriter, err error) {
@@ -245,8 +233,8 @@ func newLocationFormPage(id string, values core.LocationInput) locationFormPage 
 		page.Action = locationURL(id)
 	}
 	for _, precision := range core.LocationPrecisions() {
-		page.Precisions = append(page.Precisions, precisionOption{
-			Code:     string(precision),
+		page.Precisions = append(page.Precisions, selectOption{
+			Value:    string(precision),
 			Label:    precisionLabels[precision],
 			Selected: string(precision) == values.Precision,
 		})
@@ -288,19 +276,6 @@ func inputFromLocation(location core.Location) core.LocationInput {
 		Precision:  string(location.Precision),
 		Note:       location.Note,
 	}
-}
-
-// fieldErrorMessages returns the German message per rejected field.
-func fieldErrorMessages(fields []core.FieldError) map[string]string {
-	messages := make(map[string]string, len(fields))
-	for _, field := range fields {
-		message, ok := fieldMessages[field]
-		if !ok {
-			message = msgFieldInvalid
-		}
-		messages[field.Field] = message
-	}
-	return messages
 }
 
 // formatAddress returns the address as "Straße, PLZ Ort", leaving out empty

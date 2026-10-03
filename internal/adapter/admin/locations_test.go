@@ -646,7 +646,7 @@ func TestUnknownOrMalformedLocationIDShowsGermanNotFoundPage(t *testing.T) {
 
 			for _, rec := range []*httptest.ResponseRecorder{ts.get(locationPath(id)), ts.post(locationPath(id), hallForm())} {
 				assertStatusCode(t, rec, http.StatusNotFound)
-				assertBodyContains(t, rec, msgLocationNotFound, `href="`+locationsPath+`"`)
+				assertBodyContains(t, rec, msgLocationNotFound, `href="`+locationsPath+`">Zurück zur Ortsliste`)
 			}
 			if len(ts.locations.locations) != 0 {
 				t.Error("a location was stored for an unknown id")

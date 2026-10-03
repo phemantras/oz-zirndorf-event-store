@@ -1,6 +1,7 @@
 // Command eventstore starts the OZ Zirndorf Event Store: it reads the
-// configuration from the environment, applies the database migrations and
-// only then starts the HTTP server.
+// configuration from the environment, applies the database migrations,
+// recomputes the derived values of all events and only then starts the HTTP
+// server.
 package main
 
 import (
@@ -49,7 +50,8 @@ func newLogger(out io.Writer) *slog.Logger {
 }
 
 // run wires the service in startup order (configuration, database,
-// migrations, HTTP server) and blocks until ctx is cancelled or a step fails.
+// migrations, recomputation of derived values, HTTP server) and blocks until
+// ctx is cancelled or a step fails.
 func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) error {
 	cfg, err := loadConfig(getenv)
 	if err != nil {
@@ -68,24 +70,38 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	}
 	logger.Info("database migrations applied", "count", applied)
 
+	locationRepo := postgres.NewLocationRepo(pool)
+	events := core.NewEventService(postgres.NewEventRepo(pool), locationRepo)
+	if err := recomputeDerived(ctx, events, logger); err != nil {
+		return err
+	}
+
 	listener, err := net.Listen("tcp", cfg.ListenAddress())
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.ListenAddress(), err)
 	}
-	locations := core.NewLocationService(postgres.NewLocationRepo(pool))
-	return serve(ctx, newServer(pool, logger, newAdminHandler(cfg, logger, locations)), listener, logger)
+	cases := useCases{locations: core.NewLocationService(locationRepo), events: events}
+	return serve(ctx, newServer(pool, logger, newAdminHandler(cfg, logger, cases)), listener, logger)
+}
+
+// useCases are the core use cases the admin interface works with.
+type useCases struct {
+	locations admin.LocationUseCases
+	events    admin.EventUseCases
 }
 
 // newAdminHandler builds the admin interface from the validated
 // configuration and the core use cases, with the wall clock as time source.
-func newAdminHandler(cfg config, logger *slog.Logger, locations admin.LocationUseCases) http.Handler {
+func newAdminHandler(cfg config, logger *slog.Logger, cases useCases) http.Handler {
 	return admin.NewHandler(admin.Config{
 		User:          cfg.AdminUser,
 		PasswordHash:  cfg.AdminPasswordHash,
 		SessionSecret: cfg.SessionSecret,
 		Logger:        logger,
 		Now:           time.Now,
-		Locations:     locations,
+		Locations:     cases.locations,
+		Events:        cases.events,
+		Clock:         systemClock{},
 	})
 }
 

@@ -19,7 +19,8 @@ const unknownLocationID = "0192f0b1-0000-7000-8000-0000000000ff"
 const uuidVersionIndex = 14
 
 // migratedLocationRepo returns a repository on a migrated test database with
-// an empty locations table.
+// empty locations and events tables; events go too because they refer to
+// locations.
 func migratedLocationRepo(t *testing.T) (*postgres.LocationRepo, *pgxpool.Pool) {
 	t.Helper()
 	ctx := context.Background()
@@ -31,8 +32,8 @@ func migratedLocationRepo(t *testing.T) (*postgres.LocationRepo, *pgxpool.Pool) 
 	if _, err := postgres.Migrate(ctx, pool); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if _, err := pool.Exec(ctx, "TRUNCATE locations"); err != nil {
-		t.Fatalf("truncate locations: %v", err)
+	if _, err := pool.Exec(ctx, "TRUNCATE events, locations"); err != nil {
+		t.Fatalf("truncate events and locations: %v", err)
 	}
 	return postgres.NewLocationRepo(pool), pool
 }
