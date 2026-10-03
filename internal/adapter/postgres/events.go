@@ -14,7 +14,9 @@ import (
 // noRowsAffected is what an UPDATE reports when no row has the given id.
 const noRowsAffected = 0
 
-// EventRepo implements core.EventRepo on the events table.
+// EventRepo implements core.EventRepo on the events and timetable_entries
+// tables. Create and Update write several rows; the core calls them inside
+// a transaction of TxRunner, so they are atomic there.
 type EventRepo struct {
 	queries *db.Queries
 }
@@ -26,15 +28,26 @@ func NewEventRepo(conn db.DBTX) *EventRepo {
 	return &EventRepo{queries: db.New(conn)}
 }
 
-// List returns all events in no particular order; the core sorts them.
+// List returns all events with their timetables in no particular order;
+// the core sorts them. All entries are read with one query.
 func (r *EventRepo) List(ctx context.Context) ([]core.Event, error) {
 	rows, err := r.queries.ListEvents(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
+	entryRows, err := r.queries.ListTimetableEntries(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list timetable entries: %w", err)
+	}
+	timetables := make(map[pgtype.UUID][]core.TimetableEntry)
+	for _, entryRow := range entryRows {
+		timetables[entryRow.EventID] = append(timetables[entryRow.EventID], timetableEntryFromRow(entryRow))
+	}
 	events := make([]core.Event, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, eventFromRow(row))
+		event := eventFromRow(row)
+		event.Timetable = timetables[row.ID]
+		events = append(events, event)
 	}
 	return events, nil
 }
@@ -50,10 +63,19 @@ func (r *EventRepo) Get(ctx context.Context, id string) (core.Event, error) {
 	if err != nil {
 		return core.Event{}, translateError("get event", err)
 	}
-	return eventFromRow(row), nil
+	entryRows, err := r.queries.ListTimetableEntriesOfEvent(ctx, uuid)
+	if err != nil {
+		return core.Event{}, fmt.Errorf("list timetable entries of event: %w", err)
+	}
+	event := eventFromRow(row)
+	for _, entryRow := range entryRows {
+		event.Timetable = append(event.Timetable, timetableEntryFromRow(entryRow))
+	}
+	return event, nil
 }
 
-// Create inserts event; the database generates the UUIDv7 ID.
+// Create inserts event and its timetable; the database generates the
+// UUIDv7 IDs.
 func (r *EventRepo) Create(ctx context.Context, event core.Event) (core.Event, error) {
 	columns, err := eventColumnsOf(event)
 	if err != nil {
@@ -63,10 +85,11 @@ func (r *EventRepo) Create(ctx context.Context, event core.Event) (core.Event, e
 	if err != nil {
 		return core.Event{}, translateError("create event", err)
 	}
-	return eventFromRow(row), nil
+	return r.withTimetable(ctx, row, event.Timetable)
 }
 
-// Update replaces the event with event.ID or yields core.ErrNotFound.
+// Update replaces the event with event.ID and its whole timetable, or
+// yields core.ErrNotFound.
 func (r *EventRepo) Update(ctx context.Context, event core.Event) (core.Event, error) {
 	uuid, err := parseID(eventKind, event.ID)
 	if err != nil {
@@ -95,7 +118,30 @@ func (r *EventRepo) Update(ctx context.Context, event core.Event) (core.Event, e
 	if err != nil {
 		return core.Event{}, translateError("update event", err)
 	}
-	return eventFromRow(row), nil
+	if err := r.queries.DeleteTimetableEntriesOfEvent(ctx, row.ID); err != nil {
+		return core.Event{}, fmt.Errorf("delete timetable entries of event: %w", err)
+	}
+	return r.withTimetable(ctx, row, event.Timetable)
+}
+
+// withTimetable inserts the entries for the stored event row and returns
+// the event with the stored entries.
+func (r *EventRepo) withTimetable(ctx context.Context, row db.Event, entries []core.TimetableEntry) (core.Event, error) {
+	event := eventFromRow(row)
+	for _, entry := range entries {
+		entryRow, err := r.queries.CreateTimetableEntry(ctx, db.CreateTimetableEntryParams{
+			EventID:     row.ID,
+			Description: entry.Description,
+			Date:        dateParam(entry.Date),
+			StartTime:   timeParam(entry.StartTime),
+			EndTime:     timeParam(entry.EndTime),
+		})
+		if err != nil {
+			return core.Event{}, fmt.Errorf("create timetable entry: %w", err)
+		}
+		event.Timetable = append(event.Timetable, timetableEntryFromRow(entryRow))
+	}
+	return event, nil
 }
 
 // UpdatePeriod replaces only the effective period of the event with id, or
@@ -164,6 +210,16 @@ func eventFromRow(row db.Event) core.Event {
 		Source: core.EventSource{Description: row.SourceDescription, URL: row.SourceUrl.String},
 		Note:   row.Note.String,
 		Period: core.Period{Start: row.EffectiveStart.Time, End: row.EffectiveEnd.Time},
+	}
+}
+
+func timetableEntryFromRow(row db.TimetableEntry) core.TimetableEntry {
+	return core.TimetableEntry{
+		ID:          row.ID.String(),
+		Description: row.Description,
+		Date:        localDateOf(row.Date),
+		StartTime:   localTimeOf(row.StartTime),
+		EndTime:     localTimeOf(row.EndTime),
 	}
 }
 

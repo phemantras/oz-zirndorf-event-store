@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -95,7 +96,7 @@ func assertSameEvent(t *testing.T, got, want core.Event) {
 	if !got.Period.Start.Equal(want.Period.Start) || !got.Period.End.Equal(want.Period.End) {
 		t.Errorf("period = [%v, %v), want [%v, %v)", got.Period.Start, got.Period.End, want.Period.Start, want.Period.End)
 	}
-	if gotInput, wantInput := core.EventInputOf(got), core.EventInputOf(want); gotInput != wantInput || got.ID != want.ID {
+	if gotInput, wantInput := core.EventInputOf(got), core.EventInputOf(want); !reflect.DeepEqual(gotInput, wantInput) || got.ID != want.ID {
 		t.Errorf("event = %s %+v, want %s %+v", got.ID, gotInput, want.ID, wantInput)
 	}
 }
@@ -280,7 +281,7 @@ func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 // the core use cases on PostgreSQL.
 func TestEventServiceRunsAgainstDatabase(t *testing.T) {
 	fixture := newEventFixture(t)
-	service := core.NewEventService(fixture.repo, fixture.locations)
+	service := core.NewEventService(postgres.NewTxRunner(fixture.pool), fixture.repo, fixture.locations)
 	ctx := context.Background()
 	in := core.EventInput{
 		Title: "Kirchweihmarkt", Type: string(core.EventTypeMarket), LocationID: fixture.hall.ID,

@@ -71,6 +71,50 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 	return i, err
 }
 
+const createTimetableEntry = `-- name: CreateTimetableEntry :one
+INSERT INTO timetable_entries (event_id, description, date, start_time, end_time)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, event_id, description, date, start_time, end_time
+`
+
+type CreateTimetableEntryParams struct {
+	EventID     pgtype.UUID
+	Description string
+	Date        pgtype.Date
+	StartTime   pgtype.Time
+	EndTime     pgtype.Time
+}
+
+func (q *Queries) CreateTimetableEntry(ctx context.Context, arg CreateTimetableEntryParams) (TimetableEntry, error) {
+	row := q.db.QueryRow(ctx, createTimetableEntry,
+		arg.EventID,
+		arg.Description,
+		arg.Date,
+		arg.StartTime,
+		arg.EndTime,
+	)
+	var i TimetableEntry
+	err := row.Scan(
+		&i.ID,
+		&i.EventID,
+		&i.Description,
+		&i.Date,
+		&i.StartTime,
+		&i.EndTime,
+	)
+	return i, err
+}
+
+const deleteTimetableEntriesOfEvent = `-- name: DeleteTimetableEntriesOfEvent :exec
+DELETE FROM timetable_entries
+WHERE event_id = $1
+`
+
+func (q *Queries) DeleteTimetableEntriesOfEvent(ctx context.Context, eventID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteTimetableEntriesOfEvent, eventID)
+	return err
+}
+
 const getEvent = `-- name: GetEvent :one
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
        source_description, source_url, note, effective_start, effective_end
@@ -133,6 +177,71 @@ func (q *Queries) ListEvents(ctx context.Context) ([]Event, error) {
 			&i.Note,
 			&i.EffectiveStart,
 			&i.EffectiveEnd,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTimetableEntries = `-- name: ListTimetableEntries :many
+SELECT id, event_id, description, date, start_time, end_time
+FROM timetable_entries
+`
+
+func (q *Queries) ListTimetableEntries(ctx context.Context) ([]TimetableEntry, error) {
+	rows, err := q.db.Query(ctx, listTimetableEntries)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimetableEntry
+	for rows.Next() {
+		var i TimetableEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.Description,
+			&i.Date,
+			&i.StartTime,
+			&i.EndTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTimetableEntriesOfEvent = `-- name: ListTimetableEntriesOfEvent :many
+SELECT id, event_id, description, date, start_time, end_time
+FROM timetable_entries
+WHERE event_id = $1
+`
+
+func (q *Queries) ListTimetableEntriesOfEvent(ctx context.Context, eventID pgtype.UUID) ([]TimetableEntry, error) {
+	rows, err := q.db.Query(ctx, listTimetableEntriesOfEvent, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimetableEntry
+	for rows.Next() {
+		var i TimetableEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.Description,
+			&i.Date,
+			&i.StartTime,
+			&i.EndTime,
 		); err != nil {
 			return nil, err
 		}

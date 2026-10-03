@@ -105,8 +105,30 @@ func storedEvent(t *testing.T, id, title string, times EventTimes) Event {
 	}
 }
 
+// fakeTx runs fn directly on its repositories and passes fn's error on; it
+// fails before fn when beginErr is set.
+type fakeTx struct {
+	repos    Repos
+	beginErr error
+	runs     int
+}
+
+func (tx *fakeTx) InTx(_ context.Context, fn func(Repos) error) error {
+	if tx.beginErr != nil {
+		return tx.beginErr
+	}
+	tx.runs++
+	return fn(tx.repos)
+}
+
+// newEventServiceOn returns the use cases with a fake transaction on the
+// same repositories.
+func newEventServiceOn(events *fakeEventRepo, locations *fakeLocationRepo) *EventService {
+	return NewEventService(&fakeTx{repos: Repos{Events: events, Locations: locations}}, events, locations)
+}
+
 func newTestEventService(events *fakeEventRepo, locations ...Location) *EventService {
-	return NewEventService(events, newFakeLocationRepo(locations...))
+	return newEventServiceOn(events, newFakeLocationRepo(locations...))
 }
 
 func TestSaveEventCreatesEventWithComputedPeriod(t *testing.T) {
@@ -180,7 +202,7 @@ func TestSaveEventDoesNotLookUpAMissingLocation(t *testing.T) {
 	in := validEventInput()
 	in.LocationID = ""
 
-	_, err := NewEventService(newFakeEventRepo(), locations).SaveEvent(context.Background(), "", in)
+	_, err := newEventServiceOn(newFakeEventRepo(), locations).SaveEvent(context.Background(), "", in)
 
 	var validation *ValidationError
 	if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{EventFieldLocationID, ProblemMissing}}) {
@@ -215,7 +237,7 @@ func TestSaveEventPassesRepositoryFailuresOn(t *testing.T) {
 			locations := newFakeLocationRepo(hall())
 			tt.inject(events, locations)
 
-			_, err := NewEventService(events, locations).SaveEvent(context.Background(), tt.id, validEventInput())
+			_, err := newEventServiceOn(events, locations).SaveEvent(context.Background(), tt.id, validEventInput())
 
 			if !errors.Is(err, errDatabaseDown) {
 				t.Errorf("err = %v, want %v", err, errDatabaseDown)
@@ -300,7 +322,7 @@ func TestListEventsPassesFailuresOn(t *testing.T) {
 	t.Run("locations", func(t *testing.T) {
 		locations := newFakeLocationRepo()
 		locations.listErr = errDatabaseDown
-		_, err := NewEventService(newFakeEventRepo(), locations).ListEvents(context.Background(), clockAt(t, kirchweihFriday, 0, 0))
+		_, err := newEventServiceOn(newFakeEventRepo(), locations).ListEvents(context.Background(), clockAt(t, kirchweihFriday, 0, 0))
 		if !errors.Is(err, errDatabaseDown) {
 			t.Errorf("err = %v, want %v", err, errDatabaseDown)
 		}
@@ -437,5 +459,163 @@ func assertNeedsReview(t *testing.T, service *EventService, want map[string]bool
 		if wanted, ok := want[entry.Event.ID]; ok && entry.NeedsReview != wanted {
 			t.Errorf("%s: needs review = %v, want %v", entry.Event.ID, entry.NeedsReview, wanted)
 		}
+	}
+}
+
+// festTimetable is entered out of order: Disco runs past midnight.
+func festTimetable() []TimetableEntryInput {
+	return []TimetableEntryInput{
+		entryInput("Disco", "2026-10-16", "22:00", "01:00"),
+		entryInput("Bieranstich", "2026-10-16", "18:00", ""),
+		entryInput("Markttag", "2026-10-17", "", ""),
+	}
+}
+
+func timetableDescriptions(entries []TimetableEntry) []string {
+	var descriptions []string
+	for _, entry := range entries {
+		descriptions = append(descriptions, entry.Description)
+	}
+	return descriptions
+}
+
+func TestSaveEventStoresTimetableSortedInOneTransaction(t *testing.T) {
+	events, locations := newFakeEventRepo(), newFakeLocationRepo(hall())
+	tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+	service := NewEventService(tx, events, locations)
+
+	saved, err := service.SaveEvent(context.Background(), "", festInput(festTimetable()...))
+	if err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+	if tx.runs != 1 || len(events.created) != 1 {
+		t.Fatalf("transactions = %d, created = %d, want one create in one transaction", tx.runs, len(events.created))
+	}
+	want := []string{"Bieranstich", "Disco", "Markttag"}
+	if got := timetableDescriptions(events.created[0].Timetable); !slices.Equal(got, want) {
+		t.Errorf("stored timetable = %v, want %v", got, want)
+	}
+	if got := timetableDescriptions(saved.Timetable); !slices.Equal(got, want) {
+		t.Errorf("returned timetable = %v, want %v", got, want)
+	}
+	withoutTimetable := festInput()
+	plain, err := service.SaveEvent(context.Background(), "", withoutTimetable)
+	if err != nil {
+		t.Fatalf("SaveEvent without timetable: %v", err)
+	}
+	if !plain.Period.Start.Equal(saved.Period.Start) || !plain.Period.End.Equal(saved.Period.End) {
+		t.Errorf("period with timetable = %+v, without = %+v, want equal", saved.Period, plain.Period)
+	}
+}
+
+func TestSaveEventReplacesTheWholeTimetable(t *testing.T) {
+	repo := newFakeEventRepo()
+	service := newTestEventService(repo, hall())
+	ctx := context.Background()
+	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...))
+	if err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+
+	in := festInput(entryInput("Kehraus", "2026-10-17", "20:00", ""))
+	if _, err := service.SaveEvent(ctx, created.ID, in); err != nil {
+		t.Fatalf("SaveEvent update: %v", err)
+	}
+	if got := timetableDescriptions(repo.events[created.ID].Timetable); !slices.Equal(got, []string{"Kehraus"}) {
+		t.Errorf("stored timetable = %v, want only Kehraus", got)
+	}
+}
+
+func TestResavingAnUnchangedEventKeepsPeriodAndTimetable(t *testing.T) {
+	repo := newFakeEventRepo()
+	service := newTestEventService(repo, hall())
+	ctx := context.Background()
+	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...))
+	if err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+	stored, err := service.GetEvent(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetEvent: %v", err)
+	}
+
+	resaved, err := service.SaveEvent(ctx, created.ID, EventInputOf(stored))
+	if err != nil {
+		t.Fatalf("SaveEvent again: %v", err)
+	}
+	if !resaved.Period.Start.Equal(stored.Period.Start) || !resaved.Period.End.Equal(stored.Period.End) {
+		t.Errorf("period = %+v, want unchanged %+v", resaved.Period, stored.Period)
+	}
+	if got, want := EventInputOf(resaved).Timetable, EventInputOf(stored).Timetable; !slices.Equal(got, want) {
+		t.Errorf("timetable = %v, want unchanged %v", got, want)
+	}
+}
+
+func TestSaveEventRejectsEntryOutsideAShortenedEventWithoutWriting(t *testing.T) {
+	repo := newFakeEventRepo()
+	service := newTestEventService(repo, hall())
+	ctx := context.Background()
+	created, err := service.SaveEvent(ctx, "", festInput(festTimetable()...))
+	if err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+	in := festInput(festTimetable()...)
+	in.EndDate = "2026-10-16"
+
+	_, err = service.SaveEvent(ctx, created.ID, in)
+
+	var validation *ValidationError
+	want := []FieldError{{TimetableField(0, TimetableFieldEndTime), ProblemOutsideEvent}, {TimetableField(2, TimetableFieldDate), ProblemOutsideEvent}}
+	if !errors.As(err, &validation) || !slices.Equal(validation.Fields, want) {
+		t.Errorf("err = %v, want %v", err, want)
+	}
+	if len(repo.updated) != 0 {
+		t.Error("an invalid timetable was written")
+	}
+}
+
+func TestSaveEventPassesTransactionFailuresOnAndKeepsTheReviewMark(t *testing.T) {
+	events, locations := newFakeEventRepo(brokenEvent(t, marketID)), newFakeLocationRepo(hall())
+	service := NewEventService(&fakeTx{beginErr: errDatabaseDown}, events, locations)
+	ctx := context.Background()
+	if _, err := service.RecomputeDerived(ctx); err != nil {
+		t.Fatalf("RecomputeDerived: %v", err)
+	}
+
+	_, err := service.SaveEvent(ctx, marketID, validEventInput())
+
+	if !errors.Is(err, errDatabaseDown) {
+		t.Errorf("err = %v, want %v", err, errDatabaseDown)
+	}
+	if len(events.updated) != 0 {
+		t.Error("an event was written without transaction")
+	}
+	assertNeedsReview(t, service, map[string]bool{marketID: true})
+}
+
+func TestReadingEventsSortsTheirTimetable(t *testing.T) {
+	market := storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday})
+	market.Timetable = []TimetableEntry{
+		{ID: "2", Description: "Abend", Date: kirchweihFriday, StartTime: localTime(19, 0)},
+		{ID: "1", Description: "Ganzer Tag", Date: kirchweihFriday},
+		{ID: "3", Description: "Abend", Date: kirchweihFriday, StartTime: localTime(19, 0)},
+	}
+	service := newTestEventService(newFakeEventRepo(market), hall())
+	ctx := context.Background()
+	want := []string{"Ganzer Tag", "Abend", "Abend"}
+
+	got, err := service.GetEvent(ctx, marketID)
+	if err != nil {
+		t.Fatalf("GetEvent: %v", err)
+	}
+	if descriptions := timetableDescriptions(got.Timetable); !slices.Equal(descriptions, want) || got.Timetable[1].ID != "2" {
+		t.Errorf("GetEvent timetable = %+v, want %v with ties by ID", got.Timetable, want)
+	}
+	entries, err := service.ListEvents(ctx, clockAt(t, kirchweihFriday, 0, 0))
+	if err != nil {
+		t.Fatalf("ListEvents: %v", err)
+	}
+	if descriptions := timetableDescriptions(entries[0].Event.Timetable); !slices.Equal(descriptions, want) {
+		t.Errorf("ListEvents timetable = %v, want %v", descriptions, want)
 	}
 }

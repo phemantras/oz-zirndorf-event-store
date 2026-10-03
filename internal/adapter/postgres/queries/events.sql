@@ -32,3 +32,21 @@ RETURNING id, title, type, location_id, start_date, start_time, end_date, end_ti
 UPDATE events
 SET effective_start = $2, effective_end = $3
 WHERE id = $1;
+
+-- name: ListTimetableEntries :many
+SELECT id, event_id, description, date, start_time, end_time
+FROM timetable_entries;
+
+-- name: ListTimetableEntriesOfEvent :many
+SELECT id, event_id, description, date, start_time, end_time
+FROM timetable_entries
+WHERE event_id = $1;
+
+-- name: DeleteTimetableEntriesOfEvent :exec
+DELETE FROM timetable_entries
+WHERE event_id = $1;
+
+-- name: CreateTimetableEntry :one
+INSERT INTO timetable_entries (event_id, description, date, start_time, end_time)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, event_id, description, date, start_time, end_time;

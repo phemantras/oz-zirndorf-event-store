@@ -38,3 +38,12 @@ type Location struct {
 	PostalCode string
 	City       string
 }
+
+type TimetableEntry struct {
+	ID          pgtype.UUID
+	EventID     pgtype.UUID
+	Description string
+	Date        pgtype.Date
+	StartTime   pgtype.Time
+	EndTime     pgtype.Time
+}

@@ -24,6 +24,9 @@ const (
 	// inline input.
 	locationFieldsFile = templateDir + "location_fields.html"
 	newLocationFile    = templateDir + "new_location.html"
+	// timetableEntryFile holds one timetable entry, shown on the event form
+	// and appended to it by htmx.
+	timetableEntryFile = templateDir + "timetable_entry.html"
 )
 
 //go:embed templates
@@ -42,10 +45,12 @@ var (
 	locationFormTemplate = parsePage(locationFormFile, locationFieldsFile)
 	notFoundTemplate     = parsePage(notFoundFile)
 	eventsTemplate       = parsePage(eventsFile)
-	eventFormTemplate    = parsePage(eventFormFile, locationFieldsFile, newLocationFile)
+	eventFormTemplate    = parsePage(eventFormFile, locationFieldsFile, newLocationFile, timetableEntryFile)
 	// newLocationTemplate holds the fragments that htmx swaps into the
 	// event form.
 	newLocationTemplate = parseFragments(newLocationFile, locationFieldsFile)
+	// timetableEntryTemplate is the empty entry htmx appends.
+	timetableEntryTemplate = parseFragments(timetableEntryFile)
 )
 
 // loginPage is the data of the login form.

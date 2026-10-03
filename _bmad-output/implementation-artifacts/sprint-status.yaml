@@ -45,7 +45,7 @@ development_status:
   1-6-ehrliches-zeitmodell-im-kern: done
   1-7-events-anlegen-bearbeiten-und-auflisten: done
   1-8-neuen-ort-direkt-beim-anlegen-eines-events: done
-  1-9-ablaufplan-pflegen: backlog
+  1-9-ablaufplan-pflegen: review
   1-10-warnung-bei-duplikatverdacht: backlog
   1-11-events-und-orte-löschen: backlog
   epic-1-retrospective: optional

@@ -12,20 +12,36 @@ import (
 
 // EventRepo is the storage port for events. Only EventService calls
 // Create, Update and UpdatePeriod; adapters never get the repository to
-// write past the core (AD-6).
+// write past the core (AD-6). Events come with their timetable in no
+// particular order; the core sorts it.
 type EventRepo interface {
 	// List returns all events in no particular order.
 	List(ctx context.Context) ([]Event, error)
 	// Get returns the event with id, or ErrNotFound, also for an id that is
 	// not a valid UUID.
 	Get(ctx context.Context, id string) (Event, error)
-	// Create stores a new event and returns it with its generated ID.
+	// Create stores a new event with its timetable and returns it with the
+	// generated IDs.
 	Create(ctx context.Context, event Event) (Event, error)
-	// Update replaces the event with event.ID, or yields ErrNotFound.
+	// Update replaces the event with event.ID and its whole timetable, or
+	// yields ErrNotFound.
 	Update(ctx context.Context, event Event) (Event, error)
 	// UpdatePeriod replaces only the stored effective period of the event
 	// with id, or yields ErrNotFound.
 	UpdatePeriod(ctx context.Context, id string, period Period) error
+}
+
+// Repos are the repositories of one transaction.
+type Repos struct {
+	Events    EventRepo
+	Locations LocationRepo
+}
+
+// TxRunner is the transaction port. A use case that writes more than one
+// row runs its transaction-bound part through it (AD-6, AD-15).
+type TxRunner interface {
+	// InTx runs fn in one transaction; an error from fn rolls back.
+	InTx(ctx context.Context, fn func(Repos) error) error
 }
 
 // EventListEntry is one event of the admin list with what the list shows
@@ -50,6 +66,7 @@ type RecomputeFailure struct {
 // EventService holds the event use cases. It keeps the IDs of events that
 // need review in memory only; they are recomputed at every start.
 type EventService struct {
+	tx        TxRunner
 	events    EventRepo
 	locations LocationRepo
 
@@ -57,23 +74,40 @@ type EventService struct {
 	inReview map[string]struct{}
 }
 
-// NewEventService returns the event use cases backed by events, checking
-// and listing locations in locations.
-func NewEventService(events EventRepo, locations LocationRepo) *EventService {
-	return &EventService{events: events, locations: locations, inReview: map[string]struct{}{}}
+// NewEventService returns the event use cases: saving runs in transactions
+// of tx, reading and recomputing use events and locations directly.
+func NewEventService(tx TxRunner, events EventRepo, locations LocationRepo) *EventService {
+	return &EventService{tx: tx, events: events, locations: locations, inReview: map[string]struct{}{}}
 }
 
 // SaveEvent creates an event when id is empty and otherwise updates the
-// event with id, keeping its ID. It returns ErrNotFound for an unknown id
-// and *ValidationError listing every invalid field, including an unknown
-// location. A successful save clears the review mark of the event.
+// event with id, keeping its ID. Event and timetable are written in one
+// transaction, the timetable replacing the stored one (AD-15). It returns
+// ErrNotFound for an unknown id and *ValidationError listing every invalid
+// field, including an unknown location. A successful save clears the
+// review mark of the event.
 func (s *EventService) SaveEvent(ctx context.Context, id string, in EventInput) (Event, error) {
-	storedID, err := s.storedID(ctx, id)
+	var saved Event
+	err := s.tx.InTx(ctx, func(repos Repos) error {
+		var err error
+		saved, err = saveEvent(ctx, repos, id, in)
+		return err
+	})
+	if err != nil {
+		return Event{}, err
+	}
+	s.clearReview(saved.ID)
+	return saved, nil
+}
+
+// saveEvent is the transaction-bound part of SaveEvent.
+func saveEvent(ctx context.Context, repos Repos, id string, in EventInput) (Event, error) {
+	storedID, err := storedEventID(ctx, repos.Events, id)
 	if err != nil {
 		return Event{}, err
 	}
 	event, problems := newEvent(in)
-	locationID, locationProblems, err := s.storedLocationID(ctx, event.LocationID)
+	locationID, locationProblems, err := storedLocationID(ctx, repos.Locations, event.LocationID)
 	if err != nil {
 		return Event{}, err
 	}
@@ -83,21 +117,21 @@ func (s *EventService) SaveEvent(ctx context.Context, id string, in EventInput) 
 	}
 
 	event.ID, event.LocationID = storedID, locationID
-	saved, err := s.write(ctx, event)
+	saved, err := writeEvent(ctx, repos.Events, event)
 	if err != nil {
 		return Event{}, fmt.Errorf("save event: %w", err)
 	}
-	s.clearReview(saved.ID)
+	saved.Timetable = sortedTimetable(saved.Timetable)
 	return saved, nil
 }
 
-// storedID returns the ID of the event to update as the repository spells
-// it. An empty id stays empty: a new event is created.
-func (s *EventService) storedID(ctx context.Context, id string) (string, error) {
+// storedEventID returns the ID of the event to update as the repository
+// spells it. An empty id stays empty: a new event is created.
+func storedEventID(ctx context.Context, events EventRepo, id string) (string, error) {
 	if id == "" {
 		return "", nil
 	}
-	current, err := s.events.Get(ctx, id)
+	current, err := events.Get(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("get event to update: %w", err)
 	}
@@ -107,11 +141,11 @@ func (s *EventService) storedID(ctx context.Context, id string) (string, error) 
 // storedLocationID returns the location ID as the repository spells it,
 // or reports locationId notFound when no such location exists. A missing
 // location ID is already reported by newEvent.
-func (s *EventService) storedLocationID(ctx context.Context, id string) (string, []FieldError, error) {
+func storedLocationID(ctx context.Context, locations LocationRepo, id string) (string, []FieldError, error) {
 	if id == "" {
 		return "", nil, nil
 	}
-	location, err := s.locations.Get(ctx, id)
+	location, err := locations.Get(ctx, id)
 	if errors.Is(err, ErrNotFound) {
 		return "", []FieldError{{Field: EventFieldLocationID, Problem: ProblemNotFound}}, nil
 	}
@@ -121,27 +155,29 @@ func (s *EventService) storedLocationID(ctx context.Context, id string) (string,
 	return location.ID, nil, nil
 }
 
-// write creates event when it has no ID and updates it otherwise.
-func (s *EventService) write(ctx context.Context, event Event) (Event, error) {
+// writeEvent creates event when it has no ID and updates it otherwise.
+func writeEvent(ctx context.Context, events EventRepo, event Event) (Event, error) {
 	if event.ID == "" {
-		return s.events.Create(ctx, event)
+		return events.Create(ctx, event)
 	}
-	return s.events.Update(ctx, event)
+	return events.Update(ctx, event)
 }
 
-// GetEvent returns the event with id, or ErrNotFound.
+// GetEvent returns the event with id and its timetable sorted, or
+// ErrNotFound.
 func (s *EventService) GetEvent(ctx context.Context, id string) (Event, error) {
 	event, err := s.events.Get(ctx, id)
 	if err != nil {
 		return Event{}, fmt.Errorf("get event: %w", err)
 	}
+	event.Timetable = sortedTimetable(event.Timetable)
 	return event, nil
 }
 
-// ListEvents returns all events with their location, archive status at the
-// time of clock and review mark: active events first, earliest start
-// first, then archived events, latest start first; equal starts are ordered
-// by ID.
+// ListEvents returns all events, each with its timetable sorted, its
+// location, archive status at the time of clock and review mark: active
+// events first, earliest start first, then archived events, latest start
+// first; equal starts are ordered by ID.
 func (s *EventService) ListEvents(ctx context.Context, clock Clock) ([]EventListEntry, error) {
 	events, err := s.events.List(ctx)
 	if err != nil {
@@ -160,6 +196,7 @@ func (s *EventService) ListEvents(ctx context.Context, clock Clock) ([]EventList
 		if !ok {
 			return nil, fmt.Errorf("location %s of event %s: %w", event.LocationID, event.ID, ErrNotFound)
 		}
+		event.Timetable = sortedTimetable(event.Timetable)
 		entries = append(entries, EventListEntry{
 			Event:       event,
 			Location:    location,

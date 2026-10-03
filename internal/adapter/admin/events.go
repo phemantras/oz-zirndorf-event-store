@@ -25,8 +25,8 @@ const (
 	eventIDParam     = "id"
 	eventPathPattern = eventsPath + "/{" + eventIDParam + "}"
 	// maxEventFormBytes bounds the event form body; a real form with a long
-	// note stays far below.
-	maxEventFormBytes = 16 << 10
+	// note and a festival programme of some dozen entries stays far below.
+	maxEventFormBytes = 64 << 10
 )
 
 // allDayChecked is the value the all-day checkbox sends when checked.
@@ -132,6 +132,10 @@ type eventFormPage struct {
 	PrivacyHint string
 	// UnknownTimeHint is shown at both time fields.
 	UnknownTimeHint string
+	// Timetable are the entries in the order of Values.Timetable, with
+	// their messages; TimetableError is set when any entry has one.
+	Timetable      []timetableEntryView
+	TimetableError string
 }
 
 // locationChoice is the data of the location select on the event form.
@@ -184,22 +188,33 @@ func (h *handler) updateEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 // saveEvent hands the form to the core and translates its typed errors:
-// field messages (422), unknown event (404).
+// field messages, also per timetable entry (422), unknown event (404). A
+// body that is too large or has uneven timetable fields is a bad request.
 func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxEventFormBytes)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	values := eventInputFromForm(r.PostForm)
-	_, err := h.events.SaveEvent(r.Context(), id, values)
+	values, err := eventInputFromForm(r.PostForm)
+	if err != nil {
+		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
+		return
+	}
+	_, err = h.events.SaveEvent(r.Context(), id, values)
 
 	var validation *core.ValidationError
 	switch {
 	case err == nil:
 		http.Redirect(w, r, eventsPath, http.StatusSeeOther)
 	case errors.As(err, &validation):
-		form := eventForm{id: id, values: values, errors: fieldErrorMessages(validation.Fields, eventFieldMessages)}
+		eventFields, timetableErrors := splitTimetableProblems(validation.Fields)
+		form := eventForm{
+			id:              id,
+			values:          values,
+			errors:          fieldErrorMessages(eventFields, eventFieldMessages),
+			timetableErrors: timetableErrors,
+		}
 		h.renderEventForm(w, r, http.StatusUnprocessableEntity, form)
 	case errors.Is(err, core.ErrNotFound):
 		h.renderEventNotFound(w)
@@ -209,11 +224,12 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 // eventForm is what an event form shows: the event's id (empty for a new
-// one), the values and the messages per field.
+// one), the values and the messages per field and per timetable entry.
 type eventForm struct {
-	id     string
-	values core.EventInput
-	errors map[string]string
+	id              string
+	values          core.EventInput
+	errors          map[string]string
+	timetableErrors map[int]map[string]string
 }
 
 // renderEventForm renders the form with the locations to choose from.
@@ -232,6 +248,10 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 		AllDayValue:     allDayChecked,
 		PrivacyHint:     msgNoPersonalData,
 		UnknownTimeHint: msgUnknownTime,
+		Timetable:       timetableViews(form.values.Timetable, form.timetableErrors),
+	}
+	if len(form.timetableErrors) > 0 {
+		page.TimetableError = msgTimetableProblems
 	}
 	if form.id != "" {
 		page.Heading = headingEditEvent
@@ -272,8 +292,13 @@ func (h *handler) failEventRequest(w http.ResponseWriter, err error) {
 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 
-// eventInputFromForm reads the event fields exactly as entered.
-func eventInputFromForm(form url.Values) core.EventInput {
+// eventInputFromForm reads the event fields exactly as entered, the
+// timetable without blank entries.
+func eventInputFromForm(form url.Values) (core.EventInput, error) {
+	timetable, err := timetableFromForm(form)
+	if err != nil {
+		return core.EventInput{}, err
+	}
 	return core.EventInput{
 		Title:      form.Get(core.EventFieldTitle),
 		Type:       form.Get(core.EventFieldType),
@@ -287,8 +312,9 @@ func eventInputFromForm(form url.Values) core.EventInput {
 			Description: form.Get(core.EventFieldSourceDescription),
 			URL:         form.Get(core.EventFieldSourceURL),
 		},
-		Note: form.Get(core.EventFieldNote),
-	}
+		Note:      form.Get(core.EventFieldNote),
+		Timetable: timetable,
+	}, nil
 }
 
 func eventRowOf(entry core.EventListEntry) eventRow {
