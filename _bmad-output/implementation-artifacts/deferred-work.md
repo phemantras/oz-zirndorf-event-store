@@ -31,3 +31,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-7-events-anlegen-bearbeiten-und-auflisten.md`
   summary: `RecomputeDerived` auch `name_key` der Orte neu berechnen lassen (AD-16, ENT-17), inklusive Umgang mit dabei entstehenden Namenskonflikten.
   evidence: Story 1.7 deckt laut AC nur `effective*` ab, `title_key` folgt mit 1.10; `name_key` ist keiner Story zugeordnet.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-neuer-ort-beim-anlegen-eines-events.md`
+  summary: Browser-Tests für das Admin-JavaScript (`location-map.js`, htmx-Austausch inkl. `htmx-config` für 409/422 und OOB-Ortsauswahl) einführen.
+  evidence: Das Repo hat kein JS-/Browser-Test-Setup; ein Tippfehler in `dataset.latitudeField`, ein fehlender `htmx:load`-Hook oder eine falsch sortierte `responseHandling`-Regel bliebe bei grüner CI unentdeckt (Review Story 1.8). Bis dahin deckt nur die manuelle Browserprüfung das ab.

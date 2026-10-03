@@ -594,7 +594,9 @@ func TestLocationFormsLoadMapPickerWithHiddenMapArea(t *testing.T) {
 	for name, rec := range pages {
 		t.Run(name, func(t *testing.T) {
 			assertBodyContains(t, rec, mapAssets...)
-			assertBodyContains(t, rec, `<div id="location-map" aria-label="Karte zum Setzen der Koordinaten" hidden></div>`)
+			assertBodyContains(t, rec, `<div id="location-map" class="location-map" data-location-map`+
+				` data-latitude-field="latitude" data-longitude-field="longitude"`+
+				` aria-label="Karte zum Setzen der Koordinaten" hidden></div>`)
 		})
 	}
 }

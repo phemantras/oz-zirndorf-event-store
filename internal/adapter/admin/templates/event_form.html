@@ -1,4 +1,9 @@
 {{define "title"}}{{.Heading}}{{end}}
+{{define "head"}}
+<link rel="stylesheet" href="/admin/static/leaflet/leaflet.css">
+<script src="/admin/static/leaflet/leaflet.js" defer></script>
+<script src="/admin/static/location-map.js" defer></script>
+{{end}}
 {{define "content"}}
 <p><a href="/admin/events">Zurück zur Event-Liste</a></p>
 <h1>{{.Heading}}</h1>
@@ -16,14 +21,8 @@
   </select>
   {{with index .Errors "type"}}<p class="field-error">{{.}}</p>{{end}}
 
-  <label for="locationId">Ort</label>
-  <select id="locationId" name="locationId" required>
-    <option value="">Bitte auswählen</option>
-    {{range .Locations}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
-    {{end}}
-  </select>
-  {{with index .Errors "locationId"}}<p class="field-error">{{.}}</p>{{end}}
-  {{if not .Locations}}<p class="hint">{{.NoLocations}} <a href="/admin/locations/new">Neuer Ort</a></p>{{end}}
+  {{template "locationChoice" .LocationChoice}}
+  {{template "newLocationClosed" .NewLocation}}
 
   <label for="startDate">Beginn-Datum</label>
   <input id="startDate" name="startDate" type="date" value="{{.Values.StartDate}}" required>
@@ -62,4 +61,5 @@
 
   <button type="submit">Speichern</button>
 </form>
+<form id="new-location-form" hx-post="/admin/events/new-location" hx-target="#new-location" hx-swap="outerHTML" hx-sync="this:drop" novalidate></form>
 {{end}}

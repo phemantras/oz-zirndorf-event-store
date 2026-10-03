@@ -118,19 +118,31 @@ type eventRow struct {
 // Values hold the input exactly as entered, so nothing is lost on an
 // error.
 type eventFormPage struct {
-	Heading   string
-	Action    string
-	Values    core.EventInput
-	Errors    map[string]string
-	Types     []selectOption
-	Locations []selectOption
+	Heading        string
+	Action         string
+	Values         core.EventInput
+	Errors         map[string]string
+	Types          []selectOption
+	LocationChoice locationChoice
+	// NewLocation is the closed inline input for a new location.
+	NewLocation newLocationArea
 	// AllDayValue is what the checkbox sends when checked.
 	AllDayValue string
 	// PrivacyHint is shown under title, source and note (NFR-4).
 	PrivacyHint string
 	// UnknownTimeHint is shown at both time fields.
 	UnknownTimeHint string
-	NoLocations     string
+}
+
+// locationChoice is the data of the location select on the event form.
+// The inline input for a new location replaces it out of band.
+type locationChoice struct {
+	Locations []selectOption
+	// Error is the message for the location field.
+	Error       string
+	NoLocations string
+	// OutOfBand marks the choice for an htmx out-of-band swap.
+	OutOfBand bool
 }
 
 func (h *handler) showEvents(w http.ResponseWriter, r *http.Request) {
@@ -216,10 +228,10 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 		Action:          eventsPath,
 		Values:          form.values,
 		Errors:          form.errors,
+		LocationChoice:  locationChoiceOf(locations, form.values.LocationID, form.errors[core.EventFieldLocationID]),
 		AllDayValue:     allDayChecked,
 		PrivacyHint:     msgNoPersonalData,
 		UnknownTimeHint: msgUnknownTime,
-		NoLocations:     msgNoLocations,
 	}
 	if form.id != "" {
 		page.Heading = headingEditEvent
@@ -232,14 +244,21 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 			Selected: string(eventType) == form.values.Type,
 		})
 	}
+	h.render(w, eventFormTemplate, status, page)
+}
+
+// locationChoiceOf returns the location select with selectedID selected and
+// errorMessage at the field.
+func locationChoiceOf(locations []core.Location, selectedID, errorMessage string) locationChoice {
+	choice := locationChoice{Error: errorMessage, NoLocations: msgNoLocations}
 	for _, location := range locations {
-		page.Locations = append(page.Locations, selectOption{
+		choice.Locations = append(choice.Locations, selectOption{
 			Value:    location.ID,
 			Label:    location.Name,
-			Selected: location.ID == form.values.LocationID,
+			Selected: location.ID == selectedID,
 		})
 	}
-	h.render(w, eventFormTemplate, status, page)
+	return choice
 }
 
 func (h *handler) renderEventNotFound(w http.ResponseWriter) {
