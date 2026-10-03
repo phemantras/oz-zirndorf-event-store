@@ -48,3 +48,17 @@ func TestLocationConflictErrorIsErrConflictAndCarriesExistingLocation(t *testing
 		t.Errorf("message %q does not name the existing location id", err.Error())
 	}
 }
+
+func TestFieldProblemCodesOfTheTimeModel(t *testing.T) {
+	codes := map[FieldProblem]string{
+		ProblemConflictsWithAllDay:       "conflictsWithAllDay",
+		ProblemNotAfterStart:             "notAfterStart",
+		ProblemNotAfterStartRepeatedHour: "notAfterStartRepeatedHour",
+		ProblemNonexistentTime:           "nonexistentTime",
+	}
+	for problem, want := range codes {
+		if string(problem) != want {
+			t.Errorf("problem code = %q, want %q", problem, want)
+		}
+	}
+}
