@@ -46,9 +46,9 @@ FR-8: Eine Abfrage ohne Filter liefert alle aktiven Events, deren Zeitraum den h
 
 FR-9: Filter nach Zeitraum (`from`/`to`) und einem oder mehreren Event-Typen (ODER-Verknüpfung). Enthalten ist ein Event, wenn sich sein Zeitraum mit dem Filterzeitraum überschneidet. Auch mit Filter liefert die Abfrage nur aktive Events. Ungültige Filterwerte werden mit einer verständlichen Meldung im einheitlichen Fehlerformat abgelehnt.
 
-FR-10: Jedes ausgelieferte Event enthält alle Angaben aus FR-1 und den vollständigen Ort (Kennung, Name, Adresse, Koordinaten, Ortsgenauigkeit, Notiz). Zwei Events am selben Ort liefern dieselbe Ortskennung und identische Koordinaten. Zeitgenauigkeit, Ortsgenauigkeit und Quelle sind immer enthalten.
+FR-10: Jedes ausgelieferte Event enthält alle Angaben aus FR-1 und den vollständigen Ort (Name, Adresse, Koordinaten, Ortsgenauigkeit, Notiz). Zwei Events am selben Ort liefern denselben, eindeutigen Ortsnamen und identische Koordinaten. Zeitgenauigkeit, Ortsgenauigkeit und Quelle sind immer enthalten. Die Antwort enthält keine internen Werte (Kennungen, Import-Schlüssel, Archivierungszeitpunkt, Vergleichsschlüssel).
 
-FR-11: Einzelabruf eines Events über seine Kennung, außerdem Listen aller Orte und aller Event-Typen. Eine unbekannte Kennung liefert „nicht gefunden“ im einheitlichen Fehlerformat. Ein archiviertes Event bleibt über seine Kennung abrufbar und ist als archiviert erkennbar. Maßgeblich ist die Vorbei-Regel: Ein Event ist vorbei, sobald `effectiveEnd <= now` (AD-4). Außerhalb des Umfangs: Schreibzugriff, Volltextsuche, Umkreissuche, Paginierung.
+FR-11: Events gibt es nur als Listen (FR-8, FR-9, FR-12), dazu die Liste aller Event-Typen. Es gibt keinen Einzelabruf und keine eigene Ortsliste; Abnehmer speichern keine Kennungen. Ob ein Event archiviert ist, zeigt `archived`. Maßgeblich ist die Vorbei-Regel: Ein Event ist vorbei, sobald `effectiveEnd <= now` (AD-4). Außerhalb des Umfangs: Schreibzugriff, Einzelabruf, Ortsliste, Volltextsuche, Umkreissuche, Paginierung.
 
 **Archiv**
 
@@ -64,7 +64,7 @@ FR-15: Der Admin kann Events und Orte anlegen, bearbeiten und löschen, auch arc
 
 **JSON-Import**
 
-FR-16: Die Import-Datei hat eine Formatversion und ist dokumentiert. Eine unbekannte oder fehlende Version wird mit klarer Meldung abgelehnt. Das Format bildet alle Angaben aus FR-1 bis FR-6 ab, einschließlich des optionalen Import-Schlüssels. Ein Event verweist auf einen vorhandenen Ort oder bringt einen mit. Ein mitgebrachter Ort mit vorhandenem Namen wird dem vorhandenen Ort zugeordnet. Ein mitgebrachter neuer Ort braucht Adresse und Koordinaten, sonst ist der Eintrag fehlerhaft. Neue Orte zeigt die Vorschau gesondert an.
+FR-16: Die Import-Datei hat eine Formatversion und ist dokumentiert. Eine unbekannte oder fehlende Version wird mit klarer Meldung abgelehnt. Das Format bildet alle Angaben aus FR-1 bis FR-6 ab, einschließlich des optionalen Import-Schlüssels. Jedes Event bringt seinen Ort mit, mindestens mit Namen; ein Ort mit vorhandenem Namen wird dem vorhandenen Ort zugeordnet. Die Datei enthält keine internen Kennungen. Ein mitgebrachter neuer Ort braucht Adresse und Koordinaten, sonst ist der Eintrag fehlerhaft. Neue Orte zeigt die Vorschau gesondert an.
 
 FR-17: Vor dem Übernehmen zeigt der Import für jedes Event: neu, Aktualisierung, Duplikatverdacht oder Fehler. Ein vorhandener Import-Schlüssel führt zu einer Aktualisierung. Ohne passenden Schlüssel, aber mit gleichem Titel, Beginn-Datum (nicht Uhrzeit) und Ort entsteht ein Duplikatverdacht. Gleicher Titel an einem anderen Datum ist kein Verdacht. Fehlerhafte Einträge werden einzeln mit Grund gemeldet und blockieren die übrigen nicht.
 
@@ -112,7 +112,7 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 - AD-1: Hexagonal light, genau eine Replika. `internal/core` importiert nur die Standardbibliothek, einzige Ausnahme ist `golang.org/x/text/unicode/norm` (NFC). Adapter importieren nur `core`, nie einander. Nur `cmd/eventstore` kennt alle. Der Kern definiert die Ports `EventRepo`, `LocationRepo`, `TxRunner` und `Clock`.
 - AD-2: Fachlogik nur im Kern. SQL macht nur CRUD und einfache Vergleiche, ohne Views, Trigger, Funktionen, `lower()`/`trim()` oder `now()`. Die aktuelle Zeit kommt als Parameter aus `Clock`. Abgeleitete Werte (`effective*`, `name_key`) berechnet der Kern und speichert sie.
 - AD-6: Schreiben nur über die Kern-Anwendungsfälle `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation`, `CommitImport`, `RecomputeDerived` und `MarkArchived`. Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern und eine Hülle mit `TxRunner`; `CommitImport` ruft nur die Kerne in einer Transaktion auf. `SaveEvent` aus dem Admin ändert `importKey` nie. Admin und Import nutzen denselben Eingabetyp `core.EventInput`. Der Löschschutz für Orte liegt im Kern und zusätzlich im Fremdschlüssel `ON DELETE RESTRICT`.
-- AD-7: Lesen über die Kern-Abfragen `ListActiveEvents`, `ListArchivedEvents`, `GetEvent`, `ListLocations` und `ListEventTypes`. Sortierung: aktive Events nach `effectiveStart` aufsteigend, Archiv absteigend, bei Gleichstand nach `id`. Orte nach Namen im Kern (ENT-8).
+- AD-7: Lesen über die Kern-Abfragen `ListActiveEvents`, `ListArchivedEvents` und `ListEventTypes`, nur Listen. `GetEvent` und `ListLocations` nur für den Admin. Sortierung: aktive Events nach `effectiveStart` aufsteigend, Archiv absteigend, bei Gleichstand nach der internen `id`. Orte nach Namen im Kern (ENT-8).
 
 **Zeitmodell**
 - AD-3: Gespeichert werden `startDate` (Pflicht), `startTime`, `endDate`, `endTime` (optional) und `allDay` (bool), lokal Europe/Berlin. Eine leere Uhrzeit heißt „unbekannt“. `allDay` gilt für Beginn und Ende gemeinsam, gemischte Angaben und `endTime` ohne `endDate` werden abgelehnt. Die Genauigkeit (`exact`/`dateOnly`/`allDay`) leitet der Kern je Beginn und Ende ab und speichert sie nicht.
@@ -127,12 +127,12 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 **API-Vertrag**
 - AD-8: Spec-first. `api/v1/openapi.yaml` (OpenAPI 3.1, Rückfall 3.0.3) ist die einzige Quelle. Das Gerüst erzeugt `oapi-codegen` (`std-http-server` + `strict-server`). Es wird eingecheckt und nie von Hand geändert. v2 bekäme eine eigene Spec und ein eigenes Paket, dazu ein Abschaltdatum in `info` und einen `Sunset`-Header. Öffentlich ausgeliefert werden `/v1/openapi.yaml`, `/v1/import-v1.schema.json` und `/v1/docs` (Redoc), statisch außerhalb der Spec mit offenem CORS.
 - AD-9: Enum-Codes und `EventInput` sind nur in `openapi.yaml` (`components/schemas`) definiert. Das Import-Schema bindet sie per `$ref` ein. Die Kern-Konstanten spiegeln die Codes, und ein CI-Test prüft die Übereinstimmung. `formatVersion` ist Pflicht, unbekannte Versionen werden abgelehnt.
-- AD-14: Die Schreibform `EventInput` hat die Felder `title`, `type`, `locationId` oder `importLocation` (mitgebrachter Ort, nur Import), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source` (Objekt, ENT-10), `note`, `timetable` und `importKey` (nur Import). Die Leseform `Event` ist ein eigenes Schema mit denselben Feldnamen (ohne `importKey` und `importLocation`), plus `id`, `location` (vollständig), `startPrecision`, `endPrecision`, `effectiveStart`, `effectiveEnd` (lokaler Offset Europe/Berlin) und `archived`. `Canonicalize` bringt Eingaben in eine kanonische Form.
-- Ressourcen (aus dem Addendum): `GET /v1/events` (`from`, `to`, `type`), `GET /v1/events/{id}`, `GET /v1/locations`, `GET /v1/event-types`, `GET /v1/archive/events`.
+- AD-14: Die Schreibform `EventInput` hat die Felder `title`, `type`, `location` (mitgebrachter Ort, `name` Pflicht, Rest optional), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source` (Objekt, ENT-10), `note`, `timetable` und `importKey`. Die Leseform `Event` ist ein eigenes Schema mit denselben Feldnamen (ohne `importKey`, `location` vollständig), plus `startPrecision`, `endPrecision`, `effectiveStart`, `effectiveEnd` (lokaler Offset Europe/Berlin) und `archived`. Keine Form nach außen enthält interne Werte. `Canonicalize` bringt Eingaben in eine kanonische Form.
+- Ressourcen (aus dem Addendum): `GET /v1/events` (`from`, `to`, `type`), `GET /v1/event-types`, `GET /v1/archive/events`.
 
 **Import**
 - AD-10: Der Import ist zustandslos. (1) Beim Upload wird jeder Eintrag geparst, validiert und gegen den gesamten Bestand klassifiziert, archivierte Events eingeschlossen. Die Klassen sind `new`, `update`, `unchanged`, `duplicateSuspect`, `error` und pro Ort `newLocation` (ENT-11). (2) Innerhalb der Datei macht ein doppelter `importKey` oder ein gemeinsames Ziel-Event beide Einträge zu `error`, gleiche Einträge werden untereinander zu `duplicateSuspect`, und ein neuer Ort wird nur einmal angelegt. (3) Der Zwischenstand liegt nur im Browser-Formular. (4) Beim Speichern wird der vollständige Satz samt Entscheidungen, ursprünglicher Klasse und Ziel-ID gesendet und neu klassifiziert. Bei einer Abweichung wird der Eintrag als `stale` gemeldet. (5) `error`, `stale` und Verdachtsfälle ohne Entscheidung werden vor der Transaktion aussortiert, der Rest wird in einer Transaktion über `TxRunner` geschrieben, immer mit `allowDuplicates` (ENT-12). (6) Die Zusammenfassung nach ENT-11. Upload-Grenzen nach ENT-13.
-- AD-11: IDs sind UUIDv7 per `DEFAULT uuidv7()` (PostgreSQL 18). `importKey` ist eindeutig, wenn er gesetzt ist. Der Kern normalisiert alle Texte an einer Stelle auf NFC. `NormalizeKey` (trim, Leerraum zusammenfassen, lowercase) liefert den eindeutigen Ortsschlüssel `name_key` und den Titelschlüssel `title_key`. `FindDuplicateCandidates` vergleicht `title_key`, `startDate` und `locationId` über alle Events. `SaveEvent` erhält eine Policy `rejectDuplicates` oder `allowDuplicates`. Das Admin-Formular warnt zuerst und speichert erst nach Bestätigung mit `allowDuplicates`.
+- AD-11: IDs sind UUIDv7 per `DEFAULT uuidv7()` (PostgreSQL 18), rein intern; sie erscheinen weder in der API noch im Import-Schema. `importKey` ist eindeutig, wenn er gesetzt ist. Der Kern normalisiert alle Texte an einer Stelle auf NFC. `NormalizeKey` (trim, Leerraum zusammenfassen, lowercase) liefert den eindeutigen Ortsschlüssel `name_key` und den Titelschlüssel `title_key`. `FindDuplicateCandidates` vergleicht `title_key`, `startDate` und `locationId` über alle Events. `SaveEvent` erhält eine Policy `rejectDuplicates` oder `allowDuplicates`. Das Admin-Formular warnt zuerst und speichert erst nach Bestätigung mit `allowDuplicates`.
 
 **Sicherheit und Admin**
 - AD-12: `/v1/…` ist nur lesend (`GET`) mit offenem CORS. `/admin/…` hat kein CORS und verlangt eine Session (HttpOnly, Secure, SameSite=Strict). Gegen CSRF schützt `http.CrossOriginProtection`. Es gibt ein Konto: `ADMIN_USER` und `ADMIN_PASSWORD_HASH` (bcrypt) aus Umgebungsvariablen. Session und Anmeldeschutz nach ENT-6, ENT-7 und ENT-22.
@@ -180,7 +180,7 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 - ENT-15 (→ AD-6) Transaktionen: Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern, der die Repositories einer laufenden Transaktion erhält, und eine Hülle, die ihn über `TxRunner` ausführt. `CommitImport` ruft nur die Kerne auf, alles in einer Transaktion.
 - ENT-16 (→ AD-6) Import-Schlüssel: `SaveEvent` aus dem Admin ändert `importKey` nie. Nur `CommitImport` setzt ihn.
 - ENT-17 (→ AD-6, AD-13, AD-16) Weitere Schreib-Anwendungsfälle: `RecomputeDerived` (beim Start, alle abgeleiteten Werte: `effective*`, `title_key`, `name_key`) und `MarkArchived` (Bereinigungsjob). Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server.
-- ENT-18 (→ AD-14) Datenformen: Der mitgebrachte Ort heißt `importLocation` (`oneOf` mit `locationId`). `Event` und `EventInput` sind eigene Schemas mit denselben Feldnamen. `effective*` tragen den lokalen Offset von Europe/Berlin (`+01:00`/`+02:00`). `Canonicalize` (getrimmt, `""` als `null`, Ablaufplan sortiert) wird vor dem Speichern angewendet und beim Vergleich für `unchanged` genutzt.
+- ENT-18 (→ AD-14) Datenformen: Der mitgebrachte Ort heißt `location` wie in der Leseform; `locationId` und `importLocation` gibt es nicht (Sprint Change Proposal 2026-10-04). `Event` und `EventInput` sind eigene Schemas mit denselben Feldnamen. `effective*` tragen den lokalen Offset von Europe/Berlin (`+01:00`/`+02:00`). `Canonicalize` (getrimmt, `""` als `null`, Ablaufplan sortiert) wird vor dem Speichern angewendet und beim Vergleich für `unchanged` genutzt.
 - ENT-19 (→ AD-10) Import-Konflikte: Zwei Einträge mit demselben Ziel-Event sind beide `error`. Ein Eintrag, dessen Ziel-Event einen anderen `importKey` hat, ist schon beim Upload `error`.
 - ENT-20 (→ AD-15) Ablaufplan-Grenze: Programmpunkte liegen in `[effectiveStart, effectiveEnd]`, ein Punkt darf genau mit dem Event enden.
 - ENT-21 (→ AD-12, Seed) Betrieb: Die App läuft mit genau einer Replika. Nach dem ersten Deploy wird per `curl` mit gefälschtem `X-Forwarded-For` geprüft, ob Railway den Client-Wert verwirft (dann linker Eintrag) oder anhängt (dann rechter Eintrag). Das Ergebnis steht in der README.
@@ -195,7 +195,7 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 - SM-4: Ein OZ-Mitglied bestätigt nach Durchsicht der OpenAPI-Dokumentation, dass es Versionierung, Fehlerformat, Zeitformat und Filterkonventionen ohne Rückfrage übernehmen könnte.
 - SM-C1 (Gegenmetrik Scheinpräzision): Genauigkeitswerte werden nie geraten, um die Karte schöner aussehen zu lassen. Im Zweifel gilt der vorsichtigere Wert.
 
-**Testsammlung:** `zirndorf_events.json` (Stand 2026-09-18, Mai 2026 bis Dezember 2027) wird in das Import-Format v1 überführt. Dabei kommen Typ, Zeitgenauigkeit statt `00:00`, Ortsgenauigkeit, eine aus dem Feld `name` herausgelöste Quelle und Import-Schlüssel dazu. Orte werden mitgebracht, nicht per `locationId` referenziert, damit die Datei in jeder Umgebung importierbar ist. Die Datei liegt derzeit im Repo-Root, Story 3.4 verschiebt sie nach `testdata/`.
+**Testsammlung:** `zirndorf_events.json` (Stand 2026-09-18, Mai 2026 bis Dezember 2027) wird in das Import-Format v1 überführt. Dabei kommen Typ, Zeitgenauigkeit statt `00:00`, Ortsgenauigkeit, eine aus dem Feld `name` herausgelöste Quelle und Import-Schlüssel dazu. Orte werden mitgebracht (es gibt keine Referenz per Kennung), damit die Datei in jeder Umgebung importierbar ist. Die Datei liegt derzeit im Repo-Root, Story 3.4 verschiebt sie nach `testdata/`.
 
 ### Out of Scope v1
 
@@ -217,7 +217,7 @@ FR-7: Epic 1 - Ortsreferenz und Löschschutz
 FR-8: Epic 2 - Standardabfrage „heute“
 FR-9: Epic 2 - Filter nach Zeitraum und Event-Typ
 FR-10: Epic 2 - Kartengerechte Antwort mit vollständigem Ort
-FR-11: Epic 2 - Einzelabruf, Orts- und Event-Typen-Liste
+FR-11: Epic 2 - Nur Listen, Liste der Event-Typen
 FR-12: Epic 2 - Archiv-Zugriff
 FR-13: Epic 2 - Tägliche Bereinigung
 FR-14: Epic 1 - Admin-Anmeldung
@@ -231,7 +231,7 @@ NFR-5: alle Epics, ohne eigene Story (Best Effort)
 NFR-6: Epic 1 (Story 1.6)
 SM-1: Epic 2 (Story 2.6, Fixture) und Epic 3 (Story 3.5, Produktion)
 SM-2: Epic 3 (Stories 3.4, 3.5)
-SM-3: Epic 2 (Story 2.2)
+SM-3: Epic 2 (Story 2.3)
 SM-4: Epic 2 (Story 2.6, manuell)
 
 ## Epic List
@@ -768,43 +768,9 @@ damit ich Kartenfilter und Icons darauf aufbauen und das Muster für eigene Back
 **Dann** erlaubt CORS jede Herkunft (`Access-Control-Allow-Origin: *`), und Preflight-Anfragen werden beantwortet
 **Und** andere Methoden als `GET`, `HEAD` und `OPTIONS` werden mit 405 abgelehnt, unbekannte Pfade mit 404, beides als `application/problem+json` mit englischem `title`/`detail`
 
-### Story 2.2: Einzelnes Event und Orte abrufen
+### Story 2.2: entfällt
 
-Als Abnehmer,
-möchte ich ein Event über seine Kennung und die Liste aller Orte abrufen,
-damit ich Details anzeigen und Events nach Ort gruppieren kann.
-
-**Deckt ab:** FR-10, FR-11, KON-4, AD-7, AD-14, SM-3, ENT-8, ENT-10
-
-**Acceptance Criteria:**
-
-**Angenommen** die Spec ist um `GET /v1/events/{id}`, `GET /v1/locations` und die Schemas `Event` und `Location` erweitert
-**Wenn** ein Abnehmer ein vorhandenes Event abruft
-**Dann** liefert `GetEvent` die Leseform nach AD-14: `id`, `title`, `type`, `location` (vollständig: `id`, `name`, `address` als Objekt aus `street`, `postalCode` und `city`, `latitude`, `longitude`, `precision`, `note`), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `startPrecision`, `endPrecision`, `source` (Objekt aus `description` und `url`, ENT-10), `note`, `timetable`, `effectiveStart`, `effectiveEnd`, `archived`
-**Und** Uhrzeiten sind `HH:MM` oder `null`, Datumswerte `YYYY-MM-DD`, `effective*` ISO 8601 mit Offset
-**Und** der Ablaufplan ist chronologisch sortiert
-
-**Angenommen** ein archiviertes Event
-**Wenn** es über seine Kennung abgerufen wird
-**Dann** ist es weiterhin abrufbar, und `archived` ist `true`, berechnet über die Vorbei-Regel, unabhängig von der Bereinigung
-
-**Angenommen** eine unbekannte Kennung
-**Wenn** sie abgerufen wird
-**Dann** antwortet die API mit 404 als Problem Details
-**Und** eine syntaktisch ungültige Kennung wird mit 400 als Problem Details abgelehnt
-
-**Angenommen** zwei Events am selben Ort
-**Wenn** beide abgerufen werden
-**Dann** tragen sie dieselbe Ortskennung und identische Koordinaten
-**Und** nach einer Änderung der Koordinaten im Admin liefern beide die neuen Koordinaten (FR-7)
-
-**Angenommen** `GET /v1/locations`
-**Wenn** es aufgerufen wird
-**Dann** liefert `ListLocations` alle Orte in der Hülle `{ "data": [ … ] }`, sortiert nach ENT-8
-
-**Außerdem gilt:**
-- `components/schemas` enthält zusätzlich die Schreibform `EventInput` nach AD-14 (einschließlich `importKey` und `importLocation` für den mitgebrachten Ort, beide nur für den Import, ENT-18), mit denselben Feldnamen und Formaten wie `Event`, damit das Import-Schema in Epic 3 sie per `$ref` einbinden kann (AD-9).
-- Der Handler bildet nur Kern-Objekte auf die erzeugten Typen ab und leitet nichts selbst ab (AD-7).
+Gestrichen mit dem Sprint Change Proposal vom 2026-10-04: Die öffentliche API liefert Events nur als Listen und gibt keine Kennungen aus (FR-11). Die Leseform `Event`, die Schreibform `EventInput` und FR-10 setzt Story 2.3 um.
 
 ### Story 2.3: Events von heute und nach Zeitraum und Typ abfragen
 
@@ -812,11 +778,23 @@ Als Karten-App,
 möchte ich ohne Filter die Events von heute bekommen und optional nach Zeitraum und Event-Typen filtern,
 damit ich zeigen kann, was heute oder in einem bestimmten Zeitraum in Zirndorf los ist.
 
-**Deckt ab:** FR-8, FR-9, KON-5, KON-6, AD-16, ENT-4
+**Deckt ab:** FR-8, FR-9, FR-10, FR-11, KON-4, KON-5, KON-6, AD-7, AD-14, AD-16, SM-3, ENT-4, ENT-10, ENT-18
 
 **Acceptance Criteria:**
 
-**Angenommen** die Spec ist um `GET /v1/events` mit den Parametern `from`, `to` (jeweils Datum oder Zeitpunkt) und `type` (wiederholbar) erweitert
+**Angenommen** die Spec ist um das Schema `Event` erweitert
+**Wenn** ein Abnehmer `GET /v1/events` aufruft
+**Dann** hat jedes Event der Liste die Leseform nach AD-14: `title`, `type`, `location` (vollständig: `name`, `address` als Objekt aus `street`, `postalCode` und `city`, `latitude`, `longitude`, `precision`, `note`), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `startPrecision`, `endPrecision`, `source` (Objekt aus `description` und `url`, ENT-10), `note`, `timetable` (Einträge aus `description`, `date`, `startTime`, `endTime`), `effectiveStart`, `effectiveEnd`, `archived`
+**Und** Uhrzeiten sind `HH:MM` oder `null`, Datumswerte `YYYY-MM-DD`, `effective*` ISO 8601 mit Offset
+**Und** der Ablaufplan ist chronologisch sortiert
+**Und** kein Event, kein Ort und kein Programmpunkt enthält eine Kennung, einen `importKey`, `archivedAt`, `title_key` oder `name_key`
+
+**Angenommen** zwei Events am selben Ort
+**Wenn** beide in der Liste stehen
+**Dann** tragen sie denselben Ortsnamen und identische Koordinaten
+**Und** nach einer Änderung der Koordinaten im Admin liefern beide die neuen Koordinaten (FR-7)
+
+**Angenommen** die Spec enthält `GET /v1/events` mit den Parametern `from`, `to` (jeweils Datum oder Zeitpunkt) und `type` (wiederholbar) erweitert
 **Wenn** ein Abnehmer ohne Parameter abfragt
 **Dann** liefert `ListActiveEvents` alle Events mit `effectiveEnd > now`, deren Zeitraum den heutigen Tag (Europe/Berlin) berührt
 **Und** ein mehrtägiges Event ist an jedem seiner Tage enthalten
@@ -845,7 +823,10 @@ damit ich zeigen kann, was heute oder in einem bestimmten Zeitraum in Zirndorf l
 **Dann** antwortet die API mit 400, und `detail` erklärt, dass die reguläre Abfrage nur aktive Events liefert, und verweist auf `/v1/archive/events`
 
 **Außerdem gilt:**
-- Die Liste ist nach `effectiveStart` aufsteigend sortiert, bei Gleichstand nach `id`, in der Hülle `{ "data": [ … ] }`.
+- `components/schemas` enthält zusätzlich die Schreibform `EventInput` nach AD-14 (mit `location` als mitgebrachtem Ort und `importKey`, ENT-18), mit denselben Feldnamen und Formaten wie `Event`, damit das Import-Schema in Epic 3 sie per `$ref` einbinden kann (AD-9). Sie enthält keine Kennungen.
+- Die Spec beschreibt bei `location.name`, dass der Name einen Ort eindeutig kennzeichnet und zum Gruppieren dient, und im `info`-Abschnitt, dass die API nur Listen liefert und keine Kennungen ausgibt.
+- Der Handler bildet nur Kern-Objekte auf die erzeugten Typen ab und leitet nichts selbst ab (AD-7). Ein Test belegt, dass die JSON-Antwort keine Felder außer denen der Leseform enthält.
+- Die Liste ist nach `effectiveStart` aufsteigend sortiert, bei Gleichstand nach der internen `id`, in der Hülle `{ "data": [ … ] }`.
 - Die Prüfung `lo >= hi` geschieht nach der Normalisierung; `from=2026-12-24T18:00+01:00&to=2026-12-24` ist gültig.
 - Kern-Tests mit fester `Clock` decken die Beispiele aus FR-8 und FR-9 ab, ein Postgres-Test prüft das Prädikat gegen PostgreSQL 18.
 
@@ -967,8 +948,9 @@ damit ich Recherche-Dateien zuverlässig im richtigen Format erstellen kann.
 **Wenn** das Schema gelesen wird
 **Dann** verlangt es `formatVersion` und eine Liste von Events
 **Und** es bindet `EventInput` und die Enum-Codes per `$ref` aus `openapi.yaml` ein, statt sie zu kopieren (AD-9)
-**Und** jedes Event hat genau eines von beidem (`oneOf`): `locationId` für einen vorhandenen Ort oder `importLocation` für einen mitgebrachten Ort (ENT-18)
-**Und** ein mitgebrachter Ort hat immer `name`; `address`, `latitude`, `longitude` und `precision` sind im Schema optional, weil ein Ort mit vorhandenem Namen sie nicht braucht; `note` ist optional
+**Und** jedes Event bringt seinen Ort als `location` mit (ENT-18); eine Kennung (`locationId`) gibt es nicht
+**Und** `location` hat immer `name`; `address`, `latitude`, `longitude` und `precision` sind im Schema optional, weil ein Ort mit vorhandenem Namen sie nicht braucht; `note` ist optional
+**Und** das Schema enthält keine Kennungen
 **Und** `address` ist dasselbe Objekt wie in der Leseform (`street`, `postalCode`, `city`), per `$ref` aus `openapi.yaml` eingebunden (AD-9)
 **Und** jedes Event kann einen `importKey` haben
 **Und** `GET /v1/import-v1.schema.json` liefert das Schema öffentlich aus
@@ -984,7 +966,7 @@ damit ich Recherche-Dateien zuverlässig im richtigen Format erstellen kann.
 **Angenommen** eine Datei mit gültiger Version, in der einzelne Einträge fehlerhaft sind
 **Wenn** ich sie hochlade
 **Dann** werden genau diese Einträge mit Position, Titel und Grund gemeldet, die übrigen gelten als gültig
-**Und** fehlerhaft sind unter anderem: ungültiges Datum, unbekannter Typ, `locationId` und mitgebrachter Ort zugleich oder keines von beiden, eine syntaktisch ungültige oder unbekannte `locationId`, ein mitgebrachter neuer Ort ohne Adresse, Koordinaten oder Ortsgenauigkeit, ein neuer Ort mit unvollständiger Adresse (Straße, PLZ oder Ort fehlt) oder ungültiger PLZ
+**Und** fehlerhaft sind unter anderem: ungültiges Datum, unbekannter Typ, ein Event ohne `location` oder ohne Ortsnamen, ein mitgebrachter neuer Ort ohne Adresse, Koordinaten oder Ortsgenauigkeit, ein neuer Ort mit unvollständiger Adresse (Straße, PLZ oder Ort fehlt) oder ungültiger PLZ
 
 **Außerdem gilt:**
 - In dieser Story wird noch nichts in den Bestand geschrieben.
@@ -1021,7 +1003,7 @@ damit nichts stillschweigend verdoppelt oder verworfen wird.
 **Angenommen** Konflikte innerhalb der Datei
 **Wenn** klassifiziert wird
 **Dann** macht ein doppelter `importKey` beide Einträge zu `error`
-**Und** untereinander gleiche Einträge werden zu `duplicateSuspect`; bei einem neuen Ort zählt dafür sein `NormalizeKey`, weil er noch keine Kennung hat
+**Und** untereinander gleiche Einträge werden zu `duplicateSuspect`; als gleicher Ort zählt derselbe `NormalizeKey` des Ortsnamens
 **Und** ein mehrfach mitgebrachter neuer Ort (gleicher `NormalizeKey`) wird nur einmal als `newLocation` geführt
 
 **Angenommen** ein mitgebrachter Ort, dessen Name im Bestand existiert
@@ -1105,7 +1087,7 @@ damit ich sie importieren kann, ohne dass Genauigkeiten geraten werden.
 **Dann** liegt das Ergebnis als `testdata/zirndorf_events.v1.json` im Repo und ist gegen `import-v1.schema.json` gültig
 **Und** jedes Event hat einen stabilen `importKey`, einen Event-Typ und eine Quelle; die Quelle ist aus dem Feld `name` herausgelöst, und der Titel enthält danach keine Quellenangabe mehr
 **Und** `00:00` als Platzhalter wird zu einer leeren Uhrzeit
-**Und** Orte werden mitgebracht, nicht per `locationId` referenziert; gleiche Orte sind zusammengeführt (z. B. Paul-Metz-Halle nur einmal mit Adresse und Koordinaten) und haben eine Ortsgenauigkeit
+**Und** jedes Event bringt seinen Ort als `location` mit; gleiche Orte sind zusammengeführt (z. B. Paul-Metz-Halle nur einmal mit Adresse und Koordinaten) und haben eine Ortsgenauigkeit
 **Und** jede Adresse ist in `street`, `postalCode` und `city` aufgeteilt; der Zusatz „, Germany“ entfällt; Erläuterungen in Klammern (z. B. „Ortsteil-Zentrum, kein exakter Festplatz bekannt“) wandern in die Notiz des Orts
 
 **Angenommen** eine Angabe, die sich aus der Quelle nicht sicher ableiten lässt (Genauigkeit, Typ)

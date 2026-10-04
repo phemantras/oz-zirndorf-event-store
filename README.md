@@ -24,7 +24,8 @@ Für OZ-Backends gibt es noch keine gemeinsamen Schnittstellenregeln. Dieses Pro
 | Zeiten | Datum `YYYY-MM-DD` und getrennte Uhrzeit `HH:MM` (lokal Europe/Berlin, `null` = unbekannt). Berechnete Zeitpunkte als ISO 8601 mit Offset. |
 | Zeitraumfilter | `from` / `to`, beide inklusive. Ein Event ist enthalten, wenn sich sein Zeitraum mit dem Filter überschneidet. Fehlt `to`, ist der Zeitraum nach hinten offen. |
 | Listen | Immer eine Hülle `{ "data": [ … ] }`, nie ein nacktes Array. So lassen sich später Metadaten ohne Bruch ergänzen. |
-| Namen | Alles Technische englisch, Feldnamen in camelCase (`startDate`, `locationId`). Inhalte bleiben deutsch. |
+| Keine Kennungen | Events gibt es nur als gefilterte Listen, nie einzeln. Die API gibt keine internen IDs aus; Abnehmer müssen sich nichts merken. Ein Ort ist an seinem eindeutigen Namen erkennbar. |
+| Namen | Alles Technische englisch, Feldnamen in camelCase (`startDate`, `effectiveEnd`). Inhalte bleiben deutsch. |
 | CORS | Die öffentliche API ist offen für alle Herkünfte. Die Admin-Oberfläche ist davon getrennt und geschützt. |
 
 ## API im Überblick
@@ -33,10 +34,8 @@ Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourc
 
 | Ressource | Zweck |
 | --- | --- |
-| `GET /v1/events` | Aktive Events. Ohne Filter: alles, was heute noch stattfindet. Filter: `from`, `to`, `type` |
-| `GET /v1/events/{id}` | Einzelnes Event, auch archivierte |
+| `GET /v1/events` | Aktive Events. Ohne Filter: alles, was heute noch stattfindet. Filter: `from`, `to`, `type`. Events am selben Ort tragen denselben Ortsnamen und dieselben Koordinaten und lassen sich so auf der Karte gruppieren. |
 | `GET /v1/archive/events` | Vergangene Events, gleiche Filter |
-| `GET /v1/locations` | Alle Orte. Events am selben Ort haben dieselbe Ort-ID und eignen sich so zum Gruppieren auf der Karte. |
 | `GET /v1/event-types` | Liste der Event-Typen |
 
 Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`.
@@ -55,7 +54,6 @@ Ein Event, so wie es geplant ist (gekürzt):
 {
   "data": [
     {
-      "id": "0192f0c4-…",
       "title": "Zirndorfer Weihnachtsmarkt",
       "type": "market",
       "startDate": "2026-11-27",
@@ -69,7 +67,6 @@ Ein Event, so wie es geplant ist (gekürzt):
       "effectiveEnd": "2026-12-22T00:00:00+01:00",
       "archived": false,
       "location": {
-        "id": "0192f0b1-…",
         "name": "Marktplatz",
         "address": { "street": "Marktplatz", "postalCode": "90513", "city": "Zirndorf" },
         "latitude": 49.4425,
