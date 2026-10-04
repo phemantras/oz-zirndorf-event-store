@@ -490,6 +490,10 @@ func (emptyEvents) ListActiveEvents(context.Context, core.Clock, core.EventFilte
 	return nil, nil
 }
 
+func (emptyEvents) ListArchivedEvents(context.Context, core.Clock, core.EventFilter) ([]core.ListedEvent, error) {
+	return nil, nil
+}
+
 func emptyUseCases() useCases {
 	return useCases{locations: emptyLocations{}, events: emptyEvents{}}
 }

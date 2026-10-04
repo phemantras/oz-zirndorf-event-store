@@ -71,7 +71,7 @@ func (r *fakeEventRepo) ListOverlapping(ctx context.Context, overlap Overlap) ([
 	}
 	var matches []Event
 	for _, event := range all {
-		if (overlap.Hi == nil || event.Period.Start.Before(*overlap.Hi)) && event.Period.End.After(overlap.Lo) {
+		if (overlap.Hi == nil || event.Period.Start.Before(*overlap.Hi)) && (overlap.Lo == nil || event.Period.End.After(*overlap.Lo)) {
 			matches = append(matches, event)
 		}
 	}

@@ -272,7 +272,7 @@ const listEventsOverlapping = `-- name: ListEventsOverlapping :many
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
        source_description, source_url, note, effective_start, effective_end, title_key
 FROM events
-WHERE effective_end > $1
+WHERE ($1::timestamptz IS NULL OR effective_end > $1)
   AND ($2::timestamptz IS NULL OR effective_start < $2)
 `
 
@@ -282,7 +282,8 @@ type ListEventsOverlappingParams struct {
 }
 
 // The one filter predicate of AD-16 on the stored effective period; a NULL
-// hi leaves the period open-ended. The core passes lo and hi as parameters.
+// lo leaves the period open at the start, a NULL hi open-ended. The core
+// passes lo and hi as parameters.
 func (q *Queries) ListEventsOverlapping(ctx context.Context, arg ListEventsOverlappingParams) ([]Event, error) {
 	rows, err := q.db.Query(ctx, listEventsOverlapping, arg.Lo, arg.Hi)
 	if err != nil {

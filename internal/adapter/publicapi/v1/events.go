@@ -13,14 +13,19 @@ import (
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
-// EventLister is the core query behind /v1/events (AD-7).
+// EventLister holds the core queries behind /v1/events and
+// /v1/archive/events (AD-7).
 type EventLister interface {
 	ListActiveEvents(ctx context.Context, clock core.Clock, filter core.EventFilter) ([]core.ListedEvent, error)
+	ListArchivedEvents(ctx context.Context, clock core.Clock, filter core.EventFilter) ([]core.ListedEvent, error)
 }
 
-// archivePath is where past events are listed; the detail of a to before
-// today points there.
-const archivePath = basePath + "/archive/events"
+// Paths of the two event lists; the detail of a period that can only hold
+// events of the other list points there.
+const (
+	eventsPath  = basePath + "/events"
+	archivePath = basePath + "/archive/events"
+)
 
 // typeCodeSeparator joins the event type codes in a detail.
 const typeCodeSeparator = ", "
@@ -33,7 +38,8 @@ var filterProblemDetails = map[core.FieldError]string{
 	{Field: core.FilterFieldType, Problem: core.ProblemMissing}:       detailMissingType,
 	{Field: core.FilterFieldType, Problem: core.ProblemUnknownCode}:   fmt.Sprintf(detailUnknownTypeFormat, eventTypeCodes()),
 	{Field: core.FilterFieldTo, Problem: core.ProblemEmptyPeriod}:     detailEmptyPeriod,
-	{Field: core.FilterFieldTo, Problem: core.ProblemBeforeToday}:     fmt.Sprintf(detailBeforeTodayFormat, archivePath),
+	{Field: core.FilterFieldTo, Problem: core.ProblemBeforeToday}:     fmt.Sprintf(detailBeforeTodayFormat, eventsPath, archivePath),
+	{Field: core.FilterFieldFrom, Problem: core.ProblemAfterNow}:      fmt.Sprintf(detailAfterNowFormat, archivePath, eventsPath),
 }
 
 const (
@@ -41,7 +47,8 @@ const (
 	detailMissingType        = "Parameter type must not be empty; it takes an event type code such as market."
 	detailUnknownTypeFormat  = "Parameter type must be an event type code: %s."
 	detailEmptyPeriod        = "Parameters from and to give an empty period; to must not lie before from."
-	detailBeforeTodayFormat  = "Parameter to lies before today, but /v1/events lists only active events; use %s for past events."
+	detailBeforeTodayFormat  = "Parameter to lies before today, but %s lists only active events; use %s for past events."
+	detailAfterNowFormat     = "Parameter from lies at or after now, but %s lists only past events; use %s for active and future events."
 	detailInvalidFieldFormat = "Parameter %s is invalid."
 	// detailSeparator joins the details of several problems.
 	detailSeparator = " "
@@ -59,19 +66,47 @@ func eventTypeCodes() string {
 // an invalid filter is a 400 naming the parameter.
 func (s server) ListEvents(ctx context.Context, request ListEventsRequestObject) (ListEventsResponseObject, error) {
 	listed, err := s.events.ListActiveEvents(ctx, s.clock, eventFilterOf(request.Params))
-	var validation *core.ValidationError
-	if errors.As(err, &validation) {
-		problem := problemOf(http.StatusBadRequest, filterProblemDetail(validation))
-		return ListEvents400ApplicationProblemPlusJSONResponse{BadRequestApplicationProblemPlusJSONResponse(problem)}, nil
+	if problem, ok := filterProblemOf(err); ok {
+		return ListEvents400ApplicationProblemPlusJSONResponse{problem}, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("list active events: %w", err)
 	}
+	return ListEvents200JSONResponse{Data: eventsOf(listed)}, nil
+}
+
+// ListArchivedEvents returns the past events of the filter period from the
+// core; an invalid filter is a 400 naming the parameter.
+func (s server) ListArchivedEvents(ctx context.Context, request ListArchivedEventsRequestObject) (ListArchivedEventsResponseObject, error) {
+	// Both lists take the same parameters, so their generated types convert.
+	listed, err := s.events.ListArchivedEvents(ctx, s.clock, eventFilterOf(ListEventsParams(request.Params)))
+	if problem, ok := filterProblemOf(err); ok {
+		return ListArchivedEvents400ApplicationProblemPlusJSONResponse{problem}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list archived events: %w", err)
+	}
+	return ListArchivedEvents200JSONResponse{Data: eventsOf(listed)}, nil
+}
+
+// filterProblemOf turns an invalid filter reported by the core into the
+// 400 problem naming the parameters; ok is false for any other error.
+func filterProblemOf(err error) (problem BadRequestApplicationProblemPlusJSONResponse, ok bool) {
+	var validation *core.ValidationError
+	if !errors.As(err, &validation) {
+		return BadRequestApplicationProblemPlusJSONResponse{}, false
+	}
+	return BadRequestApplicationProblemPlusJSONResponse(problemOf(http.StatusBadRequest, filterProblemDetail(validation))), true
+}
+
+// eventsOf maps the listed events to the read form in the order of the
+// core; no events is an empty list, never null.
+func eventsOf(listed []core.ListedEvent) []Event {
 	events := make([]Event, 0, len(listed))
 	for _, event := range listed {
 		events = append(events, eventOf(event))
 	}
-	return ListEvents200JSONResponse{Data: events}, nil
+	return events
 }
 
 func eventFilterOf(params ListEventsParams) core.EventFilter {

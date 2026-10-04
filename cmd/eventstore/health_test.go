@@ -96,7 +96,7 @@ func TestRouterMountsPublicAPIBelowV1(t *testing.T) {
 	})
 	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), routeHandlers{admin: http.NotFoundHandler(), public: public})
 
-	for _, path := range []string{"/v1/events", "/v1/event-types", "/v1/openapi.yaml", "/v1/nope"} {
+	for _, path := range []string{"/v1/events", "/v1/archive/events", "/v1/event-types", "/v1/openapi.yaml", "/v1/nope"} {
 		for _, method := range []string{http.MethodGet, http.MethodOptions, http.MethodPost} {
 			rec := httptest.NewRecorder()
 			router.ServeHTTP(rec, httptest.NewRequest(method, path, nil))

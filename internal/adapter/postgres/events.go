@@ -48,11 +48,8 @@ func (r *EventRepo) List(ctx context.Context) ([]core.Event, error) {
 // database applies only the predicate of AD-16; entries are read for the
 // found events with one query.
 func (r *EventRepo) ListOverlapping(ctx context.Context, overlap core.Overlap) ([]core.Event, error) {
-	hi := pgtype.Timestamptz{}
-	if overlap.Hi != nil {
-		hi = instantParam(*overlap.Hi)
-	}
-	rows, err := r.queries.ListEventsOverlapping(ctx, db.ListEventsOverlappingParams{Lo: instantParam(overlap.Lo), Hi: hi})
+	params := db.ListEventsOverlappingParams{Lo: optionalInstantParam(overlap.Lo), Hi: optionalInstantParam(overlap.Hi)}
+	rows, err := r.queries.ListEventsOverlapping(ctx, params)
 	if err != nil {
 		return nil, fmt.Errorf("list overlapping events: %w", err)
 	}
@@ -354,4 +351,12 @@ func localTimeOf(timeOfDay pgtype.Time) *core.LocalTime {
 
 func instantParam(instant time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: instant, Valid: true}
+}
+
+// optionalInstantParam gives an open (nil) bound as NULL.
+func optionalInstantParam(instant *time.Time) pgtype.Timestamptz {
+	if instant == nil {
+		return pgtype.Timestamptz{}
+	}
+	return instantParam(*instant)
 }

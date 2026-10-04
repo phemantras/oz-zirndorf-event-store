@@ -163,23 +163,7 @@ paths:
             instant:
               summary: An instant with offset
               value: '2026-12-24T18:00+01:00'
-        - name: type
-          in: query
-          required: false
-          description: |
-            Event type code; repeat the parameter for several types
-            (`type=market&type=club`). An event matches when it has any of
-            the types; a type given twice counts once. Without `type`
-            every type matches. An empty or unknown code is an error.
-          style: form
-          explode: true
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/EventType'
-          example:
-            - market
-            - club
+        - $ref: '#/components/parameters/EventTypeFilter'
       responses:
         '200':
           description: The active events in the filter period, by start ascending.
@@ -224,6 +208,111 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
+  /archive/events:
+    get:
+      operationId: listArchivedEvents
+      summary: List the past events
+      description: |
+        Returns the archived events, those whose `effectiveEnd` is not
+        after now, whose effective period overlaps the filter period,
+        sorted by `effectiveStart` descending. An event is archived from
+        the minute its `effectiveEnd` is reached, independent of any
+        background job, and is never deleted automatically. At any moment
+        every event is in exactly one of `/v1/events` and
+        `/v1/archive/events`. The events have the same form as in
+        `/v1/events`, with `archived` set to `true`.
+
+        Defaults: without `from` the filter period is open at the start;
+        without `to` it ends now. So without parameters every past event
+        is listed.
+
+        The filter period is normalized to `[lo, hi)` and matched exactly
+        as in `/v1/events`, with the same parameters and errors. An empty
+        interval (`lo >= hi`) is an error; a `from` at or after now without
+        `to` is one too, since future events are listed only by
+        `/v1/events`. A period in the future with both `from` and `to` is
+        valid and yields an empty list.
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: |
+            Start of the filter period, inclusive: a date `YYYY-MM-DD`
+            (from 00:00 Europe/Berlin) or an instant with `Z` or an offset
+            `±HH:MM`. Without `from` the period is open at the start. A
+            `from` at or after now without `to` is an error, since active
+            and future events are listed only by `/v1/events`; so is a
+            given but empty `from`. Send the `+` of an offset URL-encoded as
+            `%2B` (`from=2026-12-24T18:00%2B01:00`).
+          schema:
+            type: string
+          examples:
+            date:
+              summary: A date
+              value: '2026-12-01'
+            instant:
+              summary: An instant with offset
+              value: '2026-12-24T10:00+01:00'
+        - name: to
+          in: query
+          required: false
+          description: |
+            End of the filter period, inclusive: a date `YYYY-MM-DD` (to
+            the end of that day in Europe/Berlin) or an instant with `Z` or
+            an offset `±HH:MM` (including its minute). Without `to` the
+            period ends now. A given but empty `to` is an error. Send the
+            `+` of an offset URL-encoded as `%2B`
+            (`to=2026-12-24T18:00%2B01:00`).
+          schema:
+            type: string
+          examples:
+            date:
+              summary: A date
+              value: '2026-06-30'
+            instant:
+              summary: An instant with offset
+              value: '2026-12-24T11:59+01:00'
+        - $ref: '#/components/parameters/EventTypeFilter'
+      responses:
+        '200':
+          description: The past events in the filter period, by start descending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventList'
+              example:
+                data:
+                  - title: Zirndorfer Kirchweih
+                    type: festival
+                    location:
+                      name: Festplatz Zirndorf
+                      address:
+                        street: Fürther Straße
+                        postalCode: '90513'
+                        city: Zirndorf
+                      latitude: 49.4459
+                      longitude: 10.9611
+                      precision: area
+                      note: null
+                    startDate: '2026-10-16'
+                    startTime: null
+                    endDate: '2026-10-19'
+                    endTime: null
+                    allDay: true
+                    startPrecision: allDay
+                    endPrecision: allDay
+                    source:
+                      description: Amtsblatt der Stadt Zirndorf, Oktober 2026
+                      url: null
+                    note: null
+                    timetable: []
+                    effectiveStart: '2026-10-16T00:00:00+02:00'
+                    effectiveEnd: '2026-10-20T00:00:00+02:00'
+                    archived: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /event-types:
     get:
       operationId: listEventTypes
@@ -258,12 +347,34 @@ paths:
         '500':
           $ref: '#/components/responses/InternalServerError'
 components:
+  parameters:
+    EventTypeFilter:
+      name: type
+      in: query
+      required: false
+      description: |
+        Event type code; repeat the parameter for several types
+        (`type=market&type=club`). An event matches when it has any of
+        the types; a type given twice counts once. Without `type`
+        every type matches. An empty or unknown code is an error.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/EventType'
+      example:
+        - market
+        - club
   responses:
     BadRequest:
       description: |
         A query parameter is invalid. `detail` names the parameter: a date
         or instant in the wrong form or without offset, an empty or unknown
-        event type, an empty filter period, or a `to` before today.
+        event type, or an empty filter period. A period that can only hold
+        events of the other list is an error too: a `to` before today in
+        `/v1/events`, a `from` at or after now in `/v1/archive/events`;
+        `detail` then names the endpoint to use.
       content:
         application/problem+json:
           schema:
@@ -288,6 +399,16 @@ components:
                 detail: >-
                   Parameter to lies before today, but /v1/events lists only
                   active events; use /v1/archive/events for past events.
+            afterNow:
+              summary: Only from, at or after now, in the archive
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: >-
+                  Parameter from lies at or after now, but
+                  /v1/archive/events lists only past events; use /v1/events
+                  for active and future events.
     InternalServerError:
       description: The server failed to answer the request.
       content:
