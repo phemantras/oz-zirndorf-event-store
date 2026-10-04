@@ -204,13 +204,15 @@ func TestEventRepoListOverlappingAppliesThePredicateAtBothBounds(t *testing.T) {
 		overlap core.Overlap
 		want    map[string]int
 	}{
-		{"effective start equal to hi is not included", core.Overlap{Lo: start.Add(-time.Hour), Hi: &start}, map[string]int{}},
-		{"effective start just before hi is included", core.Overlap{Lo: start.Add(-time.Hour), Hi: ptrTo(start.Add(time.Minute))},
+		{"effective start equal to hi is not included", core.Overlap{Lo: ptrTo(start.Add(-time.Hour)), Hi: &start}, map[string]int{}},
+		{"effective start just before hi is included", core.Overlap{Lo: ptrTo(start.Add(-time.Hour)), Hi: ptrTo(start.Add(time.Minute))},
 			map[string]int{stored.ID: 2}},
-		{"effective end equal to lo is not included", core.Overlap{Lo: end, Hi: ptrTo(end.Add(time.Hour))}, map[string]int{}},
-		{"effective end just after lo is included", core.Overlap{Lo: end.Add(-time.Minute), Hi: ptrTo(end.Add(time.Hour))},
+		{"effective end equal to lo is not included", core.Overlap{Lo: &end, Hi: ptrTo(end.Add(time.Hour))}, map[string]int{}},
+		{"effective end just after lo is included", core.Overlap{Lo: ptrTo(end.Add(-time.Minute)), Hi: ptrTo(end.Add(time.Hour))},
 			map[string]int{stored.ID: 2}},
-		{"open hi includes every later event", core.Overlap{Lo: end.Add(-time.Minute)}, map[string]int{stored.ID: 2, other.ID: 1}},
+		{"open hi includes every later event", core.Overlap{Lo: ptrTo(end.Add(-time.Minute))}, map[string]int{stored.ID: 2, other.ID: 1}},
+		{"open lo includes every earlier event", core.Overlap{Hi: &other.Period.Start}, map[string]int{stored.ID: 2}},
+		{"open lo and hi include every event", core.Overlap{}, map[string]int{stored.ID: 2, other.ID: 1}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -225,7 +227,7 @@ func TestEventRepoListOverlappingReturnsCompleteEvents(t *testing.T) {
 	fixture := newEventFixture(t)
 	full := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
 
-	got, err := fixture.repo.ListOverlapping(context.Background(), core.Overlap{Lo: full.Period.Start})
+	got, err := fixture.repo.ListOverlapping(context.Background(), core.Overlap{Lo: &full.Period.Start})
 	if err != nil {
 		t.Fatalf("ListOverlapping: %v", err)
 	}
@@ -372,7 +374,7 @@ func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 	calls := map[string]func() error{
 		"List": func() error { _, err := repo.List(ctx); return err },
 		"ListOverlapping": func() error {
-			_, err := repo.ListOverlapping(ctx, core.Overlap{Lo: event.Period.Start})
+			_, err := repo.ListOverlapping(ctx, core.Overlap{Lo: &event.Period.Start})
 			return err
 		},
 		"Get":           func() error { _, err := repo.Get(ctx, unknownEventID); return err },

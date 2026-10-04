@@ -326,19 +326,32 @@ func TestListActiveEventsPassesFailuresOn(t *testing.T) {
 	})
 }
 
-// assertOverlap checks the one overlap the repository was asked for.
+// assertOverlap checks the one overlap the repository was asked for, with
+// a lower bound.
 func assertOverlap(t *testing.T, repo *fakeEventRepo, lo time.Time, hi *time.Time) {
+	t.Helper()
+	assertOverlapBounds(t, repo, &lo, hi)
+}
+
+// assertOverlapBounds checks the one overlap the repository was asked for;
+// a nil bound is open.
+func assertOverlapBounds(t *testing.T, repo *fakeEventRepo, lo, hi *time.Time) {
 	t.Helper()
 	if len(repo.overlaps) != 1 {
 		t.Fatalf("overlaps = %v, want exactly one", repo.overlaps)
 	}
 	got := repo.overlaps[0]
-	if !got.Lo.Equal(lo) {
+	if !sameBound(got.Lo, lo) {
 		t.Errorf("lo = %v, want %v", got.Lo, lo)
 	}
-	if (got.Hi == nil) != (hi == nil) || (hi != nil && !got.Hi.Equal(*hi)) {
+	if !sameBound(got.Hi, hi) {
 		t.Errorf("hi = %v, want %v", got.Hi, hi)
 	}
+}
+
+// sameBound reports whether two bounds are both open or the same instant.
+func sameBound(got, want *time.Time) bool {
+	return (got == nil) == (want == nil) && (want == nil || got.Equal(*want))
 }
 
 func ptr[T any](value T) *T { return &value }
@@ -407,4 +420,251 @@ func TestListActiveEventsCoversTheWholeDayWhenDaylightSavingTimeEnds(t *testing.
 	if hours := hi.Sub(lo).Hours(); hours != 25 {
 		t.Errorf("period lasts %v hours, want 25", hours)
 	}
+}
+
+// archiveEvents are christmasEvents plus events that ended before, at and
+// after the clock of the examples.
+func archiveEvents(t *testing.T) []Event {
+	t.Helper()
+	sommerfest := storedEvent(t, "0192f0b1-0000-7000-8000-000000000321", "Sommerfest",
+		EventTimes{StartDate: LocalDate{2026, time.June, 20}})
+	sommerfest.Type = EventTypeFestival
+	return append(christmasEvents(t),
+		sommerfest,
+		storedEvent(t, "0192f0b1-0000-7000-8000-000000000322", "Nikolausmarkt",
+			EventTimes{StartDate: december(5), EndDate: december(6)}),
+		storedEvent(t, "0192f0b1-0000-7000-8000-000000000323", "Frühschoppen",
+			EventTimes{StartDate: christmasEve, StartTime: localTime(10, 0), EndDate: christmasEve, EndTime: localTime(11, 59)}),
+		storedEvent(t, "0192f0b1-0000-7000-8000-000000000324", "Mittagsläuten",
+			EventTimes{StartDate: christmasEve, StartTime: localTime(11, 0), EndDate: christmasEve, EndTime: localTime(12, 0)}),
+		storedEvent(t, "0192f0b1-0000-7000-8000-000000000325", "Bescherung",
+			EventTimes{StartDate: christmasEve, StartTime: localTime(11, 30), EndDate: christmasEve, EndTime: localTime(12, 1)}),
+	)
+}
+
+// pastTitles are the titles of archiveEvents that are over at noon, by
+// effective start descending.
+var pastTitles = []string{"Mittagsläuten", "Frühschoppen", "Adventsbasar", "Nikolausmarkt", "Sommerfest"}
+
+// listArchivedTitles runs ListArchivedEvents and returns the titles in
+// order.
+func listArchivedTitles(t *testing.T, repo *fakeEventRepo, clock Clock, filter EventFilter) []string {
+	t.Helper()
+	listed, err := newQueryService(repo, hall(), park()).ListArchivedEvents(context.Background(), clock, filter)
+	if err != nil {
+		t.Fatalf("ListArchivedEvents(%+v): %v", filter, err)
+	}
+	var titles []string
+	for _, event := range listed {
+		titles = append(titles, event.Title)
+	}
+	return titles
+}
+
+func TestListArchivedEventsWithoutFilterListsEveryPastEventLatestFirst(t *testing.T) {
+	repo := newFakeEventRepo(archiveEvents(t)...)
+
+	got := listArchivedTitles(t, repo, christmasNoon(t), EventFilter{})
+
+	if !slices.Equal(got, pastTitles) {
+		t.Errorf("titles = %v, want %v", got, pastTitles)
+	}
+	assertOverlapBounds(t, repo, nil, ptr(berlinInstant(t, christmasEve, 12, 0)))
+}
+
+func TestListArchivedEventsContainsAnEventFromTheMinuteItEnds(t *testing.T) {
+	got := listArchivedTitles(t, newFakeEventRepo(archiveEvents(t)...), christmasNoon(t), EventFilter{})
+
+	for _, test := range []struct {
+		title string
+		want  bool
+	}{
+		{"Frühschoppen", true},  // ended 11:59
+		{"Mittagsläuten", true}, // ends 12:00, now
+		{"Bescherung", false},   // ends 12:01
+	} {
+		if slices.Contains(got, test.title) != test.want {
+			t.Errorf("%s in archive = %v, want %v", test.title, !test.want, test.want)
+		}
+	}
+}
+
+func TestListArchivedEventsNormalizesThePeriodFilter(t *testing.T) {
+	noon := berlinInstant(t, christmasEve, 12, 0)
+	tests := []struct {
+		name   string
+		filter EventFilter
+		lo     *time.Time
+		hi     *time.Time
+	}{
+		{"only to is open at the start", EventFilter{To: ptr("2026-06-30")}, nil, ptr(berlinInstant(t, LocalDate{2026, time.July, 1}, 0, 0))},
+		{"only from ends now", EventFilter{From: ptr("2026-12-01")}, ptr(berlinInstant(t, december(1), 0, 0)), &noon},
+		{"instant in to counts its whole minute", EventFilter{To: ptr("2026-12-24T09:00+01:00")}, nil, ptr(berlinInstant(t, christmasEve, 9, 1))},
+		{"from and to in the future", EventFilter{From: ptr("2027-01-01"), To: ptr("2027-01-31")},
+			ptr(berlinInstant(t, LocalDate{2027, time.January, 1}, 0, 0)), ptr(berlinInstant(t, LocalDate{2027, time.February, 1}, 0, 0))},
+		{"from just before now", EventFilter{From: ptr("2026-12-24T11:59+01:00")}, ptr(berlinInstant(t, christmasEve, 11, 59)), &noon},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newFakeEventRepo()
+			if _, err := newQueryService(repo).ListArchivedEvents(context.Background(), christmasNoon(t), test.filter); err != nil {
+				t.Fatalf("ListArchivedEvents: %v", err)
+			}
+			assertOverlapBounds(t, repo, test.lo, test.hi)
+		})
+	}
+}
+
+func TestListArchivedEventsMatchesPastEventsByOverlap(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter EventFilter
+		want   []string
+	}{
+		{"only to", EventFilter{To: ptr("2026-06-30")}, []string{"Sommerfest"}},
+		{"only to on the day of an event", EventFilter{To: ptr("2026-06-20")}, []string{"Sommerfest"}},
+		{"only to before every event", EventFilter{To: ptr("2026-06-19")}, nil},
+		{"only from", EventFilter{From: ptr("2026-12-01")}, []string{"Mittagsläuten", "Frühschoppen", "Adventsbasar", "Nikolausmarkt"}},
+		{"from on the last day of an event", EventFilter{From: ptr("2026-12-06")}, []string{"Mittagsläuten", "Frühschoppen", "Adventsbasar", "Nikolausmarkt"}},
+		{"from and to", EventFilter{From: ptr("2026-12-06"), To: ptr("2026-12-23")}, []string{"Adventsbasar", "Nikolausmarkt"}},
+		{"to in the future", EventFilter{To: ptr("2027-01-31")}, pastTitles},
+		{"from and to in the future", EventFilter{From: ptr("2027-01-01"), To: ptr("2027-01-31")}, nil},
+		{"running events overlapping the period are left out", EventFilter{From: ptr("2026-12-24T11:30+01:00"), To: ptr("2026-12-24")},
+			[]string{"Mittagsläuten", "Frühschoppen"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := listArchivedTitles(t, newFakeEventRepo(archiveEvents(t)...), christmasNoon(t), test.filter)
+			if !slices.Equal(got, test.want) {
+				t.Errorf("titles = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestListArchivedEventsFiltersByAnyOfTheTypes(t *testing.T) {
+	got := listArchivedTitles(t, newFakeEventRepo(archiveEvents(t)...), christmasNoon(t),
+		EventFilter{Types: []string{"festival", "festival"}})
+
+	if want := []string{"Sommerfest"}; !slices.Equal(got, want) {
+		t.Errorf("titles = %v, want %v", got, want)
+	}
+}
+
+func TestListArchivedEventsRejectsInvalidFiltersWithoutAskingTheRepository(t *testing.T) {
+	tests := []struct {
+		name   string
+		filter EventFilter
+		want   []FieldError
+	}{
+		{"german date", EventFilter{From: ptr("24.12.2026")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
+		{"instant without offset", EventFilter{To: ptr("2026-12-24T18:00")}, []FieldError{{FilterFieldTo, ProblemInvalidFormat}}},
+		{"from given empty", EventFilter{From: ptr("")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
+		{"unknown type", EventFilter{Types: []string{"foo"}}, []FieldError{{FilterFieldType, ProblemUnknownCode}}},
+		{"empty type", EventFilter{Types: []string{""}}, []FieldError{{FilterFieldType, ProblemMissing}}},
+		{"every parameter", EventFilter{From: ptr("gestern"), To: ptr(""), Types: []string{"foo"}}, []FieldError{
+			{FilterFieldFrom, ProblemInvalidFormat}, {FilterFieldTo, ProblemInvalidFormat}, {FilterFieldType, ProblemUnknownCode},
+		}},
+		{"empty period", EventFilter{From: ptr("2026-12-28"), To: ptr("2026-12-27")}, []FieldError{{FilterFieldTo, ProblemEmptyPeriod}}},
+		{"only from after now", EventFilter{From: ptr("2027-01-01")}, []FieldError{{FilterFieldFrom, ProblemAfterNow}}},
+		{"only from at now", EventFilter{From: ptr("2026-12-24T12:00+01:00")}, []FieldError{{FilterFieldFrom, ProblemAfterNow}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := newFakeEventRepo(archiveEvents(t)...)
+
+			_, err := newQueryService(repo, hall()).ListArchivedEvents(context.Background(), christmasNoon(t), test.filter)
+
+			var validation *ValidationError
+			if !errors.As(err, &validation) || !errors.Is(err, ErrValidation) {
+				t.Fatalf("err = %v, want *ValidationError", err)
+			}
+			if !slices.Equal(validation.Fields, test.want) {
+				t.Errorf("fields = %v, want %v", validation.Fields, test.want)
+			}
+			if len(repo.overlaps) != 0 {
+				t.Errorf("repository was asked for %v", repo.overlaps)
+			}
+		})
+	}
+}
+
+func TestListArchivedEventsSortsByEffectiveStartDescendingThenID(t *testing.T) {
+	earlierB := storedEvent(t, "0192f0b1-0000-7000-8000-000000000332", "Probe B", EventTimes{StartDate: december(22), StartTime: localTime(19, 0)})
+	earlierA := storedEvent(t, "0192f0b1-0000-7000-8000-000000000331", "Probe A", EventTimes{StartDate: december(22), StartTime: localTime(19, 0)})
+	later := storedEvent(t, "0192f0b1-0000-7000-8000-000000000333", "Generalprobe", EventTimes{StartDate: december(23), StartTime: localTime(19, 0)})
+	repo := newFakeEventRepo(earlierB, later, earlierA)
+
+	got := listArchivedTitles(t, repo, christmasNoon(t), EventFilter{})
+
+	if want := []string{"Generalprobe", "Probe A", "Probe B"}; !slices.Equal(got, want) {
+		t.Errorf("titles = %v, want %v", got, want)
+	}
+}
+
+func TestListArchivedEventsCompletesEachEventAsArchived(t *testing.T) {
+	market := storedEvent(t, marketID, "Nikolausmarkt", EventTimes{StartDate: december(5), EndDate: december(6)})
+	market.Timetable = []TimetableEntry{
+		{ID: "b", Description: "Nikolaus", Date: december(6), StartTime: localTime(16, 0)},
+		{ID: "a", Description: "Eröffnung", Date: december(5), StartTime: localTime(17, 0)},
+	}
+	market.Period = Period{Start: market.Period.Start.UTC(), End: market.Period.End.UTC()}
+
+	listed, err := newQueryService(newFakeEventRepo(market), hall()).ListArchivedEvents(context.Background(), christmasNoon(t), EventFilter{})
+	if err != nil {
+		t.Fatalf("ListArchivedEvents: %v", err)
+	}
+
+	if len(listed) != 1 {
+		t.Fatalf("listed %d events, want 1", len(listed))
+	}
+	got := listed[0]
+	if !got.Archived || got.Location != hall() {
+		t.Errorf("archived = %v, location = %+v, want archived at the hall", got.Archived, got.Location)
+	}
+	if got.Timetable[0].Description != "Eröffnung" {
+		t.Errorf("timetable = %+v, want it sorted chronologically", got.Timetable)
+	}
+	if got.StartPrecision != TimePrecisionDateOnly || got.EndPrecision != TimePrecisionDateOnly {
+		t.Errorf("precisions = %v, %v, want dateOnly", got.StartPrecision, got.EndPrecision)
+	}
+	if got.Period.Start.Location().String() != berlinZoneName {
+		t.Errorf("period zone = %s, want %s", got.Period.Start.Location(), berlinZoneName)
+	}
+}
+
+func TestEveryEventIsInExactlyOneOfActiveAndArchive(t *testing.T) {
+	for _, clock := range []Clock{
+		christmasNoon(t),
+		clockAt(t, christmasEve, 11, 59),
+		clockAt(t, christmasEve, 14, 0),
+		clockAt(t, december(25), 0, 0),
+	} {
+		events := archiveEvents(t)
+		active := listActiveTitles(t, newFakeEventRepo(events...), clock, EventFilter{From: ptr("1900-01-01")})
+		archived := listArchivedTitles(t, newFakeEventRepo(events...), clock, EventFilter{})
+		for _, event := range events {
+			inActive, inArchive := slices.Contains(active, event.Title), slices.Contains(archived, event.Title)
+			if inActive == inArchive {
+				t.Errorf("at %v %s active = %v, archived = %v, want exactly one", clock.Now(), event.Title, inActive, inArchive)
+			}
+		}
+	}
+}
+
+func TestListArchivedEventsPassesFailuresOn(t *testing.T) {
+	t.Run("events", func(t *testing.T) {
+		repo := newFakeEventRepo()
+		repo.overlapErr = errDatabaseDown
+		_, err := newQueryService(repo, hall()).ListArchivedEvents(context.Background(), christmasNoon(t), EventFilter{})
+		if !errors.Is(err, errDatabaseDown) {
+			t.Errorf("err = %v, want %v", err, errDatabaseDown)
+		}
+	})
+	t.Run("location of an event missing", func(t *testing.T) {
+		_, err := newQueryService(newFakeEventRepo(archiveEvents(t)...)).ListArchivedEvents(context.Background(), christmasNoon(t), EventFilter{})
+		if !errors.Is(err, ErrNotFound) {
+			t.Errorf("err = %v, want ErrNotFound", err)
+		}
+	})
 }

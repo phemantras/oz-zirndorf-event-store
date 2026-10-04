@@ -10,8 +10,8 @@ import (
 )
 
 // Parameter names of the event filter, used in FieldError. The OpenAPI spec
-// (api/v1/openapi.yaml) defines them as query parameters of /events; these
-// constants mirror it (AD-9).
+// (api/v1/openapi.yaml) defines them as query parameters of /events and
+// /archive/events; these constants mirror it (AD-9).
 const (
 	FilterFieldFrom = "from"
 	FilterFieldTo   = "to"
@@ -49,11 +49,12 @@ type EventFilter struct {
 	Types []string
 }
 
-// Overlap is the normalized, half-open filter period [Lo, Hi). A nil Hi
-// means the period is open-ended. An event matches when its effective
-// start is before Hi and its effective end after Lo (AD-16).
+// Overlap is the normalized, half-open filter period [Lo, Hi). A nil Lo
+// means the period is open at the start, a nil Hi that it is open-ended.
+// An event matches when its effective start is before Hi (if any) and its
+// effective end after Lo (if any) (AD-16).
 type Overlap struct {
-	Lo time.Time
+	Lo *time.Time
 	Hi *time.Time
 }
 
@@ -100,7 +101,58 @@ func (s *EventService) ListActiveEvents(ctx context.Context, clock Clock, filter
 	if err != nil {
 		return nil, err
 	}
-	events, err := s.events.ListOverlapping(ctx, overlap)
+	// Lo is never before now, so every event found is active.
+	listed, err := s.listMatchingEvents(ctx, eventQuery{overlap: overlap, types: types, now: now, keep: everyEvent})
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(listed, compareByStartThenID)
+	return listed, nil
+}
+
+// ListArchivedEvents returns the past events, those whose effective end is
+// not after now, whose effective period overlaps the filter period, of any
+// of the filter types, sorted by effective start descending, equal starts
+// by ID. Without from the period is open at the start, without to it ends
+// now. Dates and instants count as in ListActiveEvents. The clock is read
+// once. An invalid filter yields *ValidationError naming from, to or type,
+// and the repository is not asked.
+func (s *EventService) ListArchivedEvents(ctx context.Context, clock Clock, filter EventFilter) ([]ListedEvent, error) {
+	now := clock.Now()
+	overlap, types, err := normalizeArchiveFilter(filter, now)
+	if err != nil {
+		return nil, err
+	}
+	// Being over is no overlap with a period, so the core leaves out the
+	// running events by the rule that also sets Archived (AD-16).
+	listed, err := s.listMatchingEvents(ctx, eventQuery{overlap: overlap, types: types, now: now, keep: archivedEvent})
+	if err != nil {
+		return nil, err
+	}
+	slices.SortFunc(listed, compareByStartDescendingThenID)
+	return listed, nil
+}
+
+// eventQuery is what listMatchingEvents asks for: the events overlapping
+// overlap, of the allowed types, completed at now and kept by keep.
+type eventQuery struct {
+	overlap Overlap
+	types   eventTypeSet
+	now     time.Time
+	keep    func(ListedEvent) bool
+}
+
+// everyEvent keeps every listed event.
+func everyEvent(ListedEvent) bool { return true }
+
+// archivedEvent keeps the listed events that are over.
+func archivedEvent(event ListedEvent) bool { return event.Archived }
+
+// listMatchingEvents asks the repository for the overlapping events and
+// returns those of the allowed types that query.keep keeps, completed with
+// their locations, in no particular order.
+func (s *EventService) listMatchingEvents(ctx context.Context, query eventQuery) ([]ListedEvent, error) {
+	events, err := s.events.ListOverlapping(ctx, query.overlap)
 	if err != nil {
 		return nil, fmt.Errorf("list overlapping events: %w", err)
 	}
@@ -111,16 +163,17 @@ func (s *EventService) ListActiveEvents(ctx context.Context, clock Clock, filter
 
 	listed := make([]ListedEvent, 0, len(events))
 	for _, event := range events {
-		if !types.allows(event.Type) {
+		if !query.types.allows(event.Type) {
 			continue
 		}
 		location, ok := locations[event.LocationID]
 		if !ok {
 			return nil, fmt.Errorf("location %s of event %s: %w", event.LocationID, event.ID, ErrNotFound)
 		}
-		listed = append(listed, listedEventOf(event, location, frozenClock(now)))
+		if completed := listedEventOf(event, location, frozenClock(query.now)); query.keep(completed) {
+			listed = append(listed, completed)
+		}
 	}
-	slices.SortFunc(listed, compareByStartThenID)
 	return listed, nil
 }
 
@@ -129,64 +182,129 @@ func (s *EventService) ListActiveEvents(ctx context.Context, clock Clock, filter
 // with an effective end after now match.
 func normalizeActiveFilter(filter EventFilter, now time.Time) (Overlap, eventTypeSet, error) {
 	today := dateOf(now.In(berlin)).String()
-	fromText, toText := today, today
-	if filter.From != nil {
-		fromText = *filter.From
+	fromText, toText := filter.From, filter.To
+	defaulted := noBoundDefaulted
+	if filter.From == nil {
+		fromText, defaulted = &today, fromDefaultedToToday
+		// Only from without to is open-ended; without both, to is today.
+		if filter.To == nil {
+			toText = &today
+		}
 	}
-	if filter.To != nil {
-		toText = *filter.To
+	parsed, err := parseFilter(fromText, toText, filter.Types)
+	if err != nil {
+		return Overlap{}, nil, err
 	}
-	// Only from without to is open-ended; without both, to is today.
-	hasTo := filter.To != nil || filter.From == nil
 
+	var overlap Overlap
+	if parsed.to != nil {
+		if problem := emptyPeriodProblem(parsed.from.start, parsed.to.end, defaulted); problem != nil {
+			return Overlap{}, nil, &ValidationError{Fields: []FieldError{*problem}}
+		}
+		overlap.Hi = &parsed.to.end
+	}
+	lo := parsed.from.start
+	if now.After(lo) {
+		lo = now
+	}
+	overlap.Lo = &lo
+	return overlap, parsed.types, nil
+}
+
+// normalizeArchiveFilter turns the filter into the overlap the archive
+// asks for at now and the allowed types: without from Lo is open, without
+// to Hi is now.
+func normalizeArchiveFilter(filter EventFilter, now time.Time) (Overlap, eventTypeSet, error) {
+	parsed, err := parseFilter(filter.From, filter.To, filter.Types)
+	if err != nil {
+		return Overlap{}, nil, err
+	}
+
+	hi, defaulted := now, toDefaultedToNow
+	if parsed.to != nil {
+		hi, defaulted = parsed.to.end, noBoundDefaulted
+	}
+	overlap := Overlap{Hi: &hi}
+	if parsed.from != nil {
+		if problem := emptyPeriodProblem(parsed.from.start, hi, defaulted); problem != nil {
+			return Overlap{}, nil, &ValidationError{Fields: []FieldError{*problem}}
+		}
+		overlap.Lo = &parsed.from.start
+	}
+	return overlap, parsed.types, nil
+}
+
+// parsedFilter is a filter whose parameters are all valid: from and to as
+// bounds, nil when open, and the allowed types.
+type parsedFilter struct {
+	from  *filterBound
+	to    *filterBound
+	types eventTypeSet
+}
+
+// parseFilter reads from and to, each nil when open, and the type codes.
+// It reports every invalid parameter, in the order from, to, type, as
+// *ValidationError.
+func parseFilter(fromText, toText *string, typeTexts []string) (parsedFilter, error) {
 	var problems []FieldError
 	report := func(field string, problem FieldProblem) {
 		problems = append(problems, FieldError{Field: field, Problem: problem})
 	}
-	from, ok := parseFilterBound(fromText)
+	from, ok := parseOptionalFilterBound(fromText)
 	if !ok {
 		report(FilterFieldFrom, ProblemInvalidFormat)
 	}
-	var to *filterBound
-	if hasTo {
-		bound, ok := parseFilterBound(toText)
-		if !ok {
-			report(FilterFieldTo, ProblemInvalidFormat)
-		}
-		to = &bound
+	to, ok := parseOptionalFilterBound(toText)
+	if !ok {
+		report(FilterFieldTo, ProblemInvalidFormat)
 	}
-	types, problem := parseEventTypeFilter(filter.Types)
+	types, problem := parseEventTypeFilter(typeTexts)
 	if problem != "" {
 		report(FilterFieldType, problem)
 	}
 	if problems != nil {
-		return Overlap{}, nil, &ValidationError{Fields: problems}
+		return parsedFilter{}, &ValidationError{Fields: problems}
 	}
-
-	overlap := Overlap{Lo: from.start}
-	if to != nil {
-		if problem := emptyPeriodProblem(from, *to, filter.From == nil); problem != "" {
-			return Overlap{}, nil, &ValidationError{Fields: []FieldError{{Field: FilterFieldTo, Problem: problem}}}
-		}
-		overlap.Hi = &to.end
-	}
-	if now.After(overlap.Lo) {
-		overlap.Lo = now
-	}
-	return overlap, types, nil
+	return parsedFilter{from: from, to: to, types: types}, nil
 }
 
-// emptyPeriodProblem reports a period [from.start, to.end) that contains
-// no instant. When from was not given, from is today, and such a to lies
-// before today.
-func emptyPeriodProblem(from, to filterBound, fromIsToday bool) FieldProblem {
-	if from.start.Before(to.end) {
-		return ""
+// parseOptionalFilterBound reads a bound that may be left open (nil).
+func parseOptionalFilterBound(text *string) (*filterBound, bool) {
+	if text == nil {
+		return nil, true
 	}
-	if fromIsToday {
-		return ProblemBeforeToday
+	bound, ok := parseFilterBound(*text)
+	return &bound, ok
+}
+
+// defaultedBound names the bound of a filter period that was not given
+// and took its default.
+type defaultedBound int
+
+const (
+	noBoundDefaulted defaultedBound = iota
+	// fromDefaultedToToday means from was not given and is today (active
+	// events).
+	fromDefaultedToToday
+	// toDefaultedToNow means to was not given and is now (archive).
+	toDefaultedToNow
+)
+
+// emptyPeriodProblem reports a period [lo, hi) that contains no instant,
+// or returns nil. When from was not given and is today, such a to lies
+// before today; when to was not given and is now, such a from lies at or
+// after now.
+func emptyPeriodProblem(lo, hi time.Time, defaulted defaultedBound) *FieldError {
+	switch {
+	case lo.Before(hi):
+		return nil
+	case defaulted == fromDefaultedToToday:
+		return &FieldError{Field: FilterFieldTo, Problem: ProblemBeforeToday}
+	case defaulted == toDefaultedToNow:
+		return &FieldError{Field: FilterFieldFrom, Problem: ProblemAfterNow}
+	default:
+		return &FieldError{Field: FilterFieldTo, Problem: ProblemEmptyPeriod}
 	}
-	return ProblemEmptyPeriod
 }
 
 // parseFilterBound reads a date YYYY-MM-DD or an instant with offset.
@@ -258,4 +376,10 @@ func listedEventOf(event Event, location Location, now Clock) ListedEvent {
 // by ID, so the order is stable across requests.
 func compareByStartThenID(a, b ListedEvent) int {
 	return cmp.Or(a.Period.Start.Compare(b.Period.Start), cmp.Compare(a.ID, b.ID))
+}
+
+// compareByStartDescendingThenID orders by descending effective start,
+// equal starts by ascending ID, so the order is stable across requests.
+func compareByStartDescendingThenID(a, b ListedEvent) int {
+	return cmp.Or(b.Period.Start.Compare(a.Period.Start), cmp.Compare(a.ID, b.ID))
 }

@@ -8,11 +8,12 @@ FROM events;
 
 -- name: ListEventsOverlapping :many
 -- The one filter predicate of AD-16 on the stored effective period; a NULL
--- hi leaves the period open-ended. The core passes lo and hi as parameters.
+-- lo leaves the period open at the start, a NULL hi open-ended. The core
+-- passes lo and hi as parameters.
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
        source_description, source_url, note, effective_start, effective_end, title_key
 FROM events
-WHERE effective_end > @lo
+WHERE (sqlc.narg(lo)::timestamptz IS NULL OR effective_end > sqlc.narg(lo))
   AND (sqlc.narg(hi)::timestamptz IS NULL OR effective_start < sqlc.narg(hi));
 
 -- name: GetEvent :one

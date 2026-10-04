@@ -16,8 +16,6 @@ import (
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
-const eventsPath = "/v1/events"
-
 var berlin = mustLoadBerlin()
 
 func mustLoadBerlin() *time.Location {
@@ -37,20 +35,27 @@ func (c fixedClock) Now() time.Time { return time.Time(c) }
 // Europe/Berlin.
 var christmasNoon = fixedClock(time.Date(2026, time.December, 24, 12, 0, 0, 0, berlin))
 
-// recordingLister stands in for the core query: it records what it was
+// recordingLister stands in for the core queries: it records what it was
 // asked and answers with listed or err.
 type recordingLister struct {
 	listed []core.ListedEvent
 	err    error
 
-	calls   int
-	filter  core.EventFilter
-	clock   core.Clock
-	context context.Context
+	calls         int
+	archivedCalls int
+	filter        core.EventFilter
+	clock         core.Clock
+	context       context.Context
 }
 
 func (l *recordingLister) ListActiveEvents(ctx context.Context, clock core.Clock, filter core.EventFilter) ([]core.ListedEvent, error) {
 	l.calls++
+	l.context, l.clock, l.filter = ctx, clock, filter
+	return l.listed, l.err
+}
+
+func (l *recordingLister) ListArchivedEvents(ctx context.Context, clock core.Clock, filter core.EventFilter) ([]core.ListedEvent, error) {
+	l.archivedCalls++
 	l.context, l.clock, l.filter = ctx, clock, filter
 	return l.listed, l.err
 }
@@ -77,7 +82,7 @@ func (r *overlapRepo) ListOverlapping(_ context.Context, overlap core.Overlap) (
 	r.calls++
 	var matches []core.Event
 	for _, event := range r.events {
-		if (overlap.Hi == nil || event.Period.Start.Before(*overlap.Hi)) && event.Period.End.After(overlap.Lo) {
+		if (overlap.Hi == nil || event.Period.Start.Before(*overlap.Hi)) && (overlap.Lo == nil || event.Period.End.After(*overlap.Lo)) {
 			matches = append(matches, event)
 		}
 	}
@@ -249,6 +254,33 @@ func TestListEventsRejectsInvalidParametersWithoutAskingTheRepository(t *testing
 			}
 			if repo.calls != 0 {
 				t.Errorf("repository was asked %d times", repo.calls)
+			}
+		})
+	}
+}
+
+// The details of a period that only the other list can hold are the
+// beforeToday and afterNow examples of api/v1/openapi.yaml word for word.
+func TestPeriodOfTheOtherListPointsThereAsTheSpecExampleSays(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{"beforeToday", eventsPath + "?to=2026-12-23",
+			"Parameter to lies before today, but /v1/events lists only active events; use /v1/archive/events for past events."},
+		{"afterNow", archivePath + "?from=2027-01-01",
+			"Parameter from lies at or after now, but /v1/archive/events lists only past events; use /v1/events for active and future events."},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			events, _ := coreEvents(t)
+			var logs bytes.Buffer
+
+			detail := assertProblem(t, serve(newEventsHandler(events, &logs), http.MethodGet, test.path), http.StatusBadRequest)
+
+			if detail != test.want {
+				t.Errorf("detail = %q, want %q", detail, test.want)
 			}
 		})
 	}

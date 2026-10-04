@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml` sowie die Endpunkte `GET /v1/events` und `GET /v1/event-types`, das Archiv folgt.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml` sowie die Endpunkte `GET /v1/events`, `GET /v1/archive/events` und `GET /v1/event-types`.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -30,12 +30,12 @@ Für OZ-Backends gibt es noch keine gemeinsamen Schnittstellenregeln. Dieses Pro
 
 ## API im Überblick
 
-Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourcen (umgesetzt sind `GET /v1/events` und `GET /v1/event-types`, das Archiv ist geplant):
+Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourcen:
 
 | Ressource | Zweck |
 | --- | --- |
 | `GET /v1/events` | Aktive Events. Ohne Filter: alles, was heute noch stattfindet. Filter: `from`, `to`, `type`. Events am selben Ort tragen denselben Ortsnamen und dieselben Koordinaten und lassen sich so auf der Karte gruppieren. |
-| `GET /v1/archive/events` | Vergangene Events, gleiche Filter |
+| `GET /v1/archive/events` | Vergangene Events (`effectiveEnd` erreicht), gleiche Filter, gleiche Form mit `archived: true`, absteigend nach `effectiveStart`. Ohne Filter: alle vergangenen Events. |
 | `GET /v1/event-types` | Liste der Event-Typen |
 
 Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`.
@@ -50,12 +50,16 @@ Parameter von `GET /v1/events`, alle optional:
 
 Ein Event passt, wenn sein berechneter Zeitraum `[effectiveStart, effectiveEnd)` den Filterzeitraum überschneidet; geliefert werden nur aktive Events (`effectiveEnd` nach jetzt), aufsteigend nach `effectiveStart`. Das `+` eines Offsets muss in der URL als `%2B` kodiert sein; ein unkodiertes `+` kommt als Leerzeichen an und ergibt 400. Ungültige Parameter beantwortet die API mit 400 als `application/problem+json`, `detail` nennt den Parameter.
 
+`GET /v1/archive/events` nimmt dieselben Parameter mit denselben Regeln und Fehlern, aber anderen Standardwerten: Fehlt `from`, ist der Zeitraum nach vorn offen; fehlt `to`, endet er jetzt. Nur `from` ab jetzt ergibt 400 mit Verweis auf `/v1/events`; liegen `from` und `to` beide in der Zukunft, ist die Liste leer. Ein Event ist ab der Minute seines `effectiveEnd` im Archiv und nicht mehr in `/v1/events`, unabhängig von der Bereinigung; jedes Event steht zu jedem Zeitpunkt in genau einer der beiden Listen.
+
 Der Vertrag selbst liegt unter `GET /v1/openapi.yaml`. Jede Antwort unter `/v1/` erlaubt jede Herkunft (`Access-Control-Allow-Origin: *`), Preflight-Anfragen (`OPTIONS`) beantwortet die API mit 204. Andere Methoden als `GET`, `HEAD` und `OPTIONS` lehnt sie mit 405 ab, unbekannte Pfade mit 404, beides als `application/problem+json`.
 
 ```sh
 curl -s localhost:8080/v1/events
 curl -s 'localhost:8080/v1/events?from=2026-11-29&to=2026-12-24&type=market'
 curl -s 'localhost:8080/v1/events?from=2026-12-24T18:00%2B01:00&type=culture'
+curl -s localhost:8080/v1/archive/events
+curl -s 'localhost:8080/v1/archive/events?to=2026-06-30&type=festival'
 curl -s localhost:8080/v1/event-types
 # {"data":[{"code":"festival","label":"Fest/Kirchweih"},{"code":"market","label":"Markt"},…]}
 curl -s localhost:8080/v1/openapi.yaml

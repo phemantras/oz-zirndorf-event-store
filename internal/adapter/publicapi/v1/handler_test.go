@@ -215,6 +215,10 @@ func (failingServer) ListEvents(context.Context, ListEventsRequestObject) (ListE
 	return nil, errAnswerFailed
 }
 
+func (failingServer) ListArchivedEvents(context.Context, ListArchivedEventsRequestObject) (ListArchivedEventsResponseObject, error) {
+	return nil, errAnswerFailed
+}
+
 func TestFailingAnswerIsAnInternalServerErrorAndLogged(t *testing.T) {
 	var logs bytes.Buffer
 	handler := newHandler(Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, failingServer{})

@@ -56,6 +56,9 @@ const (
 	// ProblemBeforeToday means a period filter of active events ends before
 	// today, where only archived events can lie.
 	ProblemBeforeToday FieldProblem = "beforeToday"
+	// ProblemAfterNow means a period filter of archived events starts at or
+	// after now, where only active events can lie.
+	ProblemAfterNow FieldProblem = "afterNow"
 )
 
 // FieldError names one rejected field and why it was rejected.

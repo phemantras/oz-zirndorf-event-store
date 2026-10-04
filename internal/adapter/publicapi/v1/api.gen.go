@@ -364,6 +364,9 @@ type TimetableEntry struct {
 	StartTime *string `json:"startTime"`
 }
 
+// EventTypeFilter defines model for EventTypeFilter.
+type EventTypeFilter = []EventType
+
 // BadRequest Error response according to RFC 9457 (Problem Details), delivered as
 // `application/problem+json`.
 type BadRequest = Problem
@@ -371,6 +374,32 @@ type BadRequest = Problem
 // InternalServerError Error response according to RFC 9457 (Problem Details), delivered as
 // `application/problem+json`.
 type InternalServerError = Problem
+
+// ListArchivedEventsParams defines parameters for ListArchivedEvents.
+type ListArchivedEventsParams struct {
+	// From Start of the filter period, inclusive: a date `YYYY-MM-DD`
+	// (from 00:00 Europe/Berlin) or an instant with `Z` or an offset
+	// `±HH:MM`. Without `from` the period is open at the start. A
+	// `from` at or after now without `to` is an error, since active
+	// and future events are listed only by `/v1/events`; so is a
+	// given but empty `from`. Send the `+` of an offset URL-encoded as
+	// `%2B` (`from=2026-12-24T18:00%2B01:00`).
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End of the filter period, inclusive: a date `YYYY-MM-DD` (to
+	// the end of that day in Europe/Berlin) or an instant with `Z` or
+	// an offset `±HH:MM` (including its minute). Without `to` the
+	// period ends now. A given but empty `to` is an error. Send the
+	// `+` of an offset URL-encoded as `%2B`
+	// (`to=2026-12-24T18:00%2B01:00`).
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// Type Event type code; repeat the parameter for several types
+	// (`type=market&type=club`). An event matches when it has any of
+	// the types; a type given twice counts once. Without `type`
+	// every type matches. An empty or unknown code is an error.
+	Type *EventTypeFilter `form:"type,omitempty" json:"type,omitempty"`
+}
 
 // ListEventsParams defines parameters for ListEvents.
 type ListEventsParams struct {
@@ -395,11 +424,14 @@ type ListEventsParams struct {
 	// (`type=market&type=club`). An event matches when it has any of
 	// the types; a type given twice counts once. Without `type`
 	// every type matches. An empty or unknown code is an error.
-	Type *[]EventType `form:"type,omitempty" json:"type,omitempty"`
+	Type *EventTypeFilter `form:"type,omitempty" json:"type,omitempty"`
 }
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListArchivedEvents List the past events
+	// (GET /archive/events)
+	ListArchivedEvents(w http.ResponseWriter, r *http.Request, params ListArchivedEventsParams)
 	// ListEventTypes List the event types
 	// (GET /event-types)
 	ListEventTypes(w http.ResponseWriter, r *http.Request)
@@ -416,6 +448,65 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListArchivedEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListArchivedEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListArchivedEventsParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListArchivedEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListEventTypes operation middleware
 func (siw *ServerInterfaceWrapper) ListEventTypes(w http.ResponseWriter, r *http.Request) {
@@ -611,6 +702,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/events", wrapper.ListEvents)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/archive/events", wrapper.ListArchivedEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/event-types", wrapper.ListEventTypes)
 
 	return m
@@ -619,6 +711,60 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 type BadRequestApplicationProblemPlusJSONResponse Problem
 
 type InternalServerErrorApplicationProblemPlusJSONResponse Problem
+
+type ListArchivedEventsRequestObject struct {
+	Params ListArchivedEventsParams
+}
+
+type ListArchivedEventsResponseObject interface {
+	VisitListArchivedEventsResponse(w http.ResponseWriter) error
+}
+
+type ListArchivedEvents200JSONResponse EventList
+
+func (response ListArchivedEvents200JSONResponse) VisitListArchivedEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListArchivedEvents400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ListArchivedEvents400ApplicationProblemPlusJSONResponse) VisitListArchivedEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListArchivedEvents500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ListArchivedEvents500ApplicationProblemPlusJSONResponse) VisitListArchivedEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListEventTypesRequestObject struct {
 }
@@ -713,6 +859,9 @@ func (response ListEvents500ApplicationProblemPlusJSONResponse) VisitListEventsR
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListArchivedEvents List the past events
+	// (GET /archive/events)
+	ListArchivedEvents(ctx context.Context, request ListArchivedEventsRequestObject) (ListArchivedEventsResponseObject, error)
 	// ListEventTypes List the event types
 	// (GET /event-types)
 	ListEventTypes(ctx context.Context, request ListEventTypesRequestObject) (ListEventTypesResponseObject, error)
@@ -758,6 +907,32 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListArchivedEvents operation middleware
+func (sh *strictHandler) ListArchivedEvents(w http.ResponseWriter, r *http.Request, params ListArchivedEventsParams) {
+	var request ListArchivedEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListArchivedEvents(ctx, request.(ListArchivedEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListArchivedEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListArchivedEventsResponseObject); ok {
+		if err := validResponse.VisitListArchivedEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListEventTypes operation middleware
