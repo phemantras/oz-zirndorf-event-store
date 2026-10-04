@@ -9,8 +9,9 @@ import (
 // is derived from EventTimes and never stored (AD-3).
 type TimePrecision string
 
-// Time precision codes. The OpenAPI spec (api/v1/openapi.yaml, Story 2.1)
-// will define them; these constants must then match it (AD-9). An end
+// Time precision codes. The OpenAPI spec (api/v1/openapi.yaml) defines them
+// in the schema TimePrecision; these constants mirror it, and a test of the
+// public API compares both (AD-9). An end
 // without date has no precision, the empty TimePrecision.
 const (
 	TimePrecisionExact    TimePrecision = "exact"
@@ -25,8 +26,8 @@ func TimePrecisions() []TimePrecision {
 }
 
 // Field names of an event's times, used in FieldError. The OpenAPI spec
-// (api/v1/openapi.yaml, Story 2.1) will define them; these constants must
-// then match it (AD-9).
+// (api/v1/openapi.yaml) will define them with the event schemas (Story
+// 2.2); these constants must then match it (AD-9).
 const (
 	EventFieldStartDate = "startDate"
 	EventFieldStartTime = "startTime"

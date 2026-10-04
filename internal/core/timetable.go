@@ -12,8 +12,8 @@ import (
 
 // EventFieldTimetable is the field name of an event's timetable. The
 // fields of one entry are named by TimetableField. The OpenAPI spec
-// (api/v1/openapi.yaml, Story 2.1) will define them; these constants must
-// then match it (AD-9).
+// (api/v1/openapi.yaml) will define them with the event schemas (Story
+// 2.2); these constants must then match it (AD-9).
 const EventFieldTimetable = "timetable"
 
 // Field names within one timetable entry, used with TimetableField.

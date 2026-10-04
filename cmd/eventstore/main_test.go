@@ -118,6 +118,7 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 	running := startRun(t, databaseURL, slog.New(slog.DiscardHandler))
 
 	assertStatus(t, running.baseURL+adminLoginPath, http.StatusOK)
+	assertStatus(t, running.baseURL+publicEventTypesPath, http.StatusOK)
 	assertListsServedWithSession(t, running.baseURL)
 
 	running.stop(t)
@@ -370,7 +371,7 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	logger := slog.New(slog.DiscardHandler)
-	server := newServer(&fakePinger{}, logger, newAdminHandler(validConfig(t), logger, emptyUseCases()))
+	server := newServer(&fakePinger{}, logger, newRouteHandlers(validConfig(t), logger, emptyUseCases()))
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() { done <- serve(ctx, server, listener, slog.New(slog.DiscardHandler)) }()
@@ -384,6 +385,8 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	assertStatus(t, "http://"+listener.Addr().String()+adminLoginPath, http.StatusOK)
+	assertStatus(t, "http://"+listener.Addr().String()+publicEventTypesPath, http.StatusOK)
+	assertAdminHasNoCORS(t, "http://"+listener.Addr().String()+adminLoginPath)
 
 	cancel()
 	select {
@@ -402,10 +405,27 @@ func TestServeReturnsErrorWhenListenerFails(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	_ = listener.Close()
-	server := newServer(&fakePinger{}, slog.New(slog.DiscardHandler), http.NotFoundHandler())
+	server := newServer(&fakePinger{}, slog.New(slog.DiscardHandler), routeHandlers{admin: http.NotFoundHandler(), public: http.NotFoundHandler()})
 
 	if err := serve(context.Background(), server, listener, slog.New(slog.DiscardHandler)); err == nil {
 		t.Fatal("serve returned no error for a closed listener")
+	}
+}
+
+// publicEventTypesPath lists the event types of the public API.
+const publicEventTypesPath = "/v1/event-types"
+
+// assertAdminHasNoCORS fails if the admin answers with a CORS header, which
+// only the public API may send (NFR-1).
+func assertAdminHasNoCORS(t *testing.T, url string) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	_ = resp.Body.Close()
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("GET %s Access-Control-Allow-Origin = %q, want none", url, got)
 	}
 }
 

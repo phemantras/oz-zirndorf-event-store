@@ -1,0 +1,19 @@
+package fixture
+
+type Color string
+
+type Size string
+
+const (
+	ColorRed  Color = "red"
+	ColorBlue Color = "blue"
+)
+
+const SizeLarge Size = "large"
+
+// Untyped, numeric and variable values are no enum codes.
+const untyped = "ignored"
+
+const answer int = 42
+
+var ColorGreen Color = "green"
