@@ -9,8 +9,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for EventType.
@@ -91,6 +96,193 @@ func (e TimePrecision) Valid() bool {
 	}
 }
 
+// Address Postal address of a location. A part is `null` only for locations
+// entered before addresses were split into parts.
+type Address struct {
+	// City City.
+	City *string `json:"city"`
+
+	// PostalCode German postal code, five digits.
+	PostalCode *string `json:"postalCode"`
+
+	// Street Street with house number, or an area such as a square.
+	Street *string `json:"street"`
+}
+
+// Event An event as the public API lists it (read form). It has the field
+// names of EventInput without `importKey`, a complete location, plus
+// the derived fields `startPrecision`, `endPrecision`,
+// `effectiveStart`, `effectiveEnd` and `archived`. It has no
+// identifiers.
+type Event struct {
+	// AllDay Whether the event lasts whole days; then both times are `null`.
+	AllDay bool `json:"allDay"`
+
+	// Archived Whether the event is over, that is its `effectiveEnd` is not after now.
+	Archived bool `json:"archived"`
+
+	// EffectiveEnd Computed end of the half-open effective period, with the offset of Europe/Berlin.
+	EffectiveEnd time.Time `json:"effectiveEnd"`
+
+	// EffectiveStart Computed start of the half-open effective period, with the offset of Europe/Berlin.
+	EffectiveStart time.Time `json:"effectiveStart"`
+
+	// EndDate Local end date `YYYY-MM-DD`, or `null` when the event has no end date.
+	EndDate *openapi_types.Date `json:"endDate"`
+
+	// EndPrecision How exactly the end is known, or `null` when the event has no end date.
+	EndPrecision *TimePrecision `json:"endPrecision"`
+
+	// EndTime Local end time `HH:MM`, or `null` when unknown or all day.
+	EndTime *string `json:"endTime"`
+
+	// Location The complete location of an event. Every event at the same location
+	// has the same name and coordinates.
+	Location EventLocation `json:"location"`
+
+	// Note Note about the event, or `null`.
+	Note *string `json:"note"`
+
+	// Source Where the information about an event comes from.
+	Source Source `json:"source"`
+
+	// StartDate Local start date `YYYY-MM-DD` (Europe/Berlin).
+	StartDate openapi_types.Date `json:"startDate"`
+
+	// StartPrecision How exactly the start or end of an event is known.
+	// `exact`: date and local time are known.
+	// `dateOnly`: only the date is known, the time is unknown.
+	// `allDay`: the event lasts the whole day, it has no time.
+	StartPrecision TimePrecision `json:"startPrecision"`
+
+	// StartTime Local start time `HH:MM`, or `null` when unknown or all day.
+	StartTime *string `json:"startTime"`
+
+	// Timetable Timetable of the event, sorted chronologically; empty when there is none.
+	Timetable []TimetableEntry `json:"timetable"`
+
+	// Title Title of the event, German.
+	Title string `json:"title"`
+
+	// Type Classifies an event for filters and map icons. Codes:
+	// `festival` (festival or Kirchweih fair), `market` (market),
+	// `culture` (culture or stage performance), `politics` (politics or
+	// council meeting), `club` (club or meetup), `sports` (sports),
+	// `other` (anything else).
+	Type EventType `json:"type"`
+}
+
+// EventInput An event as an import file delivers it (write form). It has the
+// field names of Event without the derived fields, plus `importKey`,
+// and no identifiers. The import schema includes it.
+type EventInput struct {
+	// AllDay Whether the event lasts whole days; then no times may be given.
+	AllDay *bool `json:"allDay,omitempty"`
+
+	// EndDate Local end date `YYYY-MM-DD`; missing or `null` when there is none.
+	EndDate *openapi_types.Date `json:"endDate,omitempty"`
+
+	// EndTime Local end time `HH:MM`; requires `endDate`.
+	EndTime *string `json:"endTime,omitempty"`
+
+	// ImportKey Key of the event in the import source; importing the same key
+	// again updates the event instead of creating another one.
+	ImportKey *string `json:"importKey,omitempty"`
+
+	// Location The location an imported event brings along. `name` is required: a
+	// name that already exists refers to that location and needs nothing
+	// else, a new location needs address, coordinates and precision.
+	Location EventInputLocation `json:"location"`
+
+	// Note Note about the event.
+	Note *string `json:"note,omitempty"`
+
+	// Source Where the information about an event comes from.
+	Source Source `json:"source"`
+
+	// StartDate Local start date `YYYY-MM-DD` (Europe/Berlin).
+	StartDate openapi_types.Date `json:"startDate"`
+
+	// StartTime Local start time `HH:MM`; missing or `null` means unknown, never 00:00.
+	StartTime *string `json:"startTime,omitempty"`
+
+	// Timetable Timetable of the event, in any order.
+	Timetable *[]TimetableEntry `json:"timetable,omitempty"`
+
+	// Title Title of the event, German.
+	Title string `json:"title"`
+
+	// Type Classifies an event for filters and map icons. Codes:
+	// `festival` (festival or Kirchweih fair), `market` (market),
+	// `culture` (culture or stage performance), `politics` (politics or
+	// council meeting), `club` (club or meetup), `sports` (sports),
+	// `other` (anything else).
+	Type EventType `json:"type"`
+}
+
+// EventInputLocation The location an imported event brings along. `name` is required: a
+// name that already exists refers to that location and needs nothing
+// else, a new location needs address, coordinates and precision.
+type EventInputLocation struct {
+	// Address Postal address of a location. A part is `null` only for locations
+	// entered before addresses were split into parts.
+	Address *Address `json:"address,omitempty"`
+
+	// Latitude Latitude in degrees (WGS 84).
+	Latitude *float64 `json:"latitude,omitempty"`
+
+	// Longitude Longitude in degrees (WGS 84).
+	Longitude *float64 `json:"longitude,omitempty"`
+
+	// Name Unique name of the location.
+	Name string `json:"name"`
+
+	// Note Note about the location.
+	Note *string `json:"note,omitempty"`
+
+	// Precision How exactly the coordinates of a location mark the place.
+	// `building`: a single building or entrance.
+	// `street`: a square or street.
+	// `area`: an area such as a park or fairground.
+	// `district`: only the district of Zirndorf is known.
+	Precision *LocationPrecision `json:"precision,omitempty"`
+}
+
+// EventList List envelope (KON-8) around events.
+type EventList struct {
+	// Data The events, sorted as the endpoint documents.
+	Data []Event `json:"data"`
+}
+
+// EventLocation The complete location of an event. Every event at the same location
+// has the same name and coordinates.
+type EventLocation struct {
+	// Address Postal address of a location. A part is `null` only for locations
+	// entered before addresses were split into parts.
+	Address Address `json:"address"`
+
+	// Latitude Latitude in degrees (WGS 84).
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees (WGS 84).
+	Longitude float64 `json:"longitude"`
+
+	// Name Name of the location. It identifies the location uniquely and
+	// serves to group events by place; the API gives out no location
+	// IDs.
+	Name string `json:"name"`
+
+	// Note Note about the location, or `null`.
+	Note *string `json:"note"`
+
+	// Precision How exactly the coordinates of a location mark the place.
+	// `building`: a single building or entrance.
+	// `street`: a square or street.
+	// `area`: an area such as a park or fairground.
+	// `district`: only the district of Zirndorf is known.
+	Precision LocationPrecision `json:"precision"`
+}
+
 // EventType Classifies an event for filters and map icons. Codes:
 // `festival` (festival or Kirchweih fair), `market` (market),
 // `culture` (culture or stage performance), `politics` (politics or
@@ -141,21 +333,79 @@ type Problem struct {
 	Type string `json:"type"`
 }
 
+// Source Where the information about an event comes from.
+type Source struct {
+	// Description Human-readable source, such as a newsletter or a poster.
+	Description string `json:"description"`
+
+	// Url Link to the source, an http(s) URL, or `null`.
+	Url *string `json:"url"`
+}
+
 // TimePrecision How exactly the start or end of an event is known.
 // `exact`: date and local time are known.
 // `dateOnly`: only the date is known, the time is unknown.
 // `allDay`: the event lasts the whole day, it has no time.
 type TimePrecision string
 
+// TimetableEntry One item of an event's timetable. An end time before the start time
+// ends on the following day.
+type TimetableEntry struct {
+	// Date Local date `YYYY-MM-DD` (Europe/Berlin).
+	Date openapi_types.Date `json:"date"`
+
+	// Description What happens.
+	Description string `json:"description"`
+
+	// EndTime Local end time `HH:MM`, or `null` when unknown.
+	EndTime *string `json:"endTime"`
+
+	// StartTime Local start time `HH:MM`, or `null` when unknown.
+	StartTime *string `json:"startTime"`
+}
+
+// BadRequest Error response according to RFC 9457 (Problem Details), delivered as
+// `application/problem+json`.
+type BadRequest = Problem
+
 // InternalServerError Error response according to RFC 9457 (Problem Details), delivered as
 // `application/problem+json`.
 type InternalServerError = Problem
+
+// ListEventsParams defines parameters for ListEvents.
+type ListEventsParams struct {
+	// From Start of the filter period, inclusive: a date `YYYY-MM-DD`
+	// (from 00:00 Europe/Berlin) or an instant with `Z` or an offset
+	// `±HH:MM`. Defaults to today; a given but empty `from` is an
+	// error. Send the `+` of an offset URL-encoded as `%2B`
+	// (`from=2026-12-24T18:00%2B01:00`).
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End of the filter period, inclusive: a date `YYYY-MM-DD` (to
+	// the end of that day in Europe/Berlin) or an instant with `Z` or
+	// an offset `±HH:MM` (including its minute). Without `to` the
+	// period is open-ended; without `from` and `to` it is today. A
+	// `to` before today without `from` is an error, since past events
+	// are listed only by `/v1/archive/events`; so is a given but empty
+	// `to`. Send the `+` of an offset URL-encoded as `%2B`
+	// (`to=2026-12-24T18:00%2B01:00`).
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// Type Event type code; repeat the parameter for several types
+	// (`type=market&type=club`). An event matches when it has any of
+	// the types; a type given twice counts once. Without `type`
+	// every type matches. An empty or unknown code is an error.
+	Type *[]EventType `form:"type,omitempty" json:"type,omitempty"`
+}
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListEventTypes List the event types
 	// (GET /event-types)
 	ListEventTypes(w http.ResponseWriter, r *http.Request)
+	// ListEvents List the active events of today or of a period
+	// (GET /events)
+	ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -172,6 +422,65 @@ func (siw *ServerInterfaceWrapper) ListEventTypes(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListEventTypes(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListEventsParams
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "from", r.URL.Query(), &params.From, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "from"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "to", r.URL.Query(), &params.To, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "to"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEvents(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -301,10 +610,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/events", wrapper.ListEvents)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/event-types", wrapper.ListEventTypes)
 
 	return m
 }
+
+type BadRequestApplicationProblemPlusJSONResponse Problem
 
 type InternalServerErrorApplicationProblemPlusJSONResponse Problem
 
@@ -345,11 +657,68 @@ func (response ListEventTypes500ApplicationProblemPlusJSONResponse) VisitListEve
 	return err
 }
 
+type ListEventsRequestObject struct {
+	Params ListEventsParams
+}
+
+type ListEventsResponseObject interface {
+	VisitListEventsResponse(w http.ResponseWriter) error
+}
+
+type ListEvents200JSONResponse EventList
+
+func (response ListEvents200JSONResponse) VisitListEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEvents400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ListEvents400ApplicationProblemPlusJSONResponse) VisitListEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEvents500ApplicationProblemPlusJSONResponse struct {
+	InternalServerErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ListEvents500ApplicationProblemPlusJSONResponse) VisitListEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListEventTypes List the event types
 	// (GET /event-types)
 	ListEventTypes(ctx context.Context, request ListEventTypesRequestObject) (ListEventTypesResponseObject, error)
+	// ListEvents List the active events of today or of a period
+	// (GET /events)
+	ListEvents(ctx context.Context, request ListEventsRequestObject) (ListEventsResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -408,6 +777,32 @@ func (sh *strictHandler) ListEventTypes(w http.ResponseWriter, r *http.Request) 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListEventTypesResponseObject); ok {
 		if err := validResponse.VisitListEventTypesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListEvents operation middleware
+func (sh *strictHandler) ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams) {
+	var request ListEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListEvents(ctx, request.(ListEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListEventsResponseObject); ok {
+		if err := validResponse.VisitListEventsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

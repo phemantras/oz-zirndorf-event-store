@@ -119,6 +119,7 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 
 	assertStatus(t, running.baseURL+adminLoginPath, http.StatusOK)
 	assertStatus(t, running.baseURL+publicEventTypesPath, http.StatusOK)
+	assertStatus(t, running.baseURL+publicEventsPath, http.StatusOK)
 	assertListsServedWithSession(t, running.baseURL)
 
 	running.stop(t)
@@ -386,6 +387,7 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 	}
 	assertStatus(t, "http://"+listener.Addr().String()+adminLoginPath, http.StatusOK)
 	assertStatus(t, "http://"+listener.Addr().String()+publicEventTypesPath, http.StatusOK)
+	assertStatus(t, "http://"+listener.Addr().String()+publicEventsPath, http.StatusOK)
 	assertAdminHasNoCORS(t, "http://"+listener.Addr().String()+adminLoginPath)
 
 	cancel()
@@ -414,6 +416,9 @@ func TestServeReturnsErrorWhenListenerFails(t *testing.T) {
 
 // publicEventTypesPath lists the event types of the public API.
 const publicEventTypesPath = "/v1/event-types"
+
+// publicEventsPath lists today's active events in the public API.
+const publicEventsPath = "/v1/events"
 
 // assertAdminHasNoCORS fails if the admin answers with a CORS header, which
 // only the public API may send (NFR-1).
@@ -479,6 +484,10 @@ func (emptyEvents) ListEvents(context.Context, core.Clock) ([]core.EventListEntr
 
 func (emptyEvents) DeleteEvent(context.Context, string) error {
 	return core.ErrNotFound
+}
+
+func (emptyEvents) ListActiveEvents(context.Context, core.Clock, core.EventFilter) ([]core.ListedEvent, error) {
+	return nil, nil
 }
 
 func emptyUseCases() useCases {

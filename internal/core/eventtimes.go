@@ -26,8 +26,8 @@ func TimePrecisions() []TimePrecision {
 }
 
 // Field names of an event's times, used in FieldError. The OpenAPI spec
-// (api/v1/openapi.yaml) will define them with the event schemas (Story
-// 2.2); these constants must then match it (AD-9).
+// (api/v1/openapi.yaml) defines them in the schemas Event and EventInput;
+// these constants mirror it (AD-9).
 const (
 	EventFieldStartDate = "startDate"
 	EventFieldStartTime = "startTime"

@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml` und als ersten Endpunkt `GET /v1/event-types`, die übrigen Endpunkte folgen.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml` sowie die Endpunkte `GET /v1/events` und `GET /v1/event-types`, das Archiv folgt.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -30,7 +30,7 @@ Für OZ-Backends gibt es noch keine gemeinsamen Schnittstellenregeln. Dieses Pro
 
 ## API im Überblick
 
-Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourcen (umgesetzt ist bisher `GET /v1/event-types`, die übrigen sind geplant):
+Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourcen (umgesetzt sind `GET /v1/events` und `GET /v1/event-types`, das Archiv ist geplant):
 
 | Ressource | Zweck |
 | --- | --- |
@@ -40,15 +40,28 @@ Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourc
 
 Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`.
 
+Parameter von `GET /v1/events`, alle optional:
+
+| Parameter | Bedeutung |
+| --- | --- |
+| `from` | Beginn des Zeitraums, inklusive: Datum `YYYY-MM-DD` (ab 00:00 Europe/Berlin) oder Zeitpunkt mit `Z` oder Offset, z. B. `2026-12-24T18:00+01:00`, in der URL als `2026-12-24T18:00%2B01:00`. Fehlt er, beginnt der Zeitraum heute; leer angegeben (`from=`) ergibt 400. |
+| `to` | Ende des Zeitraums, inklusive: Datum (bis Tagesende) oder Zeitpunkt mit Offset (einschließlich seiner Minute). Fehlt er, ist der Zeitraum nach hinten offen; fehlen beide, gilt nur heute; leer angegeben (`to=`) ergibt 400. Nur `to` vor heute ergibt 400 mit Verweis auf `/v1/archive/events`. |
+| `type` | Event-Typ, wiederholbar (`type=market&type=club`), ODER-verknüpft. |
+
+Ein Event passt, wenn sein berechneter Zeitraum `[effectiveStart, effectiveEnd)` den Filterzeitraum überschneidet; geliefert werden nur aktive Events (`effectiveEnd` nach jetzt), aufsteigend nach `effectiveStart`. Das `+` eines Offsets muss in der URL als `%2B` kodiert sein; ein unkodiertes `+` kommt als Leerzeichen an und ergibt 400. Ungültige Parameter beantwortet die API mit 400 als `application/problem+json`, `detail` nennt den Parameter.
+
 Der Vertrag selbst liegt unter `GET /v1/openapi.yaml`. Jede Antwort unter `/v1/` erlaubt jede Herkunft (`Access-Control-Allow-Origin: *`), Preflight-Anfragen (`OPTIONS`) beantwortet die API mit 204. Andere Methoden als `GET`, `HEAD` und `OPTIONS` lehnt sie mit 405 ab, unbekannte Pfade mit 404, beides als `application/problem+json`.
 
 ```sh
+curl -s localhost:8080/v1/events
+curl -s 'localhost:8080/v1/events?from=2026-11-29&to=2026-12-24&type=market'
+curl -s 'localhost:8080/v1/events?from=2026-12-24T18:00%2B01:00&type=culture'
 curl -s localhost:8080/v1/event-types
 # {"data":[{"code":"festival","label":"Fest/Kirchweih"},{"code":"market","label":"Markt"},…]}
 curl -s localhost:8080/v1/openapi.yaml
 ```
 
-Ein Event, so wie es geplant ist (gekürzt):
+Ein Event aus `GET /v1/events` (gekürzt):
 
 ```json
 {
@@ -79,7 +92,7 @@ Ein Event, so wie es geplant ist (gekürzt):
 }
 ```
 
-*Die Beispieldaten sind erfunden. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml`; die Event- und Ortsfelder kommen dort mit den nächsten Endpunkten hinzu.*
+*Die Beispieldaten sind erfunden. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml` mit den Schemas `Event` (Leseform) und `EventInput` (Schreibform für den Import). Die API gibt keine Kennungen aus; ein Ort ist an seinem eindeutigen Namen erkennbar.*
 
 ## Architektur
 

@@ -17,6 +17,10 @@ import (
 type EventRepo interface {
 	// List returns all events in no particular order.
 	List(ctx context.Context) ([]Event, error)
+	// ListOverlapping returns, in no particular order, the events whose
+	// stored effective period overlaps overlap: effective start before Hi
+	// (if any) and effective end after Lo (AD-16).
+	ListOverlapping(ctx context.Context, overlap Overlap) ([]Event, error)
 	// Get returns the event with id, or ErrNotFound, also for an id that is
 	// not a valid UUID.
 	Get(ctx context.Context, id string) (Event, error)

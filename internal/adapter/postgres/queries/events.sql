@@ -6,6 +6,15 @@ SELECT id, title, type, location_id, start_date, start_time, end_date, end_time,
        source_description, source_url, note, effective_start, effective_end, title_key
 FROM events;
 
+-- name: ListEventsOverlapping :many
+-- The one filter predicate of AD-16 on the stored effective period; a NULL
+-- hi leaves the period open-ended. The core passes lo and hi as parameters.
+SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
+       source_description, source_url, note, effective_start, effective_end, title_key
+FROM events
+WHERE effective_end > @lo
+  AND (sqlc.narg(hi)::timestamptz IS NULL OR effective_start < sqlc.narg(hi));
+
 -- name: GetEvent :one
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
        source_description, source_url, note, effective_start, effective_end, title_key
@@ -47,6 +56,11 @@ FROM timetable_entries;
 SELECT id, event_id, description, date, start_time, end_time
 FROM timetable_entries
 WHERE event_id = $1;
+
+-- name: ListTimetableEntriesOfEvents :many
+SELECT id, event_id, description, date, start_time, end_time
+FROM timetable_entries
+WHERE event_id = ANY(@event_ids::uuid[]);
 
 -- name: DeleteTimetableEntriesOfEvent :exec
 DELETE FROM timetable_entries
