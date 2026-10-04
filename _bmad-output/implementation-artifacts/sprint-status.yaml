@@ -52,7 +52,7 @@ development_status:
   epic-1-retrospective: optional
 
   epic-2: in-progress
-  2-1-api-vertrag-v1-und-liste-der-event-typen: review
+  2-1-api-vertrag-v1-und-liste-der-event-typen: done
   2-2-einzelnes-event-und-orte-abrufen: backlog
   2-3-events-von-heute-und-nach-zeitraum-und-typ-abfragen: backlog
   2-4-archiv-abfragen: backlog
