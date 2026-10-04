@@ -40,6 +40,36 @@ func (r *EventRepo) List(ctx context.Context) ([]core.Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list timetable entries: %w", err)
 	}
+	return eventsWithTimetables(rows, entryRows), nil
+}
+
+// ListOverlapping returns the events whose stored effective period
+// overlaps overlap, with their timetables, in no particular order. The
+// database applies only the predicate of AD-16; entries are read for the
+// found events with one query.
+func (r *EventRepo) ListOverlapping(ctx context.Context, overlap core.Overlap) ([]core.Event, error) {
+	hi := pgtype.Timestamptz{}
+	if overlap.Hi != nil {
+		hi = instantParam(*overlap.Hi)
+	}
+	rows, err := r.queries.ListEventsOverlapping(ctx, db.ListEventsOverlappingParams{Lo: instantParam(overlap.Lo), Hi: hi})
+	if err != nil {
+		return nil, fmt.Errorf("list overlapping events: %w", err)
+	}
+	ids := make([]pgtype.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	entryRows, err := r.queries.ListTimetableEntriesOfEvents(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list timetable entries of overlapping events: %w", err)
+	}
+	return eventsWithTimetables(rows, entryRows), nil
+}
+
+// eventsWithTimetables converts event rows and gives each event the rows
+// of entryRows that belong to it.
+func eventsWithTimetables(rows []db.Event, entryRows []db.TimetableEntry) []core.Event {
 	timetables := make(map[pgtype.UUID][]core.TimetableEntry)
 	for _, entryRow := range entryRows {
 		timetables[entryRow.EventID] = append(timetables[entryRow.EventID], timetableEntryFromRow(entryRow))
@@ -50,7 +80,7 @@ func (r *EventRepo) List(ctx context.Context) ([]core.Event, error) {
 		event.Timetable = timetables[row.ID]
 		events = append(events, event)
 	}
-	return events, nil
+	return events
 }
 
 // Get returns the event with id. An id that is no UUID cannot exist, so it

@@ -62,11 +62,15 @@ func ListEventTypes() []EventTypeEntry {
 
 // Field names of an event besides its times (see EventFieldStartDate and
 // following), used in FieldError. The OpenAPI spec (api/v1/openapi.yaml)
-// will define them with the event schemas (Story 2.2); these constants must
-// then match it (AD-9).
+// defines them in the schemas Event and EventInput, source.description and
+// source.url as the fields of the object source; these constants mirror it
+// (AD-9).
 const (
-	EventFieldTitle             = "title"
-	EventFieldType              = "type"
+	EventFieldTitle = "title"
+	EventFieldType  = "type"
+	// EventFieldLocationID is internal to the admin form, which refers to a
+	// stored location by its ID. The spec has no such field: it knows only
+	// the object location and never gives out IDs (AD-14).
 	EventFieldLocationID        = "locationId"
 	EventFieldSourceDescription = "source.description"
 	EventFieldSourceURL         = "source.url"

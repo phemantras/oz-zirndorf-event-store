@@ -2,6 +2,7 @@ package v1
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,8 @@ const (
 	detailNotFoundFormat         = "No resource exists at path %s."
 	detailMethodNotAllowedFormat = "Method %s is not allowed; the API is read-only and allows GET, HEAD and OPTIONS."
 	detailInternalServerError    = "The server failed to answer the request."
+	detailInvalidParameterFormat = "Parameter %s is invalid; each parameter but type may be given only once."
+	detailInvalidParameters      = "The query parameters are invalid."
 )
 
 // Log messages of the public API.
@@ -39,12 +42,7 @@ func (rp responder) writeProblem(w http.ResponseWriter, status int, detail strin
 	w.Header().Set(headerContentType, problemContentType)
 	w.WriteHeader(status)
 	// Encoding a Problem cannot fail, so an error is a failed write.
-	err := json.NewEncoder(w).Encode(Problem{
-		Type:   problemTypeBlank,
-		Title:  http.StatusText(status),
-		Status: status,
-		Detail: detail,
-	})
+	err := json.NewEncoder(w).Encode(problemOf(status, detail))
 	rp.logFailedWrite(err)
 }
 
@@ -71,6 +69,22 @@ func (rp responder) notFound(w http.ResponseWriter, r *http.Request) {
 func (rp responder) methodNotAllowed(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(headerAllow, allowedMethods)
 	rp.writeProblem(w, http.StatusMethodNotAllowed, fmt.Sprintf(detailMethodNotAllowedFormat, r.Method))
+}
+
+// invalidParameter answers a query parameter the generated server could
+// not read, naming the parameter. The generated server calls it.
+func (rp responder) invalidParameter(w http.ResponseWriter, _ *http.Request, err error) {
+	detail := detailInvalidParameters
+	var invalid *InvalidParamFormatError
+	if errors.As(err, &invalid) {
+		detail = fmt.Sprintf(detailInvalidParameterFormat, invalid.ParamName)
+	}
+	rp.writeProblem(w, http.StatusBadRequest, detail)
+}
+
+// problemOf returns the RFC 9457 body for status and an English detail.
+func problemOf(status int, detail string) Problem {
+	return Problem{Type: problemTypeBlank, Title: http.StatusText(status), Status: status, Detail: detail}
 }
 
 // internalServerError logs err and answers without revealing it. The

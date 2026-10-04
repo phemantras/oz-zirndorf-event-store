@@ -37,6 +37,12 @@ func (r *memoryEventRepo) List(context.Context) ([]core.Event, error) {
 	return all, nil
 }
 
+// ListOverlapping is part of core.EventRepo; the admin never lists by
+// period, so it answers like List.
+func (r *memoryEventRepo) ListOverlapping(ctx context.Context, _ core.Overlap) ([]core.Event, error) {
+	return r.List(ctx)
+}
+
 func (r *memoryEventRepo) Get(_ context.Context, id string) (core.Event, error) {
 	event, ok := r.events[strings.ToLower(id)]
 	if !ok {

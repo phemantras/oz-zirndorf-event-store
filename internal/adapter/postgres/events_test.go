@@ -168,6 +168,75 @@ func TestEventRepoListReturnsAllEvents(t *testing.T) {
 	assertSameEvent(t, byID[minimal.ID], minimal)
 }
 
+// overlapIDs asks ListOverlapping and returns the IDs it found with the
+// number of timetable entries of each.
+func overlapIDs(t *testing.T, repo *postgres.EventRepo, overlap core.Overlap) map[string]int {
+	t.Helper()
+	events, err := repo.ListOverlapping(context.Background(), overlap)
+	if err != nil {
+		t.Fatalf("ListOverlapping: %v", err)
+	}
+	found := map[string]int{}
+	for _, event := range events {
+		found[event.ID] = len(event.Timetable)
+	}
+	return found
+}
+
+func TestEventRepoListOverlappingAppliesThePredicateAtBothBounds(t *testing.T) {
+	fixture := newEventFixture(t)
+	day := core.LocalDate{Year: 2026, Month: time.December, Day: 24}
+	morning := eventWithTimes(t, fixture.hall.ID, core.EventTimes{
+		StartDate: day, StartTime: localTimeAt(10, 0), EndDate: day, EndTime: localTimeAt(12, 0),
+	})
+	morning.Timetable = []core.TimetableEntry{
+		{Description: "Begrüßung", Date: day, StartTime: localTimeAt(10, 0)},
+		{Description: "Segen", Date: day, StartTime: localTimeAt(11, 30)},
+	}
+	stored := createEvent(t, fixture.repo, morning)
+	later := eventWithTimes(t, fixture.hall.ID, core.EventTimes{StartDate: core.LocalDate{Year: 2026, Month: time.December, Day: 31}})
+	later.Timetable = []core.TimetableEntry{{Description: "Countdown", Date: later.Times.StartDate}}
+	other := createEvent(t, fixture.repo, later)
+	start, end := stored.Period.Start, stored.Period.End
+
+	tests := []struct {
+		name    string
+		overlap core.Overlap
+		want    map[string]int
+	}{
+		{"effective start equal to hi is not included", core.Overlap{Lo: start.Add(-time.Hour), Hi: &start}, map[string]int{}},
+		{"effective start just before hi is included", core.Overlap{Lo: start.Add(-time.Hour), Hi: ptrTo(start.Add(time.Minute))},
+			map[string]int{stored.ID: 2}},
+		{"effective end equal to lo is not included", core.Overlap{Lo: end, Hi: ptrTo(end.Add(time.Hour))}, map[string]int{}},
+		{"effective end just after lo is included", core.Overlap{Lo: end.Add(-time.Minute), Hi: ptrTo(end.Add(time.Hour))},
+			map[string]int{stored.ID: 2}},
+		{"open hi includes every later event", core.Overlap{Lo: end.Add(-time.Minute)}, map[string]int{stored.ID: 2, other.ID: 1}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := overlapIDs(t, fixture.repo, test.overlap); !reflect.DeepEqual(got, test.want) {
+				t.Errorf("found = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestEventRepoListOverlappingReturnsCompleteEvents(t *testing.T) {
+	fixture := newEventFixture(t)
+	full := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
+
+	got, err := fixture.repo.ListOverlapping(context.Background(), core.Overlap{Lo: full.Period.Start})
+	if err != nil {
+		t.Fatalf("ListOverlapping: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("ListOverlapping returned %d events, want 1", len(got))
+	}
+	assertSameEvent(t, got[0], full)
+}
+
+func ptrTo(instant time.Time) *time.Time { return &instant }
+
 func TestEventRepoUpdateKeepsIDAndReplacesEveryColumn(t *testing.T) {
 	fixture := newEventFixture(t)
 	park := createLocation(t, fixture.locations, parkLocation())
@@ -301,7 +370,11 @@ func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 	update.ID = unknownEventID
 
 	calls := map[string]func() error{
-		"List":          func() error { _, err := repo.List(ctx); return err },
+		"List": func() error { _, err := repo.List(ctx); return err },
+		"ListOverlapping": func() error {
+			_, err := repo.ListOverlapping(ctx, core.Overlap{Lo: event.Period.Start})
+			return err
+		},
 		"Get":           func() error { _, err := repo.Get(ctx, unknownEventID); return err },
 		"Create":        func() error { _, err := repo.Create(ctx, event); return err },
 		"Update":        func() error { _, err := repo.Update(ctx, update); return err },

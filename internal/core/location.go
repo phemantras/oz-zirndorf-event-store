@@ -29,8 +29,9 @@ func LocationPrecisions() []LocationPrecision {
 }
 
 // Field names of a location, used in FieldError. The OpenAPI spec
-// (api/v1/openapi.yaml) will define them with the location schema (Story
-// 2.2); these constants must then match it (AD-9).
+// (api/v1/openapi.yaml) defines them in the schemas EventLocation and
+// EventInputLocation, street, postalCode and city as the fields of the
+// schema Address; these constants mirror it (AD-9).
 const (
 	LocationFieldName       = "name"
 	LocationFieldStreet     = "street"

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	apispec "github.com/phemantras/oz-zirndorf-event-store/api/v1"
+	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
 const (
@@ -34,13 +35,18 @@ const (
 // Config holds what the public API needs from its surroundings.
 type Config struct {
 	Logger *slog.Logger
+	// Events answers the event lists from the core.
+	Events EventLister
+	// Clock is the time source of every query; the core reads it once per
+	// query (AD-2).
+	Clock core.Clock
 }
 
 // NewHandler returns the public API v1 below /v1/: the operations of
 // api/v1/openapi.yaml, the spec itself at /v1/openapi.yaml, open CORS on
 // every answer, 405 for write methods and 404 for unknown paths.
 func NewHandler(cfg Config) http.Handler {
-	return newHandler(cfg, server{})
+	return newHandler(cfg, server{events: cfg.Events, clock: cfg.Clock})
 }
 
 // newHandler is NewHandler with the strict server replaceable for tests.
@@ -51,7 +57,11 @@ func newHandler(cfg Config, strictServer StrictServerInterface) http.Handler {
 		RequestErrorHandlerFunc:  respond.internalServerError,
 		ResponseErrorHandlerFunc: respond.internalServerError,
 	})
-	HandlerWithOptions(strict, StdHTTPServerOptions{BaseURL: basePath, BaseRouter: mux})
+	HandlerWithOptions(strict, StdHTTPServerOptions{
+		BaseURL:          basePath,
+		BaseRouter:       mux,
+		ErrorHandlerFunc: respond.invalidParameter,
+	})
 	mux.HandleFunc(http.MethodGet+" "+specPath, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set(headerContentType, specContentType)
 		respond.writeBody(w, apispec.OpenAPISpec)

@@ -86,17 +86,25 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	return serve(ctx, newServer(pool, logger, newRouteHandlers(cfg, logger, cases)), listener, logger)
 }
 
-// useCases are the core use cases the admin interface works with.
+// useCases are the core use cases the admin interface and the public API
+// work with.
 type useCases struct {
 	locations admin.LocationUseCases
-	events    admin.EventUseCases
+	events    eventUseCases
+}
+
+// eventUseCases are the event use cases of the admin and the event query of
+// the public API, both served by core.EventService.
+type eventUseCases interface {
+	admin.EventUseCases
+	publicapi.EventLister
 }
 
 // newRouteHandlers builds the admin interface and the public API.
 func newRouteHandlers(cfg config, logger *slog.Logger, cases useCases) routeHandlers {
 	return routeHandlers{
 		admin:  newAdminHandler(cfg, logger, cases),
-		public: publicapi.NewHandler(publicapi.Config{Logger: logger}),
+		public: publicapi.NewHandler(publicapi.Config{Logger: logger, Events: cases.events, Clock: systemClock{}}),
 	}
 }
 
