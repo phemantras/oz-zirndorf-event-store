@@ -73,17 +73,6 @@ const logMsgEventsFailed = "admin event request failed"
 // accidental delete can be traced.
 const logMsgEventDeleted = "admin event deleted"
 
-// eventTypeLabels are the German names of the event type codes (FR-5).
-var eventTypeLabels = map[core.EventType]string{
-	core.EventTypeFestival: "Fest/Kirchweih",
-	core.EventTypeMarket:   "Markt",
-	core.EventTypeCulture:  "Kultur/Bühne",
-	core.EventTypePolitics: "Politik/Sitzung",
-	core.EventTypeClub:     "Verein/Treff",
-	core.EventTypeSports:   "Sport",
-	core.EventTypeOther:    "Sonstiges",
-}
-
 // eventFieldMessages are the German messages for the field problems the
 // core reports for an event.
 var eventFieldMessages = map[core.FieldError]string{
@@ -305,11 +294,11 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 			Confirm: fmt.Sprintf(msgConfirmDeleteEvent, form.values.Title),
 		}
 	}
-	for _, eventType := range core.EventTypes() {
+	for _, eventType := range core.ListEventTypes() {
 		page.Types = append(page.Types, selectOption{
-			Value:    string(eventType),
-			Label:    eventTypeLabels[eventType],
-			Selected: string(eventType) == form.values.Type,
+			Value:    string(eventType.Code),
+			Label:    eventType.Label,
+			Selected: string(eventType.Code) == form.values.Type,
 		})
 	}
 	h.render(w, eventFormTemplate, status, page)
@@ -363,6 +352,18 @@ func eventInputFromForm(form url.Values) (core.EventInput, error) {
 		Note:      form.Get(core.EventFieldNote),
 		Timetable: timetable,
 	}, nil
+}
+
+// eventTypeLabels maps each event type code to its German label from the
+// core, which is the only source of the labels.
+var eventTypeLabels = eventTypeLabelsByCode(core.ListEventTypes())
+
+func eventTypeLabelsByCode(entries []core.EventTypeEntry) map[core.EventType]string {
+	labels := make(map[core.EventType]string, len(entries))
+	for _, entry := range entries {
+		labels[entry.Code] = entry.Label
+	}
+	return labels
 }
 
 func eventRowOf(entry core.EventListEntry) eventRow {

@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events und die öffentliche API folgen.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml` und als ersten Endpunkt `GET /v1/event-types`, die übrigen Endpunkte folgen.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -29,7 +29,7 @@ Für OZ-Backends gibt es noch keine gemeinsamen Schnittstellenregeln. Dieses Pro
 
 ## API im Überblick
 
-Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die geplanten Ressourcen:
+Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourcen (umgesetzt ist bisher `GET /v1/event-types`, die übrigen sind geplant):
 
 | Ressource | Zweck |
 | --- | --- |
@@ -40,6 +40,14 @@ Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die geplante
 | `GET /v1/event-types` | Liste der Event-Typen |
 
 Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`.
+
+Der Vertrag selbst liegt unter `GET /v1/openapi.yaml`. Jede Antwort unter `/v1/` erlaubt jede Herkunft (`Access-Control-Allow-Origin: *`), Preflight-Anfragen (`OPTIONS`) beantwortet die API mit 204. Andere Methoden als `GET`, `HEAD` und `OPTIONS` lehnt sie mit 405 ab, unbekannte Pfade mit 404, beides als `application/problem+json`.
+
+```sh
+curl -s localhost:8080/v1/event-types
+# {"data":[{"code":"festival","label":"Fest/Kirchweih"},{"code":"market","label":"Markt"},…]}
+curl -s localhost:8080/v1/openapi.yaml
+```
 
 Ein Event, so wie es geplant ist (gekürzt):
 
@@ -74,7 +82,7 @@ Ein Event, so wie es geplant ist (gekürzt):
 }
 ```
 
-*Die Beispieldaten sind erfunden. Verbindlich ist die OpenAPI-Spec, sobald sie existiert.*
+*Die Beispieldaten sind erfunden. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml`; die Event- und Ortsfelder kommen dort mit den nächsten Endpunkten hinzu.*
 
 ## Architektur
 
@@ -199,7 +207,7 @@ export EVENTSTORE_TEST_DATABASE_URL='postgres://eventstore:eventstore@localhost:
 go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...   # -p 1: beide Pakete migrieren dieselbe Datenbank
 ```
 
-Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung, die Prüfung, ob der generierte sqlc-Code aktuell ist, sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
+Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung, die Prüfung, ob der generierte sqlc- und oapi-codegen-Code aktuell ist, sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
 
 ### Generierter Datenbankcode (sqlc)
 
@@ -210,6 +218,16 @@ go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate   # braucht cgo (gcc);
 ```
 
 Den erzeugten Code mit committen. Die CI erzeugt ihn erneut und scheitert bei einem Unterschied.
+
+### Generierter API-Code (oapi-codegen)
+
+Der Vertrag der öffentlichen API ist `api/v1/openapi.yaml` (OpenAPI 3.1). Daraus erzeugt [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen) v2.8.0 das Servergerüst `internal/adapter/publicapi/v1/api.gen.go` (`std-http-server`, `strict-server`, Modelle), konfiguriert in `internal/adapter/publicapi/v1/oapi-codegen.yaml`. Den generierten Code nie von Hand ändern, sondern die Spec anpassen und neu erzeugen:
+
+```sh
+go generate ./...
+```
+
+Den erzeugten Code mit committen. Die CI erzeugt ihn erneut und scheitert bei einem Unterschied. Ein Test vergleicht die Enum-Codes der Spec (Event-Typ, Zeit- und Ortsgenauigkeit) mit den Konstanten im Kern und scheitert bei einer Abweichung. Die Abdeckungsprüfung zählt Dateien mit der Kopfzeile `// Code generated … DO NOT EDIT.` nicht mit.
 
 ## Deployment auf Railway
 

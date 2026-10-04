@@ -11,8 +11,9 @@ import (
 // EventType classifies an event for filters and map icons.
 type EventType string
 
-// Event type codes. The OpenAPI spec (api/v1/openapi.yaml, Story 2.1) will
-// define them; these constants must then match it (AD-9).
+// Event type codes. The OpenAPI spec (api/v1/openapi.yaml) defines them in
+// the schema EventType; these constants mirror it, and a test of the public
+// API compares both (AD-9).
 const (
 	EventTypeFestival EventType = "festival"
 	EventTypeMarket   EventType = "market"
@@ -31,9 +32,38 @@ func EventTypes() []EventType {
 	}
 }
 
+// EventTypeEntry is an event type code with its German label.
+type EventTypeEntry struct {
+	Code  EventType
+	Label string
+}
+
+// eventTypeLabels are the German names of the event type codes (FR-5), the
+// only source for the public API and the admin.
+var eventTypeLabels = map[EventType]string{
+	EventTypeFestival: "Fest/Kirchweih",
+	EventTypeMarket:   "Markt",
+	EventTypeCulture:  "Kultur/Bühne",
+	EventTypePolitics: "Politik/Sitzung",
+	EventTypeClub:     "Verein/Treff",
+	EventTypeSports:   "Sport",
+	EventTypeOther:    "Sonstiges",
+}
+
+// ListEventTypes returns every event type with its German label, in the
+// order of EventTypes.
+func ListEventTypes() []EventTypeEntry {
+	var entries []EventTypeEntry
+	for _, eventType := range EventTypes() {
+		entries = append(entries, EventTypeEntry{Code: eventType, Label: eventTypeLabels[eventType]})
+	}
+	return entries
+}
+
 // Field names of an event besides its times (see EventFieldStartDate and
-// following), used in FieldError. The OpenAPI spec (api/v1/openapi.yaml,
-// Story 2.1) will define them; these constants must then match it (AD-9).
+// following), used in FieldError. The OpenAPI spec (api/v1/openapi.yaml)
+// will define them with the event schemas (Story 2.2); these constants must
+// then match it (AD-9).
 const (
 	EventFieldTitle             = "title"
 	EventFieldType              = "type"

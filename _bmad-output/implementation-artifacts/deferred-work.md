@@ -37,3 +37,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-10-warnung-bei-duplikatverdacht.md`
   summary: Contract-Schritt für `events.title_key` (AD-17): neue Migration entfernt den Default `''`, sobald ein Deploy mit Story 1.10 alle Schlüssel per `RecomputeDerived` nachgezogen hat; gut mit dem Contract-Schritt der Adress-Migration bündelbar.
   evidence: Migration `00006` legt `title_key` mit Default `''` an, damit älterer Code nach einem Rollback weiter schreiben kann; der Default ist danach überflüssig.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-api-vertrag-v1-und-liste-der-event-typen.md`
+  summary: AGENTS.md-TODO zu Codegen per `bmad-project-context`-Refresh auflösen: oapi-codegen-Befehl (`go generate ./...`, ruft `oapi-codegen@v2.8.0` mit `oapi-codegen.yaml` auf) und den erweiterten CI-Schritt „Generated code is up to date (sqlc, oapi-codegen)“ eintragen.
+  evidence: Story 2.1 führt oapi-codegen und die CI-Prüfung ein; die Befehle stehen nur in der README, AGENTS.md darf im Build nicht geändert werden.

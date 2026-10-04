@@ -1,0 +1,208 @@
+openapi: 3.1.0
+info:
+  title: OZ Zirndorf Event Store API
+  version: 1.0.0
+  summary: Public, read-only API for events in Zirndorf.
+  description: |
+    Public, read-only REST API of the OZ Zirndorf Event Store. It lists
+    events in Zirndorf (Bavaria, Germany) with honest precision: every
+    event says how exactly its time and place are known and where the
+    information comes from. No authentication is needed.
+
+    This document is the contract of version 1. Field names, parameters,
+    enum codes and the error format are defined here and nowhere else.
+
+    ## Conventions
+
+    These conventions apply to the whole public API. Other OpenZirndorf
+    backends are welcome to adopt them.
+
+    - **KON-1 Major version in the path.** Every resource lives below a
+      major version, here `/v1/…`.
+    - **KON-2 Parallel operation.** When a new major version appears, the
+      previous one stays available for at least 6 months. Its shutdown date
+      is then announced in this `info` section and in a `Sunset` response
+      header. No shutdown date is set for v1.
+    - **KON-3 Errors.** Errors follow RFC 9457 (Problem Details) with media
+      type `application/problem+json`, `type` `about:blank` and an English
+      `title` and `detail`. This also applies to unknown paths (404) and to
+      methods other than `GET`, `HEAD` and `OPTIONS` (405).
+    - **KON-4 Dates and times.** Start and end are a date `YYYY-MM-DD` plus
+      a separate, optional local time `HH:MM` (Europe/Berlin). An unknown
+      time is `null`, never `00:00`. Computed instants are ISO 8601 with
+      offset, for example `2026-11-27T00:00:00+01:00`.
+    - **KON-5 Period filters.** `from` and `to` accept a date or an instant
+      with offset and are both inclusive. An event matches when its period
+      overlaps the filter period. Without `to` the period is open-ended.
+    - **KON-6 Sort order.** Event lists are sorted by start ascending, the
+      archive descending.
+    - **KON-7 English technical terms.** Field names (camelCase),
+      parameters, paths, error messages and enum codes are English. Content
+      such as titles and labels stays German.
+    - **KON-8 List envelope.** Lists are delivered in an envelope
+      `{ "data": [ … ] }`, never as a bare array, so metadata can be added
+      later without a breaking change.
+
+    ## Versioning
+
+    Incompatible changes, for example to the list of event types or to
+    field names, only happen in a new major version. New optional fields
+    may be added to v1 at any time; clients must ignore fields they do not
+    know.
+
+    ## CORS
+
+    Every response below `/v1/` allows any origin
+    (`Access-Control-Allow-Origin: *`). Preflight requests (`OPTIONS`) are
+    answered for every path with status 204.
+
+    ## Machine-readable contract
+
+    This document is served at `/v1/openapi.yaml`.
+servers:
+  - url: /v1
+    description: Version 1 on the current host.
+paths:
+  /event-types:
+    get:
+      operationId: listEventTypes
+      summary: List the event types
+      description: |
+        Returns every event type code with its German label, in a fixed
+        display order. The list is part of the contract: a change is an
+        incompatible change and only happens in a new major version.
+      responses:
+        '200':
+          description: All seven event types in display order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventTypeList'
+              example:
+                data:
+                  - code: festival
+                    label: Fest/Kirchweih
+                  - code: market
+                    label: Markt
+                  - code: culture
+                    label: Kultur/Bühne
+                  - code: politics
+                    label: Politik/Sitzung
+                  - code: club
+                    label: Verein/Treff
+                  - code: sports
+                    label: Sport
+                  - code: other
+                    label: Sonstiges
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+components:
+  responses:
+    InternalServerError:
+      description: The server failed to answer the request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Internal Server Error
+            status: 500
+            detail: The server failed to answer the request.
+  schemas:
+    EventType:
+      type: string
+      description: |
+        Classifies an event for filters and map icons. Codes:
+        `festival` (festival or Kirchweih fair), `market` (market),
+        `culture` (culture or stage performance), `politics` (politics or
+        council meeting), `club` (club or meetup), `sports` (sports),
+        `other` (anything else).
+      enum:
+        - festival
+        - market
+        - culture
+        - politics
+        - club
+        - sports
+        - other
+      example: market
+    TimePrecision:
+      type: string
+      description: |
+        How exactly the start or end of an event is known.
+        `exact`: date and local time are known.
+        `dateOnly`: only the date is known, the time is unknown.
+        `allDay`: the event lasts the whole day, it has no time.
+      enum:
+        - exact
+        - dateOnly
+        - allDay
+      example: dateOnly
+    LocationPrecision:
+      type: string
+      description: |
+        How exactly the coordinates of a location mark the place.
+        `building`: a single building or entrance.
+        `street`: a square or street.
+        `area`: an area such as a park or fairground.
+        `district`: only the district of Zirndorf is known.
+      enum:
+        - building
+        - street
+        - area
+        - district
+      example: street
+    EventTypeEntry:
+      type: object
+      description: An event type code with its German label.
+      required:
+        - code
+        - label
+      properties:
+        code:
+          $ref: '#/components/schemas/EventType'
+        label:
+          type: string
+          description: German display name of the event type.
+          example: Markt
+    EventTypeList:
+      type: object
+      description: List envelope (KON-8) around all event types.
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          description: Every event type, in display order.
+          items:
+            $ref: '#/components/schemas/EventTypeEntry'
+    Problem:
+      type: object
+      description: |
+        Error response according to RFC 9457 (Problem Details), delivered as
+        `application/problem+json`.
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          description: |
+            URI reference identifying the problem type. The API uses
+            `about:blank`, so the HTTP status alone names the problem.
+          example: about:blank
+        title:
+          type: string
+          description: Short English summary, the reason phrase of the HTTP status.
+          example: Not Found
+        status:
+          type: integer
+          description: HTTP status code of the response.
+          example: 404
+        detail:
+          type: string
+          description: English explanation of this occurrence of the problem.
+          example: No resource exists at path /v1/nope.

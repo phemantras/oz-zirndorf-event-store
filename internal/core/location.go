@@ -13,8 +13,9 @@ import (
 // place.
 type LocationPrecision string
 
-// Location precision codes. The OpenAPI spec (api/v1/openapi.yaml, Story
-// 2.1) will define them; these constants must then match it (AD-9).
+// Location precision codes. The OpenAPI spec (api/v1/openapi.yaml) defines
+// them in the schema LocationPrecision; these constants mirror it, and a
+// test of the public API compares both (AD-9).
 const (
 	PrecisionBuilding LocationPrecision = "building"
 	PrecisionStreet   LocationPrecision = "street"
@@ -28,8 +29,8 @@ func LocationPrecisions() []LocationPrecision {
 }
 
 // Field names of a location, used in FieldError. The OpenAPI spec
-// (api/v1/openapi.yaml, Story 2.1) will define them; these constants must
-// then match it (AD-9).
+// (api/v1/openapi.yaml) will define them with the location schema (Story
+// 2.2); these constants must then match it (AD-9).
 const (
 	LocationFieldName       = "name"
 	LocationFieldStreet     = "street"
