@@ -148,7 +148,7 @@ action_items:
       Bedeutung archived_at im Spine, AD-9-Feldnamen-Abgleich als AC in 3.1, Deploy-Überlappung
       (R3/R9) mit Advisory-Sperre in 3.3"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
   - id: "epic-2-retro-item-12-b5-entscheidung-events-mit-prüfen-in-der"
     epic: 2
