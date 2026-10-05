@@ -49,7 +49,7 @@
   summary: `RecomputeDerived` auch `name_key` der Orte neu berechnen lassen (AD-16, ENT-17), inklusive Umgang mit dabei entstehenden Namenskonflikten.
   evidence: Story 1.7 deckt laut AC nur `effective*` ab, `title_key` folgt mit 1.10; `name_key` ist keiner Story zugeordnet.
   status: open
-  target: Story 2.5 (Sprint Change Proposal 2026-10-05)
+  target: Story 2.5, Teil B (Sprint Change Proposal 2026-10-05)
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-8-neuer-ort-beim-anlegen-eines-events.md`
   summary: Browser-Tests für das Admin-JavaScript (`location-map.js`, htmx-Austausch inkl. `htmx-config` für 409/422 und OOB-Ortsauswahl) einführen.
   evidence: Das Repo hat kein JS-/Browser-Test-Setup; ein Tippfehler in `dataset.latitudeField`, ein fehlender `htmx:load`-Hook oder eine falsch sortierte `responseHandling`-Regel bliebe bei grüner CI unentdeckt (Review Story 1.8). Bis dahin deckt nur die manuelle Browserprüfung das ab.
@@ -65,6 +65,8 @@
   evidence: Story 2.1 führt oapi-codegen und die CI-Prüfung ein; die Befehle stehen nur in der README, AGENTS.md darf im Build nicht geändert werden.
   status: done
   target: Retro Epic 1, A4 (bmad-project-context-Refresh vom 2026-10-05)
-- source_spec: none
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-taegliche-bereinigung.md`
   summary: Story 2.5, Teil B – vollständige Neuberechnung beim Start: `RecomputeDerived` zieht `name_key` nach, erkennt Kollisionen vorab, merkt fehlgeschlagene Events/Orte im Speicher und markiert sie in Event- und Ortsliste im Admin mit „prüfen“; Postgres-Test für `name_key`.
   evidence: Beim Build von Story 2.5 per Scope-Prüfung abgetrennt (2026-10-05): eigenständig auslieferbar neben Teil A (tägliche Bereinigung mit `archived_at`/`MarkArchived`); einzige Nahtstelle ist die Startreihenfolge in `cmd/eventstore`.
+  status: open
+  target: Story 2.5, Teil B (eigene Spec; vor Epic 3, Reihenfolge zu 2.6 frei)
