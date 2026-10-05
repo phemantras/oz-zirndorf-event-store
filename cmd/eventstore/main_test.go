@@ -151,6 +151,108 @@ func TestRunLogsEventsWhoseRecomputationFailsAndStartsAnyway(t *testing.T) {
 	}
 }
 
+// TestRunRecomputesThenMarksArchivedBeforeListening stores a past event
+// whose stored effective end still lies in the future: only a cleanup after
+// the recomputation marks it, and the mark is there once the health check
+// answers, so the cleanup ran before the server listened.
+func TestRunRecomputesThenMarksArchivedBeforeListening(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	pool, locationID := insertCleanupLocation(t, databaseURL)
+	var eventID string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO events (title, title_key, type, location_id, start_date, all_day, source_description,
+		                     effective_start, effective_end)
+		 VALUES ('Vergangen beim Start', 'vergangen beim start', 'other', $1, '2020-01-01', false, 'Test',
+		         '2019-12-31 23:00+00', '2099-01-01 00:00+00')
+		 RETURNING id::text`, locationID).Scan(&eventID)
+	if err != nil {
+		t.Fatalf("insert event: %v", err)
+	}
+	logs := &syncBuffer{}
+
+	running := startRun(t, databaseURL, newLogger(logs))
+	var marked bool
+	err = pool.QueryRow(context.Background(), "SELECT archived_at IS NOT NULL FROM events WHERE id = $1", eventID).Scan(&marked)
+	running.stop(t)
+
+	if err != nil {
+		t.Fatalf("read archived_at: %v", err)
+	}
+	if !marked {
+		t.Error("the past event is not marked archived when the server answers")
+	}
+	if count, ok := loggedMarkedCount(t, logs); !ok || count < 1 {
+		t.Errorf("log %q does not report at least one marked event", logs.String())
+	}
+}
+
+// loggedMarkedCount returns the count of the first log entry that reports
+// marked events.
+func loggedMarkedCount(t *testing.T, logs *syncBuffer) (float64, bool) {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatalf("log line %q is not JSON: %v", line, err)
+		}
+		if count, ok := entry[logKeyMarkedCount].(float64); ok {
+			return count, true
+		}
+	}
+	return 0, false
+}
+
+// logKeyMarkedCount is the log key under which the cleanup reports how many
+// events it marked.
+const logKeyMarkedCount = "marked"
+
+// cleanupLocationNameKey is the name key of the location the cleanup tests
+// store; leftovers of an aborted run are removed before inserting.
+const cleanupLocationNameKey = "bereinigungsprüfung"
+
+// insertCleanupLocation migrates the test database and inserts a location,
+// removing it with its events before and afterwards.
+func insertCleanupLocation(t *testing.T, databaseURL string) (*pgxpool.Pool, string) {
+	t.Helper()
+	ctx := context.Background()
+	pool, err := postgres.Connect(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	if _, err := postgres.Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	removeLocationWithEvents(t, pool, cleanupLocationNameKey)
+	t.Cleanup(func() { removeLocationWithEvents(t, pool, cleanupLocationNameKey) })
+	var locationID string
+	err = pool.QueryRow(ctx,
+		`INSERT INTO locations (name, name_key, street, postal_code, city, latitude, longitude, precision)
+		 VALUES ('Bereinigungsprüfung', $1, 'Marktplatz', '90513', 'Zirndorf', 49.44, 10.95, 'area')
+		 RETURNING id::text`, cleanupLocationNameKey).Scan(&locationID)
+	if err != nil {
+		t.Fatalf("insert location: %v", err)
+	}
+	return pool, locationID
+}
+
+// removeLocationWithEvents deletes the location with nameKey and its
+// events.
+func removeLocationWithEvents(t *testing.T, pool *pgxpool.Pool, nameKey string) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, "DELETE FROM events WHERE location_id IN (SELECT id FROM locations WHERE name_key = $1)", nameKey)
+	if err != nil {
+		t.Errorf("delete events of location %s: %v", nameKey, err)
+	}
+	if _, err := pool.Exec(ctx, "DELETE FROM locations WHERE name_key = $1", nameKey); err != nil {
+		t.Errorf("delete location %s: %v", nameKey, err)
+	}
+}
+
 // tableRowWith returns the table row of page that contains text, or "".
 func tableRowWith(page, text string) string {
 	for _, row := range strings.Split(page, "<tr>") {

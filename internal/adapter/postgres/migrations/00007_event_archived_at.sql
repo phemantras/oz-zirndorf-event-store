@@ -1,0 +1,12 @@
+-- +goose Up
+-- Archive mark of events (Story 2.5). The daily cleanup sets archived_at to
+-- the instant of its run for every event whose effective_end lies at or
+-- before that instant; saving an event clears it. It is bookkeeping only:
+-- no read query, API field or admin list uses it, "archived" stays
+-- effective_end <= now (AD-5, AD-13, AD-16). The time comes as a parameter
+-- from the core's Clock, never from now() (AD-2).
+-- Expand step (AD-17): the column is nullable without default, so existing
+-- rows stay unmarked until the next run and code without archived_at keeps
+-- working after a rollback.
+-- Once applied, this file must never change (AD-17).
+ALTER TABLE events ADD COLUMN archived_at timestamptz;

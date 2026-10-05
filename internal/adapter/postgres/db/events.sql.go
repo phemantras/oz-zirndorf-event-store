@@ -49,7 +49,25 @@ type CreateEventParams struct {
 	EffectiveEnd      pgtype.Timestamptz
 }
 
-func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event, error) {
+type CreateEventRow struct {
+	ID                pgtype.UUID
+	Title             string
+	Type              string
+	LocationID        pgtype.UUID
+	StartDate         pgtype.Date
+	StartTime         pgtype.Time
+	EndDate           pgtype.Date
+	EndTime           pgtype.Time
+	AllDay            bool
+	SourceDescription string
+	SourceUrl         pgtype.Text
+	Note              pgtype.Text
+	EffectiveStart    pgtype.Timestamptz
+	EffectiveEnd      pgtype.Timestamptz
+	TitleKey          string
+}
+
+func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (CreateEventRow, error) {
 	row := q.db.QueryRow(ctx, createEvent,
 		arg.Title,
 		arg.TitleKey,
@@ -66,7 +84,7 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Event
 		arg.EffectiveStart,
 		arg.EffectiveEnd,
 	)
-	var i Event
+	var i CreateEventRow
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
@@ -157,15 +175,33 @@ type FindEventsByDuplicateKeyParams struct {
 	LocationID pgtype.UUID
 }
 
-func (q *Queries) FindEventsByDuplicateKey(ctx context.Context, arg FindEventsByDuplicateKeyParams) ([]Event, error) {
+type FindEventsByDuplicateKeyRow struct {
+	ID                pgtype.UUID
+	Title             string
+	Type              string
+	LocationID        pgtype.UUID
+	StartDate         pgtype.Date
+	StartTime         pgtype.Time
+	EndDate           pgtype.Date
+	EndTime           pgtype.Time
+	AllDay            bool
+	SourceDescription string
+	SourceUrl         pgtype.Text
+	Note              pgtype.Text
+	EffectiveStart    pgtype.Timestamptz
+	EffectiveEnd      pgtype.Timestamptz
+	TitleKey          string
+}
+
+func (q *Queries) FindEventsByDuplicateKey(ctx context.Context, arg FindEventsByDuplicateKeyParams) ([]FindEventsByDuplicateKeyRow, error) {
 	rows, err := q.db.Query(ctx, findEventsByDuplicateKey, arg.TitleKey, arg.StartDate, arg.LocationID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Event
+	var items []FindEventsByDuplicateKeyRow
 	for rows.Next() {
-		var i Event
+		var i FindEventsByDuplicateKeyRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
@@ -200,9 +236,27 @@ FROM events
 WHERE id = $1
 `
 
-func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (Event, error) {
+type GetEventRow struct {
+	ID                pgtype.UUID
+	Title             string
+	Type              string
+	LocationID        pgtype.UUID
+	StartDate         pgtype.Date
+	StartTime         pgtype.Time
+	EndDate           pgtype.Date
+	EndTime           pgtype.Time
+	AllDay            bool
+	SourceDescription string
+	SourceUrl         pgtype.Text
+	Note              pgtype.Text
+	EffectiveStart    pgtype.Timestamptz
+	EffectiveEnd      pgtype.Timestamptz
+	TitleKey          string
+}
+
+func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, error) {
 	row := q.db.QueryRow(ctx, getEvent, id)
-	var i Event
+	var i GetEventRow
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
@@ -230,17 +284,35 @@ SELECT id, title, type, location_id, start_date, start_time, end_date, end_time,
 FROM events
 `
 
+type ListEventsRow struct {
+	ID                pgtype.UUID
+	Title             string
+	Type              string
+	LocationID        pgtype.UUID
+	StartDate         pgtype.Date
+	StartTime         pgtype.Time
+	EndDate           pgtype.Date
+	EndTime           pgtype.Time
+	AllDay            bool
+	SourceDescription string
+	SourceUrl         pgtype.Text
+	Note              pgtype.Text
+	EffectiveStart    pgtype.Timestamptz
+	EffectiveEnd      pgtype.Timestamptz
+	TitleKey          string
+}
+
 // Plain CRUD only: sorting, validation and the effective period live in the
 // core (AD-2).
-func (q *Queries) ListEvents(ctx context.Context) ([]Event, error) {
+func (q *Queries) ListEvents(ctx context.Context) ([]ListEventsRow, error) {
 	rows, err := q.db.Query(ctx, listEvents)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Event
+	var items []ListEventsRow
 	for rows.Next() {
-		var i Event
+		var i ListEventsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
@@ -281,18 +353,36 @@ type ListEventsOverlappingParams struct {
 	Hi pgtype.Timestamptz
 }
 
+type ListEventsOverlappingRow struct {
+	ID                pgtype.UUID
+	Title             string
+	Type              string
+	LocationID        pgtype.UUID
+	StartDate         pgtype.Date
+	StartTime         pgtype.Time
+	EndDate           pgtype.Date
+	EndTime           pgtype.Time
+	AllDay            bool
+	SourceDescription string
+	SourceUrl         pgtype.Text
+	Note              pgtype.Text
+	EffectiveStart    pgtype.Timestamptz
+	EffectiveEnd      pgtype.Timestamptz
+	TitleKey          string
+}
+
 // The one filter predicate of AD-16 on the stored effective period; a NULL
 // lo leaves the period open at the start, a NULL hi open-ended. The core
 // passes lo and hi as parameters.
-func (q *Queries) ListEventsOverlapping(ctx context.Context, arg ListEventsOverlappingParams) ([]Event, error) {
+func (q *Queries) ListEventsOverlapping(ctx context.Context, arg ListEventsOverlappingParams) ([]ListEventsOverlappingRow, error) {
 	rows, err := q.db.Query(ctx, listEventsOverlapping, arg.Lo, arg.Hi)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Event
+	var items []ListEventsOverlappingRow
 	for rows.Next() {
-		var i Event
+		var i ListEventsOverlappingRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
@@ -418,11 +508,29 @@ func (q *Queries) ListTimetableEntriesOfEvents(ctx context.Context, eventIds []p
 	return items, nil
 }
 
+const markEventsArchived = `-- name: MarkEventsArchived :execrows
+UPDATE events
+SET archived_at = $1
+WHERE effective_end <= $1 AND archived_at IS NULL
+`
+
+// One statement, so an event that a concurrent save makes active again is
+// checked against its new effective_end and stays unmarked. The core passes
+// now as a parameter (AD-2).
+func (q *Queries) MarkEventsArchived(ctx context.Context, now pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, markEventsArchived, now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateEvent = `-- name: UpdateEvent :one
 UPDATE events
 SET title = $2, title_key = $3, type = $4, location_id = $5, start_date = $6, start_time = $7,
     end_date = $8, end_time = $9, all_day = $10, source_description = $11,
-    source_url = $12, note = $13, effective_start = $14, effective_end = $15
+    source_url = $12, note = $13, effective_start = $14, effective_end = $15,
+    archived_at = NULL
 WHERE id = $1
 RETURNING id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
           source_description, source_url, note, effective_start, effective_end, title_key
@@ -446,7 +554,25 @@ type UpdateEventParams struct {
 	EffectiveEnd      pgtype.Timestamptz
 }
 
-func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event, error) {
+type UpdateEventRow struct {
+	ID                pgtype.UUID
+	Title             string
+	Type              string
+	LocationID        pgtype.UUID
+	StartDate         pgtype.Date
+	StartTime         pgtype.Time
+	EndDate           pgtype.Date
+	EndTime           pgtype.Time
+	AllDay            bool
+	SourceDescription string
+	SourceUrl         pgtype.Text
+	Note              pgtype.Text
+	EffectiveStart    pgtype.Timestamptz
+	EffectiveEnd      pgtype.Timestamptz
+	TitleKey          string
+}
+
+func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (UpdateEventRow, error) {
 	row := q.db.QueryRow(ctx, updateEvent,
 		arg.ID,
 		arg.Title,
@@ -464,7 +590,7 @@ func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event
 		arg.EffectiveStart,
 		arg.EffectiveEnd,
 	)
-	var i Event
+	var i UpdateEventRow
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
@@ -487,7 +613,7 @@ func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Event
 
 const updateEventDerived = `-- name: UpdateEventDerived :execrows
 UPDATE events
-SET effective_start = $2, effective_end = $3, title_key = $4
+SET effective_start = $2, effective_end = $3, title_key = $4, archived_at = NULL
 WHERE id = $1
 `
 

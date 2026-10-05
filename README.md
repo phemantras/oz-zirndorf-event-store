@@ -196,7 +196,9 @@ export SESSION_SECRET="$(openssl rand -base64 48)"
 go run ./cmd/eventstore
 ```
 
-Beim Start laufen zuerst die eingebetteten goose-Migrationen, erst danach nimmt der HTTP-Server Anfragen an. Logs gehen als JSON auf stdout.
+Beim Start laufen nacheinander die eingebetteten goose-Migrationen, die Neuberechnung der abgeleiteten Werte aller Events und die Bereinigung; erst danach nimmt der HTTP-Server Anfragen an. Logs gehen als JSON auf stdout.
+
+Die Bereinigung markiert vergangene Events (`effective_end` erreicht) in der Spalte `archived_at` und loggt die Anzahl (`marked`). Sie läuft beim Start und danach alle 24 Stunden, ist idempotent und löscht nichts. Ein Fehler wird nur geloggt; das Programm läuft weiter, der nächste Lauf versucht es erneut. Die Markierung ist reine Buchführung: Ob ein Event archiviert ist, entscheidet in API und Admin-Oberfläche immer `effectiveEnd`, die Antworten sind vor und nach der Bereinigung gleich. Speichern und die Neuberechnung beim Start leeren die Markierung, wenn sie das Event ändern; bleibt das Event vergangen, markiert der nächste Lauf es neu.
 
 ```sh
 curl -i localhost:8080/healthz   # 200, solange die Datenbank erreichbar ist, sonst 503
@@ -271,7 +273,7 @@ Im Dashboard: genau ein aktiver Deploy, Replikas = 1, Postgres-Image-Tag 18, kei
 
 - Jeder Push auf `main` (also jeder gemergte Pull Request) löst einen Deploy aus. Railway wartet, bis die CI grün ist; ist sie rot, wird der Deploy übersprungen und die alte Version bleibt live.
 - Die CI baut das Docker-Image mit (ohne Push) und startet es einmal ohne Umgebungsvariablen: Es muss mit Exit-Code 1 und der Meldung über fehlende Variablen enden. Scheitert Build oder Startprüfung (z. B. kaputtes `ENTRYPOINT` oder nicht statisches Binary), wird die CI rot und blockiert so den Deploy. Die CI braucht kein Railway-Token.
-- Railway baut das Image selbst und startet die neue Version. Beim Start laufen zuerst die Migrationen, dann der HTTP-Server. Erst wenn `/healthz` mit 200 antwortet, wird die neue Version live; scheitert der Health Check (z. B. Datenbank nicht erreichbar), bleibt die alte Version aktiv und der Fehler steht im Railway-Log.
+- Railway baut das Image selbst und startet die neue Version. Beim Start laufen zuerst die Migrationen, die Neuberechnung und die Bereinigung, dann der HTTP-Server. Erst wenn `/healthz` mit 200 antwortet, wird die neue Version live; scheitert der Health Check (z. B. Datenbank nicht erreichbar), bleibt die alte Version aktiv und der Fehler steht im Railway-Log.
 
 ### Migrationen und Datensicherung (AD-17)
 

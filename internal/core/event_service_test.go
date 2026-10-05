@@ -29,6 +29,7 @@ type fakeEventRepo struct {
 	countErr         error
 	updateDerivedErr map[string]error
 	overlapErr       error
+	archiveErr       error
 
 	created        []Event
 	updated        []Event
@@ -36,6 +37,10 @@ type fakeEventRepo struct {
 	derivedUpdated []string
 	findCalls      int
 	overlaps       []Overlap
+	// archiveNows are the instants MarkArchived was called with; it
+	// reports archivedCount marked events.
+	archiveNows   []time.Time
+	archivedCount int
 }
 
 func newFakeEventRepo(events ...Event) *fakeEventRepo {
@@ -161,6 +166,14 @@ func (r *fakeEventRepo) UpdateDerived(_ context.Context, id string, derived Deri
 	r.events[id] = event
 	r.derivedUpdated = append(r.derivedUpdated, id)
 	return nil
+}
+
+func (r *fakeEventRepo) MarkArchived(_ context.Context, now time.Time) (int, error) {
+	r.archiveNows = append(r.archiveNows, now)
+	if r.archiveErr != nil {
+		return 0, r.archiveErr
+	}
+	return r.archivedCount, nil
 }
 
 // storedEvent returns a valid event as the repository would hold it.
@@ -856,6 +869,57 @@ func TestDeleteEventPassesFailuresOnAndKeepsTheReviewMark(t *testing.T) {
 			}
 			if !service.needsReview(marketID) {
 				t.Error("a failed delete cleared the review mark")
+			}
+		})
+	}
+}
+
+// countingClock shows a fixed instant and counts how often it was read.
+type countingClock struct {
+	now   time.Time
+	reads int
+}
+
+func (c *countingClock) Now() time.Time {
+	c.reads++
+	return c.now
+}
+
+func TestMarkArchivedMarksAtTheClockInstantInOneTransaction(t *testing.T) {
+	events, locations := newFakeEventRepo(), newFakeLocationRepo()
+	events.archivedCount = 2
+	tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+	clock := &countingClock{now: christmasNoon(t).Now()}
+
+	marked, err := NewEventService(tx, events, locations).MarkArchived(context.Background(), clock)
+	if err != nil {
+		t.Fatalf("MarkArchived: %v", err)
+	}
+	if marked != 2 {
+		t.Errorf("marked = %d, want 2", marked)
+	}
+	if tx.runs != 1 || clock.reads != 1 || len(events.archiveNows) != 1 || !events.archiveNows[0].Equal(clock.now) {
+		t.Errorf("transactions = %d, clock reads = %d, repository instants = %v, want one of each at %v",
+			tx.runs, clock.reads, events.archiveNows, clock.now)
+	}
+}
+
+func TestMarkArchivedPassesFailuresOn(t *testing.T) {
+	tests := map[string]func(*fakeEventRepo, *fakeTx){
+		"repository":  func(e *fakeEventRepo, _ *fakeTx) { e.archiveErr = errDatabaseDown },
+		"transaction": func(_ *fakeEventRepo, tx *fakeTx) { tx.beginErr = errDatabaseDown },
+	}
+	for name, inject := range tests {
+		t.Run(name, func(t *testing.T) {
+			events, locations := newFakeEventRepo(), newFakeLocationRepo()
+			events.archivedCount = 1
+			tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+			inject(events, tx)
+
+			marked, err := NewEventService(tx, events, locations).MarkArchived(context.Background(), christmasNoon(t))
+
+			if !errors.Is(err, errDatabaseDown) || marked != 0 {
+				t.Errorf("MarkArchived = %d, %v, want 0, %v", marked, err, errDatabaseDown)
 			}
 		})
 	}

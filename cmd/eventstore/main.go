@@ -1,7 +1,7 @@
 // Command eventstore starts the OZ Zirndorf Event Store: it reads the
 // configuration from the environment, applies the database migrations,
-// recomputes the derived values of all events and only then starts the HTTP
-// server.
+// recomputes the derived values of all events, marks past events as archived
+// and only then starts the HTTP server. The marking repeats daily.
 package main
 
 import (
@@ -19,6 +19,7 @@ import (
 	_ "time/tzdata" // Europe/Berlin must resolve even without system zone data.
 
 	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/admin"
+	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/cleanup"
 	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
 	publicapi "github.com/phemantras/oz-zirndorf-event-store/internal/adapter/publicapi/v1"
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
@@ -58,8 +59,9 @@ func newLogger(out io.Writer) *slog.Logger {
 }
 
 // run wires the service in startup order (configuration, database,
-// migrations, recomputation of derived values, HTTP server) and blocks until
-// ctx is cancelled or a step fails.
+// migrations, recomputation of derived values, cleanup, HTTP server) and
+// blocks until ctx is cancelled or a step fails. The cleanup runs once
+// before the server listens and then daily; its failures are only logged.
 func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) error {
 	cfg, err := loadConfig(getenv)
 	if err != nil {
@@ -84,6 +86,9 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	if err := recomputeDerived(ctx, events, logger); err != nil {
 		return err
 	}
+	jobCtx, stopJob := context.WithCancel(ctx)
+	defer stopJob()
+	startCleanup(jobCtx, cleanup.Job{Archiver: events, Clock: systemClock{}, Logger: logger}, cleanup.DailyInterval)
 
 	listener, err := net.Listen("tcp", cfg.ListenAddress())
 	if err != nil {
@@ -91,6 +96,13 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	}
 	cases := useCases{locations: core.NewLocationService(tx, locationRepo), events: events}
 	return serve(ctx, newServer(pool, logger, newRouteHandlers(cfg, logger, cases)), listener, logger)
+}
+
+// startCleanup runs job once and then every interval in the background
+// until ctx ends. A failing run is only logged and never stops the start.
+func startCleanup(ctx context.Context, job cleanup.Job, interval time.Duration) {
+	job.RunOnce(ctx)
+	go job.RunDaily(ctx, interval)
 }
 
 // useCases are the core use cases the admin interface and the public API

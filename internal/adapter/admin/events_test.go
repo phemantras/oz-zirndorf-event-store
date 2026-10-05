@@ -107,6 +107,12 @@ func (r *memoryEventRepo) UpdateDerived(_ context.Context, id string, derived co
 	return nil
 }
 
+// MarkArchived is part of core.EventRepo; the admin never marks events
+// archived, so nothing is marked.
+func (r *memoryEventRepo) MarkArchived(context.Context, time.Time) (int, error) {
+	return 0, nil
+}
+
 // failingEvents answers every use case with err.
 type failingEvents struct{ err error }
 
