@@ -12,6 +12,7 @@ const (
 	hallID  = "0192f0b1-0000-7000-8000-000000000001"
 	parkID  = "0192f0b1-0000-7000-8000-000000000002"
 	newID   = "0192f0b1-0000-7000-8000-000000000003"
+	tentID  = "0192f0b1-0000-7000-8000-000000000004"
 	otherID = "0192f0b1-0000-7000-8000-0000000000ff"
 )
 
@@ -28,6 +29,8 @@ type fakeLocationRepo struct {
 	findErr   error
 	writeErr  error
 	deleteErr error
+	// nameKeyErr fails UpdateNameKey for the location with the key's ID.
+	nameKeyErr map[string]error
 	// raceWinner is inserted right before the write, simulating another
 	// request that saved the same name_key after the pre-check.
 	raceWinner *Location
@@ -35,6 +38,8 @@ type fakeLocationRepo struct {
 	created []Location
 	updated []Location
 	deleted []string
+	// nameKeysUpdated are the IDs whose name key UpdateNameKey stored.
+	nameKeysUpdated []string
 }
 
 func newFakeLocationRepo(locations ...Location) *fakeLocationRepo {
@@ -113,6 +118,26 @@ func (r *fakeLocationRepo) Delete(_ context.Context, id string) error {
 	}
 	delete(r.locations, id)
 	r.deleted = append(r.deleted, id)
+	return nil
+}
+
+// UpdateNameKey enforces the unique name_key like the database does.
+func (r *fakeLocationRepo) UpdateNameKey(_ context.Context, id, nameKey string) error {
+	if err := r.nameKeyErr[id]; err != nil {
+		return err
+	}
+	location, ok := r.locations[id]
+	if !ok {
+		return ErrNotFound
+	}
+	for _, existing := range r.locations {
+		if existing.NameKey == nameKey && existing.ID != id {
+			return ErrConflict
+		}
+	}
+	location.NameKey = nameKey
+	r.locations[id] = location
+	r.nameKeysUpdated = append(r.nameKeysUpdated, id)
 	return nil
 }
 

@@ -78,6 +78,19 @@ func (r *memoryLocationRepo) Update(ctx context.Context, location core.Location)
 	return location, nil
 }
 
+func (r *memoryLocationRepo) UpdateNameKey(_ context.Context, id, nameKey string) error {
+	location, ok := r.locations[id]
+	if !ok {
+		return core.ErrNotFound
+	}
+	location.NameKey = nameKey
+	if err := r.checkUnique(location); err != nil {
+		return err
+	}
+	r.locations[id] = location
+	return nil
+}
+
 func (r *memoryLocationRepo) Delete(_ context.Context, id string) error {
 	if r.deleteErr != nil {
 		return r.deleteErr
@@ -116,6 +129,10 @@ func (f failingLocations) GetLocation(context.Context, string) (core.Location, e
 }
 
 func (f failingLocations) ListLocations(context.Context) ([]core.Location, error) {
+	return nil, f.err
+}
+
+func (f failingLocations) ListLocationEntries(context.Context) ([]core.LocationListEntry, error) {
 	return nil, f.err
 }
 
@@ -244,6 +261,37 @@ func TestLocationListIsSortedByCoreOrder(t *testing.T) {
 	if first < 0 || first > second || second > third {
 		t.Errorf("positions = %d, %d, %d, want alte Feuerwache, Bibertpark, Zirndorfer Ölmühle", first, second, third)
 	}
+}
+
+func TestLocationListMarksLocationsWhoseNameKeysCollide(t *testing.T) {
+	ts := newTestServer(t)
+	ts.seed(t, hallName)
+	twin := ts.seed(t, "Paul-Metz-Halle Zirndorf")
+	ts.seed(t, "Bibertpark")
+	// A rule change would let both names normalize to the same key.
+	collided := ts.locations.locations[twin.ID]
+	collided.Name = strings.ToUpper(hallName)
+	ts.locations.locations[twin.ID] = collided
+	if _, err := ts.locationService.RecomputeNameKeys(context.Background()); err != nil {
+		t.Fatalf("RecomputeNameKeys: %v", err)
+	}
+
+	rec := ts.get(locationsPath)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	body := html.UnescapeString(rec.Body.String())
+	if got := strings.Count(body, `<strong class="review">prüfen</strong>`); got != 2 {
+		t.Errorf("review marks = %d, want 2 for both colliding locations", got)
+	}
+	parkRow := body[strings.Index(body, "Bibertpark"):]
+	if strings.Contains(parkRow[:strings.Index(parkRow, "</tr>")], "prüfen") {
+		t.Error("the location without collision is marked")
+	}
+
+	form := hallForm()
+	form.Set(core.LocationFieldName, "Paul-Metz-Halle Zirndorf")
+	assertRedirect(t, ts.post(locationPath(twin.ID), form), locationsPath)
+	assertBodyLacks(t, ts.get(locationsPath), "prüfen")
 }
 
 func TestLocationListWithoutLocationsLinksNewForm(t *testing.T) {

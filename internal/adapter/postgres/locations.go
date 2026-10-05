@@ -117,6 +117,24 @@ func (r *LocationRepo) Update(ctx context.Context, location core.Location) (core
 	return locationFromRow(locationRow(row)), nil
 }
 
+// UpdateNameKey replaces only the name key of the location with id. A
+// missing or unparsable id yields core.ErrNotFound, a taken name key
+// core.ErrConflict.
+func (r *LocationRepo) UpdateNameKey(ctx context.Context, id, nameKey string) error {
+	uuid, err := parseID(locationKind, id)
+	if err != nil {
+		return err
+	}
+	affected, err := r.queries.UpdateLocationNameKey(ctx, db.UpdateLocationNameKeyParams{ID: uuid, NameKey: nameKey})
+	if err != nil {
+		return translateError("update location name key", err)
+	}
+	if affected == noRowsAffected {
+		return fmt.Errorf("update name key of location %s: %w", id, core.ErrNotFound)
+	}
+	return nil
+}
+
 // Delete removes the location with id. A missing or unparsable id yields
 // core.ErrNotFound; a location events still refer to is refused by the
 // foreign key, which yields core.ErrConflict.

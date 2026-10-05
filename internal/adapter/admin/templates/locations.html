@@ -11,7 +11,7 @@
   <tbody>
   {{range .Locations}}
     <tr>
-      <td><a href="{{.URL}}">{{.Name}}</a></td>
+      <td><a href="{{.URL}}">{{.Name}}</a>{{if .NeedsReview}} <strong class="review">prüfen</strong>{{end}}</td>
       <td>{{.Address}}</td>
       <td>{{.Precision}}</td>
       <td>{{.Latitude}}, {{.Longitude}}</td>

@@ -20,6 +20,7 @@ type LocationUseCases interface {
 	SaveLocation(ctx context.Context, id string, in core.LocationInput) (core.Location, error)
 	GetLocation(ctx context.Context, id string) (core.Location, error)
 	ListLocations(ctx context.Context) ([]core.Location, error)
+	ListLocationEntries(ctx context.Context) ([]core.LocationListEntry, error)
 	DeleteLocation(ctx context.Context, id string) error
 }
 
@@ -129,6 +130,8 @@ type locationRow struct {
 	Latitude  string
 	Longitude string
 	URL       string
+	// NeedsReview marks a location whose name key collided at startup.
+	NeedsReview bool
 }
 
 // locationFormPage is the data of the form for a new or an existing
@@ -170,20 +173,22 @@ type locationConflict struct {
 }
 
 func (h *handler) showLocations(w http.ResponseWriter, r *http.Request) {
-	locations, err := h.locations.ListLocations(r.Context())
+	entries, err := h.locations.ListLocationEntries(r.Context())
 	if err != nil {
 		h.failLocationRequest(w, err)
 		return
 	}
-	rows := make([]locationRow, 0, len(locations))
-	for _, location := range locations {
+	rows := make([]locationRow, 0, len(entries))
+	for _, entry := range entries {
+		location := entry.Location
 		rows = append(rows, locationRow{
-			Name:      location.Name,
-			Address:   formatAddress(location),
-			Precision: precisionLabels[location.Precision],
-			Latitude:  formatCoordinate(location.Latitude),
-			Longitude: formatCoordinate(location.Longitude),
-			URL:       locationURL(location.ID),
+			Name:        location.Name,
+			Address:     formatAddress(location),
+			Precision:   precisionLabels[location.Precision],
+			Latitude:    formatCoordinate(location.Latitude),
+			Longitude:   formatCoordinate(location.Longitude),
+			URL:         locationURL(location.ID),
+			NeedsReview: entry.NeedsReview,
 		})
 	}
 	h.render(w, locationsTemplate, http.StatusOK, locationListPage{Locations: rows})

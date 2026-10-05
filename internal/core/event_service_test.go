@@ -533,6 +533,90 @@ func TestRecomputeDerivedStoresTheTitleKeyOfAnEventWhosePeriodFails(t *testing.T
 	assertNeedsReview(t, service, map[string]bool{marketID: true})
 }
 
+// eventWithTimetable is a stored event on kirchweihFriday whose stored
+// period still runs two days longer, as before a rule change shortened it,
+// with entries as its timetable and a stale title key.
+func eventWithTimetable(t *testing.T, entries ...TimetableEntry) Event {
+	t.Helper()
+	event := storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday})
+	event.Period.End = event.Period.End.AddDate(0, 0, 2)
+	event.TitleKey = ""
+	event.Timetable = entries
+	return event
+}
+
+func TestRecomputeDerivedKeepsThePeriodWhenTheTimetableNoLongerFits(t *testing.T) {
+	saturday := kirchweihFriday.NextDay()
+	allDayFriday := TimetableEntry{ID: "entry-fits", Description: "Markttag", Date: kirchweihFriday}
+	tests := map[string]struct {
+		entries []TimetableEntry
+		entryID string
+		field   string
+	}{
+		"day entry": {
+			entries: []TimetableEntry{{ID: "entry-day", Description: "Markttag", Date: saturday}, allDayFriday},
+			entryID: "entry-day",
+			field:   TimetableField(1, TimetableFieldDate),
+		},
+		"timed entry": {
+			entries: []TimetableEntry{
+				{ID: "entry-timed", Description: "Disco", Date: kirchweihFriday, StartTime: localTime(22, 0), EndTime: localTime(1, 0)},
+				allDayFriday,
+			},
+			entryID: "entry-timed",
+			field:   TimetableField(1, TimetableFieldEndTime),
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			event := eventWithTimetable(t, tt.entries...)
+			repo := newFakeEventRepo(event)
+			service := newTestEventService(repo, hall())
+
+			failures, err := service.RecomputeDerived(context.Background())
+			if err != nil {
+				t.Fatalf("RecomputeDerived: %v", err)
+			}
+			if len(failures) != 1 || failures[0].EventID != marketID {
+				t.Fatalf("failures = %v, want one for %s", failures, marketID)
+			}
+			message := failures[0].Err.Error()
+			for _, want := range []string{marketID, tt.entryID, tt.field, string(ProblemOutsideEvent)} {
+				if !strings.Contains(message, want) {
+					t.Errorf("err = %q, want it to name %q", message, want)
+				}
+			}
+			stored := repo.events[marketID]
+			if stored.Period != event.Period {
+				t.Errorf("period = %+v, want the stored %+v", stored.Period, event.Period)
+			}
+			if stored.TitleKey != NormalizeKey(event.Title) {
+				t.Errorf("title key = %q, want %q", stored.TitleKey, NormalizeKey(event.Title))
+			}
+			assertNeedsReview(t, service, map[string]bool{marketID: true})
+		})
+	}
+}
+
+func TestRecomputeDerivedStoresThePeriodWhenTheTimetableFits(t *testing.T) {
+	event := eventWithTimetable(t,
+		TimetableEntry{ID: "entry-timed", Description: "Disco", Date: kirchweihFriday, StartTime: localTime(22, 0), EndTime: localTime(23, 30)},
+		TimetableEntry{ID: "entry-day", Description: "Markttag", Date: kirchweihFriday},
+	)
+	repo := newFakeEventRepo(event)
+	service := newTestEventService(repo, hall())
+
+	failures, err := service.RecomputeDerived(context.Background())
+	if err != nil || failures != nil {
+		t.Fatalf("RecomputeDerived = %v, %v, want no failures", failures, err)
+	}
+	want := storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday}).Period
+	if got := repo.events[marketID].Period; !got.End.Equal(want.End) {
+		t.Errorf("recomputed end = %v, want %v", got.End, want.End)
+	}
+	assertNeedsReview(t, service, map[string]bool{marketID: false})
+}
+
 func TestRecomputeDerivedStopsAtStorageFailuresWithoutMarking(t *testing.T) {
 	keyless := brokenEvent(t, concertID)
 	keyless.TitleKey = ""
