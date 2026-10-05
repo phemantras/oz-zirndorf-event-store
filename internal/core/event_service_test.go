@@ -30,6 +30,9 @@ type fakeEventRepo struct {
 	updateDerivedErr map[string]error
 	overlapErr       error
 	archiveErr       error
+	// duringOverlap, when set, runs inside ListOverlapping, as a concurrent
+	// writer would.
+	duringOverlap func()
 
 	created        []Event
 	updated        []Event
@@ -68,6 +71,9 @@ func (r *fakeEventRepo) List(context.Context) ([]Event, error) {
 // every overlap it was asked for.
 func (r *fakeEventRepo) ListOverlapping(ctx context.Context, overlap Overlap) ([]Event, error) {
 	r.overlaps = append(r.overlaps, overlap)
+	if r.duringOverlap != nil {
+		r.duringOverlap()
+	}
 	if r.overlapErr != nil {
 		return nil, r.overlapErr
 	}

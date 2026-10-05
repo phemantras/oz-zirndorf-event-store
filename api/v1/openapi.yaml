@@ -97,6 +97,13 @@ info:
       `effectiveEnd` is reached, independent of any background job: an
       event that ends at 14:00 is no longer active from 14:00 on.
       `archived` says which of the two lists an event belongs to.
+    - **Events awaiting correction.** At every start-up all stored events
+      are recomputed, so that changed rules apply everywhere. An event
+      whose stored data can no longer be recomputed, for example
+      because its timetable no longer fits its period, appears in neither
+      `/v1/events` nor `/v1/archive/events` until it is corrected, since
+      its stored period may be wrong. Once corrected it is again in
+      exactly one of the two lists; a deleted event is in neither.
 
     ## Location precision
 
@@ -260,7 +267,8 @@ paths:
         the minute its `effectiveEnd` is reached, independent of any
         background job, and is never deleted automatically. At any moment
         every event is in exactly one of `/v1/events` and
-        `/v1/archive/events`. The events have the same form as in
+        `/v1/archive/events`, except events awaiting correction, which are
+        in neither (see "Time model"). The events have the same form as in
         `/v1/events`, with `archived` set to `true`.
 
         Defaults: without `from` the filter period is open at the start;

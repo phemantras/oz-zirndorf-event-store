@@ -92,9 +92,9 @@ func (s eventTypeSet) allows(eventType EventType) bool {
 // effective start, equal starts by ID. Without from and to the period is
 // today in Europe/Berlin; without from it starts today, without to it is
 // open-ended. A date covers its whole day, an instant in to its whole
-// minute. The clock is read once. An invalid filter yields
-// *ValidationError naming from, to or type, and the repository is not
-// asked.
+// minute. The clock is read once. Events marked for review are left out.
+// An invalid filter yields *ValidationError naming from, to or type, and
+// the repository is not asked.
 func (s *EventService) ListActiveEvents(ctx context.Context, clock Clock, filter EventFilter) ([]ListedEvent, error) {
 	now := clock.Now()
 	overlap, types, err := normalizeActiveFilter(filter, now)
@@ -115,8 +115,9 @@ func (s *EventService) ListActiveEvents(ctx context.Context, clock Clock, filter
 // of the filter types, sorted by effective start descending, equal starts
 // by ID. Without from the period is open at the start, without to it ends
 // now. Dates and instants count as in ListActiveEvents. The clock is read
-// once. An invalid filter yields *ValidationError naming from, to or type,
-// and the repository is not asked.
+// once. Events marked for review are left out. An invalid filter yields
+// *ValidationError naming from, to or type, and the repository is not
+// asked.
 func (s *EventService) ListArchivedEvents(ctx context.Context, clock Clock, filter EventFilter) ([]ListedEvent, error) {
 	now := clock.Now()
 	overlap, types, err := normalizeArchiveFilter(filter, now)
@@ -150,8 +151,12 @@ func archivedEvent(event ListedEvent) bool { return event.Archived }
 
 // listMatchingEvents asks the repository for the overlapping events and
 // returns those of the allowed types that query.keep keeps, completed with
-// their locations, in no particular order.
+// their locations, in no particular order. Events marked for review are
+// left out.
 func (s *EventService) listMatchingEvents(ctx context.Context, query eventQuery) ([]ListedEvent, error) {
+	// Taken before reading, so a save clearing a mark meanwhile cannot let
+	// the row from before the save through.
+	marked := s.markedForReview()
 	events, err := s.events.ListOverlapping(ctx, query.overlap)
 	if err != nil {
 		return nil, fmt.Errorf("list overlapping events: %w", err)
@@ -169,6 +174,11 @@ func (s *EventService) listMatchingEvents(ctx context.Context, query eventQuery)
 		location, ok := locations[event.LocationID]
 		if !ok {
 			return nil, fmt.Errorf("location %s of event %s: %w", event.LocationID, event.ID, ErrNotFound)
+		}
+		// Stored values that failed recomputation may be wrong, so the
+		// event stays hidden until saved again (ENT-5).
+		if _, inReview := marked[event.ID]; inReview {
+			continue
 		}
 		if completed := listedEventOf(event, location, frozenClock(query.now)); query.keep(completed) {
 			listed = append(listed, completed)
