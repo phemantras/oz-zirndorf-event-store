@@ -28,10 +28,22 @@ func newQueryService(repo *fakeEventRepo, locations ...Location) *EventService {
 // listActiveTitles runs ListActiveEvents and returns the titles in order.
 func listActiveTitles(t *testing.T, repo *fakeEventRepo, clock Clock, filter EventFilter) []string {
 	t.Helper()
-	listed, err := newQueryService(repo, hall(), park()).ListActiveEvents(context.Background(), clock, filter)
+	return listActiveTitlesOf(t, newQueryService(repo, hall(), park()), clock, filter)
+}
+
+// listActiveTitlesOf runs ListActiveEvents of service and returns the
+// titles in order.
+func listActiveTitlesOf(t *testing.T, service *EventService, clock Clock, filter EventFilter) []string {
+	t.Helper()
+	listed, err := service.ListActiveEvents(context.Background(), clock, filter)
 	if err != nil {
 		t.Fatalf("ListActiveEvents(%+v): %v", filter, err)
 	}
+	return titlesOf(listed)
+}
+
+// titlesOf returns the titles of listed in order.
+func titlesOf(listed []ListedEvent) []string {
 	var titles []string
 	for _, event := range listed {
 		titles = append(titles, event.Title)
@@ -39,17 +51,26 @@ func listActiveTitles(t *testing.T, repo *fakeEventRepo, clock Clock, filter Eve
 	return titles
 }
 
+// IDs of the fixture events the review tests mark. Weihnachtskonzert is
+// active and Sommerfest over at every clock of the partition test.
+const (
+	weihnachtsmarktID   = "0192f0b1-0000-7000-8000-000000000301"
+	weihnachtskonzertID = "0192f0b1-0000-7000-8000-000000000304"
+	sommerfestID        = "0192f0b1-0000-7000-8000-000000000321"
+	nikolausmarktID     = "0192f0b1-0000-7000-8000-000000000322"
+)
+
 // christmasEvents are stored events around the clock of the examples.
 func christmasEvents(t *testing.T) []Event {
 	t.Helper()
 	return []Event{
-		storedEvent(t, "0192f0b1-0000-7000-8000-000000000301", "Weihnachtsmarkt",
+		storedEvent(t, weihnachtsmarktID, "Weihnachtsmarkt",
 			EventTimes{StartDate: LocalDate{2026, time.November, 27}, EndDate: christmasEve}),
 		storedEvent(t, "0192f0b1-0000-7000-8000-000000000302", "Krippenspiel",
 			EventTimes{StartDate: christmasEve, StartTime: localTime(10, 0), EndDate: christmasEve, EndTime: localTime(14, 0)}),
 		storedEvent(t, "0192f0b1-0000-7000-8000-000000000303", "Christmette",
 			EventTimes{StartDate: christmasEve, StartTime: localTime(18, 0)}),
-		storedEvent(t, "0192f0b1-0000-7000-8000-000000000304", "Weihnachtskonzert",
+		storedEvent(t, weihnachtskonzertID, "Weihnachtskonzert",
 			EventTimes{StartDate: december(25), StartTime: localTime(17, 0)}),
 		storedEvent(t, "0192f0b1-0000-7000-8000-000000000305", "Adventsbasar",
 			EventTimes{StartDate: december(23)}),
@@ -426,12 +447,12 @@ func TestListActiveEventsCoversTheWholeDayWhenDaylightSavingTimeEnds(t *testing.
 // after the clock of the examples.
 func archiveEvents(t *testing.T) []Event {
 	t.Helper()
-	sommerfest := storedEvent(t, "0192f0b1-0000-7000-8000-000000000321", "Sommerfest",
+	sommerfest := storedEvent(t, sommerfestID, "Sommerfest",
 		EventTimes{StartDate: LocalDate{2026, time.June, 20}})
 	sommerfest.Type = EventTypeFestival
 	return append(christmasEvents(t),
 		sommerfest,
-		storedEvent(t, "0192f0b1-0000-7000-8000-000000000322", "Nikolausmarkt",
+		storedEvent(t, nikolausmarktID, "Nikolausmarkt",
 			EventTimes{StartDate: december(5), EndDate: december(6)}),
 		storedEvent(t, "0192f0b1-0000-7000-8000-000000000323", "Frühschoppen",
 			EventTimes{StartDate: christmasEve, StartTime: localTime(10, 0), EndDate: christmasEve, EndTime: localTime(11, 59)}),
@@ -450,15 +471,18 @@ var pastTitles = []string{"Mittagsläuten", "Frühschoppen", "Adventsbasar", "Ni
 // order.
 func listArchivedTitles(t *testing.T, repo *fakeEventRepo, clock Clock, filter EventFilter) []string {
 	t.Helper()
-	listed, err := newQueryService(repo, hall(), park()).ListArchivedEvents(context.Background(), clock, filter)
+	return listArchivedTitlesOf(t, newQueryService(repo, hall(), park()), clock, filter)
+}
+
+// listArchivedTitlesOf runs ListArchivedEvents of service and returns the
+// titles in order.
+func listArchivedTitlesOf(t *testing.T, service *EventService, clock Clock, filter EventFilter) []string {
+	t.Helper()
+	listed, err := service.ListArchivedEvents(context.Background(), clock, filter)
 	if err != nil {
 		t.Fatalf("ListArchivedEvents(%+v): %v", filter, err)
 	}
-	var titles []string
-	for _, event := range listed {
-		titles = append(titles, event.Title)
-	}
-	return titles
+	return titlesOf(listed)
 }
 
 func TestListArchivedEventsWithoutFilterListsEveryPastEventLatestFirst(t *testing.T) {
@@ -634,6 +658,7 @@ func TestListArchivedEventsCompletesEachEventAsArchived(t *testing.T) {
 }
 
 func TestEveryEventIsInExactlyOneOfActiveAndArchive(t *testing.T) {
+	marked := map[string]bool{weihnachtskonzertID: true, sommerfestID: true}
 	for _, clock := range []Clock{
 		christmasNoon(t),
 		clockAt(t, christmasEve, 11, 59),
@@ -641,14 +666,178 @@ func TestEveryEventIsInExactlyOneOfActiveAndArchive(t *testing.T) {
 		clockAt(t, december(25), 0, 0),
 	} {
 		events := archiveEvents(t)
-		active := listActiveTitles(t, newFakeEventRepo(events...), clock, EventFilter{From: ptr("1900-01-01")})
-		archived := listArchivedTitles(t, newFakeEventRepo(events...), clock, EventFilter{})
+		// Both lists from one service, so both see the same review marks.
+		service := newQueryService(newFakeEventRepo(events...), hall(), park())
+		for id := range marked {
+			service.markForReview(id)
+		}
+		active := listActiveTitlesOf(t, service, clock, EventFilter{From: ptr("1900-01-01")})
+		archived := listArchivedTitlesOf(t, service, clock, EventFilter{})
 		for _, event := range events {
 			inActive, inArchive := slices.Contains(active, event.Title), slices.Contains(archived, event.Title)
+			if marked[event.ID] {
+				if inActive || inArchive {
+					t.Errorf("at %v marked %s active = %v, archived = %v, want neither", clock.Now(), event.Title, inActive, inArchive)
+				}
+				continue
+			}
 			if inActive == inArchive {
 				t.Errorf("at %v %s active = %v, archived = %v, want exactly one", clock.Now(), event.Title, inActive, inArchive)
 			}
 		}
+	}
+}
+
+func TestListActiveEventsLeavesOutEventsMarkedForReview(t *testing.T) {
+	service := newQueryService(newFakeEventRepo(archiveEvents(t)...), hall(), park())
+	service.markForReview(weihnachtsmarktID)
+
+	for _, filter := range []EventFilter{
+		{},
+		{From: ptr("2026-11-29"), To: ptr("2026-12-24")},
+		{Types: []string{string(EventTypeMarket)}},
+	} {
+		got := listActiveTitlesOf(t, service, christmasNoon(t), filter)
+		if slices.Contains(got, "Weihnachtsmarkt") {
+			t.Errorf("filter %+v: titles = %v, want Weihnachtsmarkt left out", filter, got)
+		}
+		if !slices.Contains(got, "Krippenspiel") {
+			t.Errorf("filter %+v: titles = %v, want the unmarked Krippenspiel", filter, got)
+		}
+	}
+	assertNeedsReview(t, service, map[string]bool{weihnachtsmarktID: true})
+}
+
+func TestListArchivedEventsLeavesOutEventsMarkedForReview(t *testing.T) {
+	service := newQueryService(newFakeEventRepo(archiveEvents(t)...), hall(), park())
+	service.markForReview(nikolausmarktID)
+
+	for _, filter := range []EventFilter{
+		{},
+		{From: ptr("2026-12-01"), To: ptr("2026-12-24")},
+		{Types: []string{string(EventTypeMarket)}},
+	} {
+		got := listArchivedTitlesOf(t, service, christmasNoon(t), filter)
+		if slices.Contains(got, "Nikolausmarkt") {
+			t.Errorf("filter %+v: titles = %v, want Nikolausmarkt left out", filter, got)
+		}
+		if !slices.Contains(got, "Adventsbasar") {
+			t.Errorf("filter %+v: titles = %v, want the unmarked Adventsbasar", filter, got)
+		}
+	}
+	assertNeedsReview(t, service, map[string]bool{nikolausmarktID: true})
+}
+
+// publicListsHolding reports which public lists of service at clock hold
+// an event titled title.
+func publicListsHolding(t *testing.T, service *EventService, clock Clock, title string) (inActive, inArchive bool) {
+	t.Helper()
+	active := listActiveTitlesOf(t, service, clock, EventFilter{From: ptr("1900-01-01")})
+	archived := listArchivedTitlesOf(t, service, clock, EventFilter{})
+	return slices.Contains(active, title), slices.Contains(archived, title)
+}
+
+// assertInNoPublicList fails when an event titled title is in a public
+// list of service at any of the clocks.
+func assertInNoPublicList(t *testing.T, service *EventService, title string, clocks ...Clock) {
+	t.Helper()
+	for _, clock := range clocks {
+		if inActive, inArchive := publicListsHolding(t, service, clock, title); inActive || inArchive {
+			t.Errorf("at %v %s active = %v, archived = %v, want neither", clock.Now(), title, inActive, inArchive)
+		}
+	}
+}
+
+func TestAnEventFailingRecomputationIsPublicAgainOnlyAfterASuccessfulSave(t *testing.T) {
+	repo := newFakeEventRepo(brokenEvent(t, marketID))
+	service := newTestEventService(repo, hall())
+	ctx := context.Background()
+	during, after := clockAt(t, kirchweihFriday, 12, 0), clockAt(t, kirchweihMonday, 12, 0)
+	if _, err := service.RecomputeDerived(ctx); err != nil {
+		t.Fatalf("RecomputeDerived: %v", err)
+	}
+	assertInNoPublicList(t, service, "Konzert", during, after)
+
+	repo.writeErr = errDatabaseDown
+	if _, err := service.SaveEvent(ctx, marketID, validEventInput(), RejectDuplicates); !errors.Is(err, errDatabaseDown) {
+		t.Fatalf("failing SaveEvent: err = %v, want %v", err, errDatabaseDown)
+	}
+	repo.writeErr = nil
+	assertInNoPublicList(t, service, "Konzert", during, after)
+
+	if _, err := service.SaveEvent(ctx, marketID, validEventInput(), RejectDuplicates); err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+	for _, test := range []struct {
+		clock                   Clock
+		wantActive, wantArchive bool
+	}{
+		{during, true, false},
+		{after, false, true},
+	} {
+		inActive, inArchive := publicListsHolding(t, service, test.clock, "Kirchweihmarkt")
+		if inActive != test.wantActive || inArchive != test.wantArchive {
+			t.Errorf("at %v saved event active = %v, archived = %v, want %v, %v",
+				test.clock.Now(), inActive, inArchive, test.wantActive, test.wantArchive)
+		}
+	}
+}
+
+func TestADeletedEventMarkedForReviewIsInNoPublicList(t *testing.T) {
+	repo := newFakeEventRepo(brokenEvent(t, marketID))
+	service := newTestEventService(repo, hall())
+	ctx := context.Background()
+	if _, err := service.RecomputeDerived(ctx); err != nil {
+		t.Fatalf("RecomputeDerived: %v", err)
+	}
+
+	if err := service.DeleteEvent(ctx, marketID); err != nil {
+		t.Fatalf("DeleteEvent: %v", err)
+	}
+	if service.needsReview(marketID) {
+		t.Error("the deleted event is still marked for review")
+	}
+	assertInNoPublicList(t, service, "Konzert", clockAt(t, kirchweihFriday, 12, 0), clockAt(t, kirchweihMonday, 12, 0))
+}
+
+func TestPublicListsKeepAnEventHiddenWhoseMarkIsClearedWhileReading(t *testing.T) {
+	repo := newFakeEventRepo(archiveEvents(t)...)
+	service := newQueryService(repo, hall(), park())
+	service.markForReview(weihnachtsmarktID)
+	service.markForReview(nikolausmarktID)
+	// A save committing while the repository reads clears the mark, but
+	// the rows read still hold the values from before the save.
+	repo.duringOverlap = func() {
+		service.clearReview(weihnachtsmarktID)
+		service.clearReview(nikolausmarktID)
+	}
+	if got := listActiveTitlesOf(t, service, christmasNoon(t), EventFilter{}); slices.Contains(got, "Weihnachtsmarkt") {
+		t.Errorf("active titles = %v, want Weihnachtsmarkt left out", got)
+	}
+
+	service.markForReview(nikolausmarktID)
+	if got := listArchivedTitlesOf(t, service, christmasNoon(t), EventFilter{}); slices.Contains(got, "Nikolausmarkt") {
+		t.Errorf("archived titles = %v, want Nikolausmarkt left out", got)
+	}
+}
+
+func TestPublicListsReportTheMissingLocationOfAMarkedEvent(t *testing.T) {
+	var marked []Event
+	for _, event := range archiveEvents(t) {
+		if event.ID == weihnachtsmarktID || event.ID == nikolausmarktID {
+			marked = append(marked, event)
+		}
+	}
+	// No location is stored, and only marked events are.
+	service := newQueryService(newFakeEventRepo(marked...))
+	service.markForReview(weihnachtsmarktID)
+	service.markForReview(nikolausmarktID)
+
+	if _, err := service.ListActiveEvents(context.Background(), christmasNoon(t), EventFilter{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ListActiveEvents: err = %v, want ErrNotFound", err)
+	}
+	if _, err := service.ListArchivedEvents(context.Background(), christmasNoon(t), EventFilter{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ListArchivedEvents: err = %v, want ErrNotFound", err)
 	}
 }
 

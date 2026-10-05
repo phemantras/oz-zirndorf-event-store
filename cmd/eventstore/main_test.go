@@ -227,6 +227,12 @@ func TestRunLogsEventsWhoseRecomputationFailsAndStartsAnyway(t *testing.T) {
 	// The admin must share the event use cases with the recomputation, or
 	// the review mark would be lost.
 	status, body := logIn(t, running.baseURL).get(t, adminEventsPath)
+	// The public API must share them too, or it would serve the event with
+	// its stale period.
+	publicBodies := map[string]string{}
+	for _, path := range []string{publicAllEventsPath, publicArchivePath} {
+		publicBodies[path] = publicBody(t, running.baseURL+path)
+	}
 	running.stop(t)
 
 	if !strings.Contains(logs.String(), logMsgRecomputeFailed) || !strings.Contains(logs.String(), brokenID) {
@@ -239,6 +245,36 @@ func TestRunLogsEventsWhoseRecomputationFailsAndStartsAnyway(t *testing.T) {
 	if row := tableRowWith(body, link); !strings.Contains(row, "prüfen") {
 		t.Errorf("row of the broken event %q is not marked prüfen; body: %s", row, body)
 	}
+	for path, publicList := range publicBodies {
+		var answer struct {
+			Data []json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(publicList), &answer); err != nil || answer.Data == nil {
+			t.Errorf("GET %s answers %q, want a list with a data array (err %v)", path, publicList, err)
+		}
+		if strings.Contains(publicList, brokenEventTitle) {
+			t.Errorf("GET %s serves the event marked for review: %s", path, publicList)
+		}
+	}
+}
+
+// publicBody returns the body of a GET of url, failing on a status other
+// than 200.
+func publicBody(t *testing.T, url string) string {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read %s: %v", url, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status = %d, body %s", url, resp.StatusCode, body)
+	}
+	return string(body)
 }
 
 // TestRunRecomputesThenMarksArchivedBeforeListening stores a past event

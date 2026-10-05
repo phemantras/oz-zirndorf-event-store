@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -452,6 +453,14 @@ func (s *EventService) needsReview(id string) bool {
 	defer s.mu.Unlock()
 	_, ok := s.inReview[id]
 	return ok
+}
+
+// markedForReview returns a copy of the IDs marked for review, taken under
+// one lock.
+func (s *EventService) markedForReview() map[string]struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return maps.Clone(s.inReview)
 }
 
 // frozenClock is a Clock that always shows the same instant.
