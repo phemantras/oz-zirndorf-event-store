@@ -117,5 +117,5 @@ action_items:
     action: "A7 Prozess: Pflichtzeile Nahtstellen in Story-Specs, die frühere Anwendungsfälle
       oder Formulare erweitern (bmad-customize)"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
