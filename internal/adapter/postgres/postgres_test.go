@@ -2,14 +2,17 @@ package postgres_test
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 
 	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
 )
@@ -104,6 +107,40 @@ func TestMigrateAppliesBaselineAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestMigrateWaitsForTheMigrationLockOfAnotherInstance holds goose's
+// advisory lock like a second instance in the middle of migrating, so
+// Migrate on an empty schema must wait for it instead of migrating
+// alongside, and migrates once the lock is released.
+func TestMigrateWaitsForTheMigrationLockOfAnotherInstance(t *testing.T) {
+	const waitForLock = 2 * time.Second
+	ctx := context.Background()
+	pool := poolInLegacySchema(t)
+	otherInstance, err := pool.Acquire(ctx)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	if _, err := otherInstance.Exec(ctx, "SELECT pg_advisory_lock($1)", lock.DefaultLockID); err != nil {
+		otherInstance.Release()
+		t.Fatalf("take migration lock: %v", err)
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, waitForLock)
+	defer cancel()
+	_, waitErr := postgres.Migrate(waitCtx, pool)
+	_, unlockErr := otherInstance.Exec(ctx, "SELECT pg_advisory_unlock($1)", lock.DefaultLockID)
+	otherInstance.Release()
+	if unlockErr != nil {
+		t.Fatalf("release migration lock: %v", unlockErr)
+	}
+	if !errors.Is(waitErr, context.DeadlineExceeded) {
+		t.Fatalf("Migrate err = %v, want it to wait for the migration lock until %v", waitErr, context.DeadlineExceeded)
+	}
+
+	if applied, err := postgres.Migrate(ctx, pool); err != nil || applied == 0 {
+		t.Errorf("Migrate after release = %d, %v, want all migrations applied", applied, err)
+	}
+}
+
 func TestConnectedPoolAnswersPing(t *testing.T) {
 	ctx := context.Background()
 	pool, err := postgres.Connect(ctx, testDatabaseURL(t))
@@ -139,8 +176,8 @@ func TestDatabaseIsPostgres18(t *testing.T) {
 // addressPartsVersion is the migration that splits the address (Story 1.12).
 const addressPartsVersion = 3
 
-// legacySchema isolates the migration test from the shared test schema, so
-// it can start from an empty database.
+// legacySchema isolates the migration tests from the shared test schema, so
+// they can start from an empty database.
 const legacySchema = "migration_address_parts"
 
 // poolInLegacySchema returns a pool on a freshly created schema that is

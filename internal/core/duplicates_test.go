@@ -196,3 +196,34 @@ func TestEditingAConfirmedTwinWithoutChangingItsKeyDoesNotWarnAgain(t *testing.T
 		t.Errorf("SaveEvent err = %v after %d lookups, want the note saved without a check", err, repo.findCalls)
 	}
 }
+
+func TestDuplicateConfirmationOfChangesOnlyWithTheDuplicateKeyInput(t *testing.T) {
+	base := validEventInput()
+	confirmation := DuplicateConfirmationOf(base)
+	if confirmation == "" {
+		t.Fatal("confirmation is empty")
+	}
+
+	sameKey := base
+	sameKey.Title, sameKey.Note, sameKey.StartTime = "  KIRCHWEIHmarkt ", "anders", "19:00"
+	if got := DuplicateConfirmationOf(sameKey); got != confirmation {
+		t.Errorf("confirmation for the same duplicate key = %q, want %q", got, confirmation)
+	}
+
+	changes := map[string]func(*EventInput){
+		"title":    func(in *EventInput) { in.Title = "Flohmarkt" },
+		"date":     func(in *EventInput) { in.StartDate = "2026-10-19" },
+		"location": func(in *EventInput) { in.LocationID = parkID },
+		// The parts are separated unambiguously, so text cannot move between them.
+		"shifted": func(in *EventInput) { in.Title, in.StartDate = base.Title+"2026", "-10-16" },
+	}
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			changed := base
+			change(&changed)
+			if DuplicateConfirmationOf(changed) == confirmation {
+				t.Errorf("confirmation did not change with the %s", name)
+			}
+		})
+	}
+}

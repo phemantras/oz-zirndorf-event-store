@@ -3,8 +3,11 @@ package core
 import (
 	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"slices"
+	"strconv"
 )
 
 // DuplicatePolicy tells SaveEvent what to do with a suspected duplicate
@@ -33,6 +36,17 @@ type DuplicateKey struct {
 // duplicateKeyOf returns the duplicate key of event.
 func duplicateKeyOf(event Event) DuplicateKey {
 	return DuplicateKey{TitleKey: event.TitleKey, StartDate: event.Times.StartDate, LocationID: event.LocationID}
+}
+
+// DuplicateConfirmationOf returns a fingerprint of the input that forms the
+// duplicate key: title key, start date and location ID as entered. A form
+// that confirms a duplicate warning sends the fingerprint of the input it
+// was shown for, so the confirmation lapses once that input changes (AD-11).
+func DuplicateConfirmationOf(in EventInput) string {
+	// Quoting separates the parts unambiguously.
+	parts := strconv.Quote(NormalizeKey(in.Title)) + strconv.Quote(in.StartDate) + strconv.Quote(in.LocationID)
+	sum := sha256.Sum256([]byte(parts))
+	return hex.EncodeToString(sum[:])
 }
 
 // FindDuplicateCandidates returns the stored events, archived ones

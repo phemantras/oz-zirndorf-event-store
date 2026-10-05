@@ -103,7 +103,7 @@ func (r *EventRepo) Get(ctx context.Context, id string) (core.Event, error) {
 }
 
 // Create inserts event and its timetable; the database generates the
-// UUIDv7 IDs.
+// UUIDv7 IDs. A location that no longer exists yields core.ErrConflict.
 func (r *EventRepo) Create(ctx context.Context, event core.Event) (core.Event, error) {
 	columns, err := eventColumnsOf(event)
 	if err != nil {
@@ -117,7 +117,8 @@ func (r *EventRepo) Create(ctx context.Context, event core.Event) (core.Event, e
 }
 
 // Update replaces the event with event.ID and its whole timetable, or
-// yields core.ErrNotFound.
+// yields core.ErrNotFound, or core.ErrConflict when its location no longer
+// exists.
 func (r *EventRepo) Update(ctx context.Context, event core.Event) (core.Event, error) {
 	uuid, err := parseID(eventKind, event.ID)
 	if err != nil {

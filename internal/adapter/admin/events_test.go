@@ -23,6 +23,9 @@ func (c *fakeClock) Now() time.Time { return c.current }
 type memoryEventRepo struct {
 	events  map[string]core.Event
 	created int
+	// writeErr is what create and update return instead of writing,
+	// simulating the foreign key that refuses a location deleted meanwhile.
+	writeErr error
 }
 
 func newMemoryEventRepo() *memoryEventRepo {
@@ -52,6 +55,9 @@ func (r *memoryEventRepo) Get(_ context.Context, id string) (core.Event, error) 
 }
 
 func (r *memoryEventRepo) Create(_ context.Context, event core.Event) (core.Event, error) {
+	if r.writeErr != nil {
+		return core.Event{}, r.writeErr
+	}
 	r.created++
 	event.ID = fmt.Sprintf("0192f0b1-0000-7000-9000-%012d", r.created)
 	r.events[event.ID] = event
@@ -59,6 +65,9 @@ func (r *memoryEventRepo) Create(_ context.Context, event core.Event) (core.Even
 }
 
 func (r *memoryEventRepo) Update(_ context.Context, event core.Event) (core.Event, error) {
+	if r.writeErr != nil {
+		return core.Event{}, r.writeErr
+	}
 	r.events[event.ID] = event
 	return event, nil
 }
@@ -614,4 +623,26 @@ func TestHomeLinksEventsAndLocations(t *testing.T) {
 	assertStatusCode(t, rec, http.StatusOK)
 	assertBodyContains(t, rec, `href="`+eventsPath+`">Events</a>`, `href="`+locationsPath+`">Orte</a>`)
 	assertBodyLacks(t, rec, "Events folgen.")
+}
+
+// TestLocationDeletedWhileSavingShowsTheLocationMessage covers the race in
+// which the location disappears between the core's check and the write.
+func TestLocationDeletedWhileSavingShowsTheLocationMessage(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	market := ts.seedEvent(t, marketForm(hall.ID))
+	ts.events.writeErr = fmt.Errorf("write event: %w", core.ErrConflict)
+	created := marketForm(hall.ID)
+	created.Set(core.EventFieldTitle, "Konzert")
+	edited := marketForm(hall.ID)
+	edited.Set(core.EventFieldNote, "Neue Notiz")
+
+	for path, form := range map[string]url.Values{eventsPath: created, eventPath(market.ID): edited} {
+		t.Run(path, func(t *testing.T) {
+			rec := ts.post(path, form)
+
+			assertStatusCode(t, rec, http.StatusUnprocessableEntity)
+			assertBodyContains(t, rec, "Den gewählten Ort gibt es nicht mehr. Bitte einen anderen Ort auswählen.", form.Get(core.EventFieldNote))
+		})
+	}
 }

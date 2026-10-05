@@ -25,10 +25,11 @@ type EventRepo interface {
 	// not a valid UUID.
 	Get(ctx context.Context, id string) (Event, error)
 	// Create stores a new event with its timetable and returns it with the
-	// generated IDs.
+	// generated IDs, or yields ErrConflict when its location no longer
+	// exists.
 	Create(ctx context.Context, event Event) (Event, error)
 	// Update replaces the event with event.ID and its whole timetable, or
-	// yields ErrNotFound.
+	// yields ErrNotFound, or ErrConflict when its location no longer exists.
 	Update(ctx context.Context, event Event) (Event, error)
 	// Delete removes the event with id together with its timetable, or
 	// yields ErrNotFound.
@@ -105,10 +106,11 @@ func NewEventService(tx TxRunner, events EventRepo, locations LocationRepo) *Eve
 // event with id, keeping its ID. Event and timetable are written in one
 // transaction, the timetable replacing the stored one (AD-15). It returns
 // ErrNotFound for an unknown id and *ValidationError listing every invalid
-// field, including an unknown location. Only a valid event is checked for
-// duplicates: under any policy but AllowDuplicates a suspected duplicate is
-// not saved and yields *DuplicateSuspectError (AD-11); an edit that keeps
-// the duplicate key is not checked. A successful save
+// field, including an unknown location, also one deleted while saving.
+// Only a valid event is checked for duplicates: under any policy but
+// AllowDuplicates a suspected duplicate is not saved and yields
+// *DuplicateSuspectError (AD-11); an edit that keeps the duplicate key is
+// not checked. A successful save
 // clears the review mark of the event.
 func (s *EventService) SaveEvent(ctx context.Context, id string, in EventInput, policy DuplicatePolicy) (Event, error) {
 	var saved Event
@@ -147,6 +149,10 @@ func saveEvent(ctx context.Context, repos Repos, id string, in EventInput, polic
 		}
 	}
 	saved, err := writeEvent(ctx, repos.Events, event)
+	if errors.Is(err, ErrConflict) {
+		// The location was deleted after storedLocationID found it.
+		return Event{}, &ValidationError{Fields: []FieldError{{Field: EventFieldLocationID, Problem: ProblemNotFound}}}
+	}
 	if err != nil {
 		return Event{}, fmt.Errorf("save event: %w", err)
 	}
@@ -322,9 +328,11 @@ func compareListEntries(a, b EventListEntry) int {
 }
 
 // RecomputeDerived recomputes the derived values of every event, effective
-// period and title key, and stores them where they changed (AD-16). An
-// event that fails keeps its stored values, is marked for review and is
-// returned as failure; only a failing list is an error.
+// period and title key, and stores them where they changed (AD-16). An event
+// whose period the current rules reject keeps its stored period, gets the
+// current title key, is marked for review and is returned as failure. An
+// event deleted meanwhile is skipped. Failing to list or store, and an ended
+// ctx, are errors: they say nothing about an event.
 func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure, error) {
 	events, err := s.events.List(ctx)
 	if err != nil {
@@ -332,29 +340,43 @@ func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure
 	}
 	var failures []RecomputeFailure
 	for _, event := range events {
-		if err := s.recomputeEvent(ctx, event); err != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("recompute derived values: %w", err)
+		}
+		ruleErr, err := s.recomputeEvent(ctx, event)
+		if err != nil {
+			return nil, err
+		}
+		if ruleErr != nil {
 			s.markForReview(event.ID)
-			failures = append(failures, RecomputeFailure{EventID: event.ID, Err: err})
+			failures = append(failures, RecomputeFailure{EventID: event.ID, Err: ruleErr})
 		}
 	}
 	return failures, nil
 }
 
 // recomputeEvent writes the event's derived values if the current rules
-// derive other ones from its times and title.
-func (s *EventService) recomputeEvent(ctx context.Context, event Event) error {
-	period, err := event.Times.EffectivePeriod()
+// derive other ones from its times and title. ruleErr reports a period the
+// rules reject, the stored period being kept; err reports a failed write.
+func (s *EventService) recomputeEvent(ctx context.Context, event Event) (ruleErr, err error) {
+	derived := Derived{Period: event.Period, TitleKey: NormalizeKey(event.Title)}
+	period, periodErr := event.Times.EffectivePeriod()
+	if periodErr != nil {
+		ruleErr = fmt.Errorf("recompute effective period: %w", periodErr)
+	} else {
+		derived.Period = period
+	}
+	if derived.Period.Start.Equal(event.Period.Start) && derived.Period.End.Equal(event.Period.End) && derived.TitleKey == event.TitleKey {
+		return ruleErr, nil
+	}
+	err = s.events.UpdateDerived(ctx, event.ID, derived)
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		return fmt.Errorf("recompute effective period: %w", err)
+		return nil, fmt.Errorf("store derived values of event %s: %w", event.ID, err)
 	}
-	titleKey := NormalizeKey(event.Title)
-	if period.Start.Equal(event.Period.Start) && period.End.Equal(event.Period.End) && titleKey == event.TitleKey {
-		return nil
-	}
-	if err := s.events.UpdateDerived(ctx, event.ID, Derived{Period: period, TitleKey: titleKey}); err != nil {
-		return fmt.Errorf("store derived values: %w", err)
-	}
-	return nil
+	return ruleErr, nil
 }
 
 func (s *EventService) markForReview(id string) {

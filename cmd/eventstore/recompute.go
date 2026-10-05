@@ -23,7 +23,7 @@ type derivedRecomputer interface {
 
 // recomputeDerived recomputes the derived values of all events before the
 // HTTP server starts (AD-16). An event that fails is logged with its ID and
-// does not stop the start (ENT-5); only events that cannot be read do.
+// does not stop the start (ENT-5); events that cannot be read or stored do.
 func recomputeDerived(ctx context.Context, recomputer derivedRecomputer, logger *slog.Logger) error {
 	failures, err := recomputer.RecomputeDerived(ctx)
 	if err != nil {

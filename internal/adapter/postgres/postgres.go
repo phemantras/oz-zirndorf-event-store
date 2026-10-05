@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 )
 
 const migrationsDir = "migrations"
@@ -35,7 +36,9 @@ func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 }
 
 // Migrate applies all pending embedded migrations and returns how many it
-// applied.
+// applied. It holds a PostgreSQL advisory lock while migrating, so a second
+// instance starting at the same time waits instead of migrating alongside;
+// goose gives up after five minutes, or earlier when ctx ends.
 func Migrate(ctx context.Context, pool *pgxpool.Pool) (applied int, err error) {
 	migrations, err := fs.Sub(embeddedMigrations, migrationsDir)
 	if err != nil {
@@ -50,7 +53,11 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) (applied int, err error) {
 		}
 	}()
 
-	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations)
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return 0, fmt.Errorf("create migration lock: %w", err)
+	}
+	provider, err := goose.NewProvider(goose.DialectPostgres, db, migrations, goose.WithSessionLocker(locker))
 	if err != nil {
 		return 0, fmt.Errorf("create migration provider: %w", err)
 	}
