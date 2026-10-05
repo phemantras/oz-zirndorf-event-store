@@ -55,7 +55,7 @@ development_status:
   2-1-api-vertrag-v1-und-liste-der-event-typen: done
   2-3-events-von-heute-und-nach-zeitraum-und-typ-abfragen: done
   2-4-archiv-abfragen: done
-  2-5-tägliche-bereinigung: review
+  2-5-tägliche-bereinigung: done
   2-6-lesbare-api-dokumentation-und-abnahme: backlog
   epic-2-retrospective: optional
 
