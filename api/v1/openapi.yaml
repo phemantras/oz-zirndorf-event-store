@@ -32,7 +32,10 @@ info:
     - **KON-3 Errors.** Errors follow RFC 9457 (Problem Details) with media
       type `application/problem+json`, `type` `about:blank` and an English
       `title` and `detail`. This also applies to unknown paths (404) and to
-      methods other than `GET`, `HEAD` and `OPTIONS` (405).
+      methods other than `GET`, `HEAD` and `OPTIONS` (405), for example
+      `{"type": "about:blank", "title": "Method Not Allowed", "status": 405,
+      "detail": "Method POST is not allowed; the API is read-only and
+      allows GET, HEAD and OPTIONS."}`.
     - **KON-4 Dates and times.** Start and end are a date `YYYY-MM-DD` plus
       a separate, optional local time `HH:MM` (Europe/Berlin). An unknown
       time is `null`, never `00:00`. Computed instants are ISO 8601 with
@@ -59,11 +62,30 @@ info:
     ## Time model
 
     - **Time precision.** `startPrecision` and `endPrecision` say how
-      exactly start and end are known: `exact` (date and time), `dateOnly`
-      (only the date) or `allDay`. They are derived from the stored values.
+      exactly start and end are known. They are derived separately for
+      start and end from the stored values and never stored themselves.
       `endPrecision` is `null` when the event has no end date.
+      - `exact`: date and local time are known. A poster says "starts
+        19:00 on 4 December": `startDate` `2026-12-04`, `startTime`
+        `19:00`, `startPrecision` `exact`.
+      - `dateOnly`: only the date is known, the time is not. The
+        newsletter says "on 24 December", without a time: `startDate`
+        `2026-12-24`, `startTime` `null`, `startPrecision` `dateOnly`.
+        The time is unknown, not midnight.
+      - `allDay`: the event lasts whole days and has no time. The
+        Kirchweih runs "all day from 16 to 19 October": `allDay` `true`,
+        `startTime` and `endTime` `null`, `startPrecision` and
+        `endPrecision` `allDay`.
+
+      Start and end may differ: an event announced as "from 17:00 on
+      27 November to 29 November" has `startPrecision` `exact` and
+      `endPrecision` `dateOnly`.
     - **All-day events.** `allDay` applies to start and end together. An
       all-day event has no times; `startTime` and `endTime` are `null`.
+      A `startTime` or `endTime` together with `allDay: true` is rejected
+      when an event is entered or imported, as is an `endTime` without
+      `endDate`. So the API never delivers an event that is all-day at one
+      end only.
     - **Effective period.** `effectiveStart` and `effectiveEnd` are the
       computed, half-open period `[effectiveStart, effectiveEnd)` of an
       event, ISO 8601 with the offset of Europe/Berlin (`+01:00` or
@@ -79,8 +101,18 @@ info:
     ## Location precision
 
     `location.precision` says how exactly the coordinates mark the place,
-    from `building` to `district`. The coordinates belong to the location:
-    every event at the same location has the same name and coordinates.
+    from `building` to `district`. A map should draw a less precise
+    location less sharply, for example as a circle instead of a pin.
+
+    - `building`: a single building or entrance, such as the Paul-Metz-Halle.
+    - `street`: a square or a street, such as the Marktplatz, where the
+      exact stand is not known.
+    - `area`: a larger area such as a park or the Festplatz.
+    - `district`: only the district is known, such as Weiherhof; the
+      coordinates mark its centre.
+
+    The coordinates belong to the location: every event at the same
+    location has the same name and coordinates.
 
     ## Versioning
 
@@ -97,7 +129,8 @@ info:
 
     ## Machine-readable contract
 
-    This document is served at `/v1/openapi.yaml`.
+    This document is served at `/v1/openapi.yaml`. A readable rendering of
+    it is served at `/v1/docs`, without any external resource.
 servers:
   - url: /v1
     description: Version 1 on the current host.
@@ -173,7 +206,7 @@ paths:
                 $ref: '#/components/schemas/EventList'
               example:
                 data:
-                  - title: Zirndorfer Weihnachtsmarkt
+                  - title: Zirndorfer Weihnachtsmarkt, 1. Adventswochenende
                     type: market
                     location:
                       name: Marktplatz Zirndorf
@@ -186,23 +219,31 @@ paths:
                       precision: street
                       note: null
                     startDate: '2026-11-27'
-                    startTime: null
-                    endDate: '2026-12-24'
+                    startTime: '17:00'
+                    endDate: '2026-11-29'
                     endTime: null
                     allDay: false
-                    startPrecision: dateOnly
+                    startPrecision: exact
                     endPrecision: dateOnly
                     source:
                       description: Amtsblatt der Stadt Zirndorf, November 2026
                       url: https://www.zirndorf.de/amtsblatt
-                    note: null
+                    note: Der Markt findet an jedem Adventswochenende statt.
                     timetable:
-                      - description: Eröffnung durch den Bürgermeister
+                      - description: Eröffnung durch den Bürgermeister, Stadtkapelle
                         date: '2026-11-27'
                         startTime: '17:00'
+                        endTime: '21:00'
+                      - description: Besuch des Christkinds
+                        date: '2026-11-28'
+                        startTime: '14:00'
+                        endTime: '21:00'
+                      - description: Posaunenchor
+                        date: '2026-11-29'
+                        startTime: '14:00'
                         endTime: null
-                    effectiveStart: '2026-11-27T00:00:00+01:00'
-                    effectiveEnd: '2026-12-25T00:00:00+01:00'
+                    effectiveStart: '2026-11-27T17:00:00+01:00'
+                    effectiveEnd: '2026-11-30T00:00:00+01:00'
                     archived: false
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -409,6 +450,24 @@ components:
                   Parameter from lies at or after now, but
                   /v1/archive/events lists only past events; use /v1/events
                   for active and future events.
+            unknownType:
+              summary: An unknown event type
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: >-
+                  Parameter type must be an event type code: festival,
+                  market, culture, politics, club, sports, other.
+            emptyPeriod:
+              summary: A to before from
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: >-
+                  Parameters from and to give an empty period; to must not
+                  lie before from.
     InternalServerError:
       description: The server failed to answer the request.
       content:
@@ -604,7 +663,7 @@ components:
         title:
           type: string
           description: Title of the event, German.
-          example: Zirndorfer Weihnachtsmarkt
+          example: Zirndorfer Weihnachtsmarkt, 1. Adventswochenende
         type:
           $ref: '#/components/schemas/EventType'
         location:
@@ -618,12 +677,12 @@ components:
           type: [string, 'null']
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
           description: Local start time `HH:MM`, or `null` when unknown or all day.
-          example: null
+          example: '17:00'
         endDate:
           type: [string, 'null']
           format: date
           description: Local end date `YYYY-MM-DD`, or `null` when the event has no end date.
-          example: '2026-12-24'
+          example: '2026-11-29'
         endTime:
           type: [string, 'null']
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
@@ -640,6 +699,7 @@ components:
           anyOf:
             - $ref: '#/components/schemas/TimePrecision'
             - type: 'null'
+          example: dateOnly
         source:
           $ref: '#/components/schemas/Source'
         note:
@@ -651,19 +711,40 @@ components:
           description: Timetable of the event, sorted chronologically; empty when there is none.
           items:
             $ref: '#/components/schemas/TimetableEntry'
+          example:
+            - description: Eröffnung durch den Bürgermeister, Stadtkapelle
+              date: '2026-11-27'
+              startTime: '17:00'
+              endTime: '21:00'
+            - description: Besuch des Christkinds
+              date: '2026-11-28'
+              startTime: '14:00'
+              endTime: '21:00'
         effectiveStart:
           type: string
           format: date-time
-          description: Computed start of the half-open effective period, with the offset of Europe/Berlin.
-          example: '2026-11-27T00:00:00+01:00'
+          description: |
+            Computed start of the half-open effective period, with the
+            offset of Europe/Berlin: the start date at the start time, or
+            at 00:00 when the time is unknown or the event is all day.
+          example: '2026-11-27T17:00:00+01:00'
         effectiveEnd:
           type: string
           format: date-time
-          description: Computed end of the half-open effective period, with the offset of Europe/Berlin.
-          example: '2026-12-25T00:00:00+01:00'
+          description: |
+            Computed end of the half-open effective period, with the offset
+            of Europe/Berlin: the end date at the end time; 00:00 of the day
+            after the end date when the end time is unknown or the event is
+            all day; 00:00 of the day after the start date when there is no
+            end date. The event is over from this instant on.
+          example: '2026-11-30T00:00:00+01:00'
         archived:
           type: boolean
-          description: Whether the event is over, that is its `effectiveEnd` is not after now.
+          description: |
+            Whether the event is over, that is its `effectiveEnd` is not
+            after now. It is `false` for every event in `/v1/events` and
+            `true` for every event in `/v1/archive/events`, computed at the
+            moment of the request, independent of any background job.
           example: false
     EventList:
       type: object
@@ -727,7 +808,7 @@ components:
         title:
           type: string
           description: Title of the event, German.
-          example: Zirndorfer Weihnachtsmarkt
+          example: Zirndorfer Weihnachtsmarkt, 1. Adventswochenende
         type:
           $ref: '#/components/schemas/EventType'
         location:
@@ -741,12 +822,12 @@ components:
           type: [string, 'null']
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
           description: Local start time `HH:MM`; missing or `null` means unknown, never 00:00.
-          example: null
+          example: '17:00'
         endDate:
           type: [string, 'null']
           format: date
           description: Local end date `YYYY-MM-DD`; missing or `null` when there is none.
-          example: '2026-12-24'
+          example: '2026-11-29'
         endTime:
           type: [string, 'null']
           pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
@@ -754,7 +835,10 @@ components:
           example: null
         allDay:
           type: boolean
-          description: Whether the event lasts whole days; then no times may be given.
+          description: |
+            Whether the event lasts whole days, at start and end together.
+            Then no times may be given; an all-day event with a start or end
+            time is rejected.
           example: false
         source:
           $ref: '#/components/schemas/Source'
@@ -767,12 +851,17 @@ components:
           description: Timetable of the event, in any order.
           items:
             $ref: '#/components/schemas/TimetableEntry'
+          example:
+            - description: Eröffnung durch den Bürgermeister, Stadtkapelle
+              date: '2026-11-27'
+              startTime: '17:00'
+              endTime: '21:00'
         importKey:
           type: [string, 'null']
           description: |
             Key of the event in the import source; importing the same key
             again updates the event instead of creating another one.
-          example: weihnachtsmarkt-2026
+          example: weihnachtsmarkt-2026-advent-1
     EventTypeEntry:
       type: object
       description: An event type code with its German label.
