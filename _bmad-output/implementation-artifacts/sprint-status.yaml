@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 2026-10-05
+last_updated: 10-05-2026 13:33
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -57,7 +57,7 @@ development_status:
   2-4-archiv-abfragen: done
   2-5-tägliche-bereinigung: done
   2-6-lesbare-api-dokumentation-und-abnahme: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
 
   epic-3: backlog
   3-1-import-format-v1-und-prüfung-der-datei: backlog
@@ -119,3 +119,47 @@ action_items:
     owner: "Andreas"
     status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
+  - id: "epic-2-retro-item-8-b1-fix-pr-epic-2-kleinigkeiten-context-c"
+    epic: 2
+    action: "B1 Fix-PR Epic-2-Kleinigkeiten: context.Canceled in Public API nicht
+      als Error loggen, /v1/docs/ umleiten, Selbsttest für check-coverage.sh"
+    owner: "Andreas / Dev-Agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
+  - id: "epic-2-retro-item-9-b2-epic-2-auf-done-setzen-deferred-eintr"
+    epic: 2
+    action: "B2 epic-2 auf done setzen; Deferred-Eintrag Pool-Close-Test neu zuordnen
+      (2.6 hat ihn nicht aufgenommen)"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
+  - id: "epic-2-retro-item-10-b3-prozess-bmad-customize-bmad-build-def"
+    epic: 2
+    action: "B3 Prozess (bmad-customize bmad-build): Deferred-Einträge mit target
+      beim Planen lesen, Epic-Status nach letzter Story auf done, Review-Hinweis Sprint-Status-Sync,
+      Epic-Kontext nicht im Build neu kompilieren"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
+  - id: "epic-2-retro-item-11-b4-bmad-correct-course-vor-epic-3-oapi-c"
+    epic: 2
+    action: "B4 bmad-correct-course vor Epic 3: oapi-codegen/runtime v1.7.0 in Stack-Tabelle,
+      Bedeutung archived_at im Spine, AD-9-Feldnamen-Abgleich als AC in 3.1, Deploy-Überlappung
+      (R3/R9) mit Advisory-Sperre in 3.3"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
+  - id: "epic-2-retro-item-12-b5-entscheidung-events-mit-prüfen-in-der"
+    epic: 2
+    action: "B5 Entscheidung: Events mit prüfen in der öffentlichen API (ausblenden,
+      kennzeichnen oder dokumentieren)"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
+  - id: "epic-2-retro-item-13-b6-bmad-project-context-refresh-postgres"
+    epic: 2
+    action: "B6 bmad-project-context-Refresh: Postgres-Tests gegen natives PostgreSQL
+      18 in AGENTS.md"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
