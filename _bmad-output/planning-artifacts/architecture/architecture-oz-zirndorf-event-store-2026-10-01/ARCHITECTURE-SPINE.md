@@ -7,7 +7,7 @@ paradigm: 'Hexagonal light (Ports & Adapters)'
 scope: 'Gesamtes Backend v1: öffentliche Lese-API, Admin-Oberfläche, JSON-Import, Archiv/Bereinigung, Betrieb auf Railway'
 status: final
 created: '2026-10-01'
-updated: '2026-10-04'
+updated: '2026-10-05'
 binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, NFR-1, NFR-2, NFR-3, NFR-4, NFR-5, NFR-6, KON-1, KON-2, KON-3, KON-4, KON-5, KON-6, KON-7, KON-8]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-oz-zirndorf-event-store-2026-10-01/prd.md
@@ -82,7 +82,7 @@ flowchart LR
 
 - **Binds:** FR-1 bis FR-7, FR-14 bis FR-18, NFR-4
 - **Prevents:** Admin-Formular und Import validieren unterschiedlich; ein Adapter schreibt am Kern vorbei in die Datenbank.
-- **Rule:** Events und Orte werden ausschließlich über Anwendungsfälle des Kerns geschrieben: `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation`, `CommitImport`, `RecomputeDerived` (Start, AD-16) und `MarkArchived` (Bereinigungsjob, AD-13). Jeder Schreib-Anwendungsfall besteht aus einem transaktionsgebundenen Kern, der die Repositories einer laufenden Transaktion erhält, und einer Hülle, die ihn über `TxRunner` in einer eigenen Transaktion ausführt. `CommitImport` ruft nur die Kerne auf, alles in **einer** Transaktion. `SaveEvent` aus dem Admin ändert `importKey` nie, nur `CommitImport` setzt ihn. Admin-Formular und Import nutzen **denselben** Eingabetyp `core.EventInput` und dieselben Anwendungsfälle. Repository-Ports bieten Adaptern keine Schreibmethode an, die den Kern umgeht. Der Löschschutz für Orte (FR-7) liegt im Kern und wird zusätzlich durch einen Fremdschlüssel `ON DELETE RESTRICT` abgesichert. Das Datenmodell hat keine Felder für Personen (NFR-4).
+- **Rule:** Events und Orte werden ausschließlich über Anwendungsfälle des Kerns geschrieben: `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation`, `CommitImport`, `RecomputeDerived` (Start, AD-16) und `MarkArchived` (Bereinigungsjob, AD-13). Jeder Schreib-Anwendungsfall besteht aus einem transaktionsgebundenen Kern, der die Repositories einer laufenden Transaktion erhält, und einer Hülle, die ihn über `TxRunner` in einer eigenen Transaktion ausführt. `CommitImport` ruft nur die Kerne auf, alles in **einer** Transaktion. `TxRunner` nimmt zu Beginn jeder Transaktion eine transaktionsgebundene Sperre (`pg_advisory_xact_lock` mit einer festen Kennung), sodass Schreib-Transaktionen nacheinander laufen: Duplikat- und Namensprüfung sehen immer den Stand der vorigen Transaktion. Bei einem Admin kostet das nichts; es ist keine Fachlogik in SQL (AD-2), sondern Nebenläufigkeitsschutz. `SaveEvent` aus dem Admin ändert `importKey` nie, nur `CommitImport` setzt ihn. Admin-Formular und Import nutzen **denselben** Eingabetyp `core.EventInput` und dieselben Anwendungsfälle. Repository-Ports bieten Adaptern keine Schreibmethode an, die den Kern umgeht. Der Löschschutz für Orte (FR-7) liegt im Kern und wird zusätzlich durch einen Fremdschlüssel `ON DELETE RESTRICT` abgesichert. Das Datenmodell hat keine Felder für Personen (NFR-4).
 
 ### AD-7 — Lesen über Kern-Abfragen [ADOPTED]
 
@@ -100,7 +100,7 @@ flowchart LR
 
 - **Binds:** FR-5, FR-16, KON-7
 - **Prevents:** Import-Schema, API und Go-Konstanten im Kern mit unterschiedlichen Feldnamen oder Enum-Codes.
-- **Rule:** Enum-Codes und die Eingabeform `EventInput` sind **nur** in `api/v1/openapi.yaml` (`components/schemas`) definiert. `api/v1/import-v1.schema.json` bindet sie per `$ref` ein, statt sie zu kopieren. Die Konstanten im Kern spiegeln die Codes. Ein Test in CI prüft, dass Kern-Konstanten und Spec übereinstimmen. Jede Import-Datei trägt `formatVersion`, der Kern lehnt unbekannte Versionen ab.
+- **Rule:** Enum-Codes und die Eingabeform `EventInput` sind **nur** in `api/v1/openapi.yaml` (`components/schemas`) definiert. `api/v1/import-v1.schema.json` bindet sie per `$ref` ein, statt sie zu kopieren. Die Konstanten im Kern spiegeln die Codes. Ein Test in CI prüft, dass Kern-Konstanten und Spec übereinstimmen. Jede Import-Datei trägt `formatVersion`, der Kern lehnt unbekannte Versionen ab. Gleiches gilt für Längengrenzen (`maxLength`, `maxItems`): Sie stehen nur in der Spec, der Kern spiegelt sie, und derselbe Test prüft die Übereinstimmung.
 
 ### AD-10 — Zustandsloser Import, Abschluss in einer Transaktion [ADOPTED]
 
@@ -150,7 +150,7 @@ flowchart LR
 
 - **Binds:** FR-4, FR-15, FR-16
 - **Prevents:** Admin und Import bauen den Ablaufplan unterschiedlich (Teilupdates gegen Ersetzen, Zeitpunkte gegen Uhrzeiten).
-- **Rule:** Der Ablaufplan gehört dem Event und wird nur über `SaveEvent` geschrieben, immer als ganze Liste, die die vorherige ersetzt. Jeder Eintrag hat `description`, `date`, `startTime` (optional), `endTime` (optional), nach dem Zeitmodell aus AD-3. Liegt `endTime` vor `startTime`, endet der Eintrag am Folgetag. Einträge müssen innerhalb von `[effectiveStart, effectiveEnd]` liegen, ein Eintrag darf also genau mit dem Event enden. Der Ablaufplan ändert `effective*` nicht.
+- **Rule:** Der Ablaufplan gehört dem Event und wird nur über `SaveEvent` geschrieben, immer als ganze Liste, die die vorherige ersetzt. Jeder Eintrag hat `description`, `date`, `startTime` (optional), `endTime` (optional), nach dem Zeitmodell aus AD-3. Liegt `endTime` vor `startTime`, endet der Eintrag am Folgetag. Einträge müssen innerhalb von `[effectiveStart, effectiveEnd]` liegen, ein Eintrag darf also genau mit dem Event enden. Der Ablaufplan ändert `effective*` nicht. Programmpunkte haben nur interne Kennungen. Weil jedes Speichern die ganze Liste ersetzt, sind diese Kennungen nicht stabil, und nichts außerhalb des Kerns darf sie speichern oder sich auf sie beziehen (AD-11, AD-14).
 
 ### AD-16 — Zeitumrechnung an genau einer Stelle [ADOPTED]
 
@@ -163,7 +163,7 @@ flowchart LR
   - **Filter:** Der Kern normalisiert `from`/`to` zu einem halboffenen Intervall `[lo, hi)`. Ist nur ein Datum angegeben, gilt der ganze Tag inklusive. Ein Zeitpunkt braucht einen Offset. Ein Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht (`hi`), damit `to` inklusive ist. Das einzige Filterprädikat lautet `effectiveStart < hi AND effectiveEnd > lo`.
   - **Standardwerte:** `GET /v1/events`: Fehlen `from` und `to`, gilt der heutige Tag (FR-8). Fehlt nur `from`, gilt der Beginn des heutigen Tages. Fehlt nur `to`, ist der Zeitraum offen. `GET /v1/archive/events`: Ein fehlendes `from` ist offen, ein fehlendes `to` gilt als `now`.
   - **Zeitzonendaten:** `cmd/eventstore` bettet `time/tzdata` ein.
-  - **Neuberechnung:** Beim Start berechnet `RecomputeDerived` alle abgeleiteten Werte neu (`effective*`, `title_key`, `name_key`). So greifen Änderungen an den Regeln sofort. Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server. Schlägt die Neuberechnung für ein Event fehl, behält es seine gespeicherten Werte, der Fehler wird mit der Event-Kennung geloggt, und das Programm startet trotzdem. Der Kern merkt sich die betroffenen Event-IDs **nur im Speicher**, geschützt per Mutex. Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` wird die ID entfernt. Die Admin-Liste liest die Menge über eine Kern-Abfrage und markiert diese Events mit „prüfen“. Nach einem Neustart baut die Neuberechnung die Menge neu auf.
+  - **Neuberechnung:** Beim Start berechnet `RecomputeDerived` alle abgeleiteten Werte neu (`effective*`, `title_key`, `name_key`). So greifen Änderungen an den Regeln sofort. Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server. Als fehlgeschlagen gilt ein Event, wenn die aktuellen Regeln seine Zeitangaben ablehnen oder sein Ablaufplan nicht mehr in den neu berechneten Zeitraum passt (AD-15). Es behält dann seine gespeicherten Werte, der Fehler wird mit der Event-Kennung geloggt, und das Programm startet trotzdem. Für Orte gilt dasselbe: Ergäben zwei Orte denselben neuen `name_key`, behalten beide ihren gespeicherten Schlüssel, der Fehler wird mit den Ort-Kennungen geloggt. Der Kern merkt sich die betroffenen Event- und Ort-IDs **nur im Speicher**, geschützt per Mutex. Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` (Event) bzw. `SaveLocation` oder `DeleteLocation` (Ort) wird die ID entfernt. Event- und Ortsliste im Admin lesen die Menge über eine Kern-Abfrage und markieren die Einträge mit „prüfen“. Nach einem Neustart baut die Neuberechnung die Menge neu auf.
 
 ### AD-17 — Migrationen ohne Datenverlust [ADOPTED]
 

@@ -12,7 +12,7 @@ Epic 2 öffnet den in Epic 1 gepflegten Bestand für Abnehmer, zuerst die Karten
 - Story 2.2: entfällt (Sprint Change Proposal 2026-10-04)
 - Story 2.3: Events von heute und nach Zeitraum und Typ abfragen
 - Story 2.4: Archiv abfragen
-- Story 2.5: Tägliche Bereinigung
+- Story 2.5: Tägliche Bereinigung und vollständige Neuberechnung beim Start
 - Story 2.6: Lesbare API-Dokumentation und Abnahme
 
 ## Requirements & Constraints
@@ -39,6 +39,7 @@ Epic 2 öffnet den in Epic 1 gepflegten Bestand für Abnehmer, zuerst die Karten
 - **Filter-Normalisierung im Kern:** `from`/`to` → halboffenes `[lo, hi)`; reines Datum = ganzer Tag inklusive; Zeitpunkt braucht Offset; Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht. Einziges Prädikat: `effectiveStart < hi AND effectiveEnd > lo`. Prüfung `lo >= hi` nach Normalisierung (`from=2026-12-24T18:00+01:00&to=2026-12-24` ist gültig). Umrechnung nur über `ToInstant`, Zeit nur aus `Clock`, nie `now()` in SQL.
 - **Standardwerte:** `/v1/events`: ohne beide → heute; nur `from` fehlt → ab Beginn heute; nur `to` fehlt → offen. `/v1/archive/events`: fehlendes `from` offen, fehlendes `to` = `now`.
 - **Bereinigung:** Job in `internal/adapter/cleanup`, beim Start und dann täglich, ruft Kern-Anwendungsfall `MarkArchived` (transaktionsgebundener Kern + Hülle über `TxRunner`). Setzt `archived_at` per **einer** Anweisung mit `effective_end <= $now AND archived_at IS NULL` (sicher gegen gleichzeitiges `SaveEvent`), idempotent, loggt die Anzahl. Fehler beenden das Programm nicht. `SaveEvent` leert `archived_at`, wenn das Event wieder aktiv wird. Startreihenfolge: Migrationen → `RecomputeDerived` → `MarkArchived` → HTTP-Server. Neue Spalte `events.archived_at` per neuer goose-Migration (nur vorwärts, expand/contract, `pg_dump` vor Deploy).
+- **Neuberechnung (2.5):** `RecomputeDerived` zieht auch `name_key` der Orte nach. Kollisionen und Ablaufpläne außerhalb des neuen Zeitraums behandelt es nach ENT-5 (gespeicherte Werte bleiben, Log, „prüfen“ in Event- bzw. Ortsliste, Menge nur im Speicher). Läuft vor dem HTTP-Server ohne `TxRunner` (Sprint Change Proposal 2026-10-05).
 - **Statische Pfade außerhalb der Spec, offenes CORS:** `/v1/openapi.yaml`, `/v1/import-v1.schema.json`, `/v1/docs`. `/v1/docs` rendert mit Redoc 2.5.4 (`redoc.standalone.js`) aus `adapter/publicapi/v1/static`, kein CDN, einzige HTML-Seite unter `/v1/…`, verlinkt die Spec.
 - **v2-Vorsorge:** neue Hauptversion bekäme eigene Spec `api/v2/…` und eigenes Paket; Abschaltdatum in `info` der alten Spec und `Sunset`-Header.
 - **Fehler:** Kern liefert `ErrValidation`, `ErrNotFound` …; nur der Adapter übersetzt in Status und Problem Details.
@@ -51,6 +52,6 @@ Epic 2 öffnet den in Epic 1 gepflegten Bestand für Abnehmer, zuerst die Karten
 - **Kennungen:** Erledigt mit Sprint Change Proposal 2026-10-04: keine Kennungen nach außen, nur Listen.
 - 2.1 legt Spec, Codegen, CI-Prüfungen, CORS/405/404-Verhalten und `/v1/openapi.yaml` an; alle weiteren Stories erweitern dieselbe Spec.
 - 2.3 liefert `Event` und `EventInput`; 2.4 nutzt die Leseform. 2.4 nutzt Filter-Normalisierung und Fehlerantworten aus 2.3 mit eigenen Standardwerten.
-- 2.5 braucht die Endpunkte aus 2.1, 2.3 und 2.4 für den Vorher-nachher-Vergleich und erweitert `SaveEvent` um das Leeren von `archived_at`.
+- 2.5 braucht die Endpunkte aus 2.1, 2.3 und 2.4 für den Vorher-nachher-Vergleich und erweitert `SaveEvent` um das Leeren von `archived_at`. 2.5 erweitert außerdem `RecomputeDerived` und die Ortsliste im Admin (Markierung „prüfen“).
 - 2.6 setzt die vollständige Spec voraus; die SM-1-Prüfung in Produktion folgt in Story 3.5.
 - **Zu Epic 3:** `api/v1/import-v1.schema.json` bindet Enums, `EventInput` und das Adress-Objekt per `$ref` aus `openapi.yaml` ein (Story 3.1); die statische Auslieferung unter `/v1/import-v1.schema.json` gehört zu den statischen Pfaden dieses Epics.
