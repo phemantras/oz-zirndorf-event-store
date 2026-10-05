@@ -1,5 +1,5 @@
 <!-- bmad:context -->
-<!-- Verified 2026-10-02 against 268241f. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
+<!-- Verified 2026-10-05 against 1f62d42. Managed by bmad-project-context; edits inside this block are replaced on refresh. Keep anything you want preserved outside the markers. -->
 
 ## oz-zirndorf-event-store
 
@@ -30,7 +30,7 @@
 - Postgres-Tests lokal: `docker compose up -d`, einmalig `docker compose exec postgres createdb -U eventstore eventstore_test`, dann mit `EVENTSTORE_TEST_DATABASE_URL=postgres://eventstore:eventstore@localhost:5432/eventstore_test?sslmode=disable` ausführen: `go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...`. `-p 1` ist Pflicht, weil beide Pakete dieselbe Datenbank migrieren.
 - Abdeckung mit `bash scripts/check-coverage.sh` prüfen (das CI-Gate); `go test -cover` lässt fehlende Abdeckung nicht scheitern.
 - golangci-lint ist keine Modulabhängigkeit: `go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run ./...`, dieselbe Version wie in der CI.
-- TODO (bei Einführung von oapi-codegen v2.8.0 bzw. sqlc 1.31.1 per Refresh eintragen): Codegen-Befehle und die CI-Prüfung „generierter Code aktuell“.
+- Generierten Code neu erzeugen und mitcommitten: sqlc mit `go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate` (braucht cgo/gcc; ohne gcc, z. B. unter Windows, das Release-Binary sqlc 1.31.1), oapi-codegen mit `go generate ./...`. `go generate` erzeugt den sqlc-Code nicht. Die CI erzeugt beides neu und scheitert bei einem Diff oder einer nicht committeten Datei.
 
 ## Conventions that differ from defaults
 

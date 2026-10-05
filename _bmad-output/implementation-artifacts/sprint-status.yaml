@@ -35,7 +35,7 @@ project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-lokales-grundgerüst-mit-ci: done
   1-2-auslieferung-auf-railway: done
   1-3-admin-anmeldung: done
@@ -95,7 +95,7 @@ action_items:
     action: "A4 bmad-project-context-Refresh: sqlc-Befehl und CI-Prüfung generierter
       Code in AGENTS.md, TODO schließen"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
   - id: "epic-1-retro-item-5-a5-bmad-correct-course-name_key-und-abla"
     epic: 1
@@ -110,7 +110,7 @@ action_items:
     action: "A6 deferred-work.md pflegen (Erledigtes schließen, Status und Ziel je
       Eintrag), epic-1 auf done setzen"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
   - id: "epic-1-retro-item-7-a7-prozess-pflichtzeile-nahtstellen-in-s"
     epic: 1
