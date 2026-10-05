@@ -40,7 +40,7 @@ func (r *EventRepo) List(ctx context.Context) ([]core.Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list timetable entries: %w", err)
 	}
-	return eventsWithTimetables(rows, entryRows), nil
+	return eventsWithTimetables(eventsFromRows(rows), entryRows), nil
 }
 
 // ListOverlapping returns the events whose stored effective period
@@ -61,21 +61,35 @@ func (r *EventRepo) ListOverlapping(ctx context.Context, overlap core.Overlap) (
 	if err != nil {
 		return nil, fmt.Errorf("list timetable entries of overlapping events: %w", err)
 	}
-	return eventsWithTimetables(rows, entryRows), nil
+	return eventsWithTimetables(eventsFromRows(rows), entryRows), nil
 }
 
-// eventsWithTimetables converts event rows and gives each event the rows
-// of entryRows that belong to it.
-func eventsWithTimetables(rows []db.Event, entryRows []db.TimetableEntry) []core.Event {
-	timetables := make(map[pgtype.UUID][]core.TimetableEntry)
+// eventsWithTimetables gives each of events the rows of entryRows that
+// belong to it.
+func eventsWithTimetables(events []core.Event, entryRows []db.TimetableEntry) []core.Event {
+	timetables := make(map[string][]core.TimetableEntry)
 	for _, entryRow := range entryRows {
-		timetables[entryRow.EventID] = append(timetables[entryRow.EventID], timetableEntryFromRow(entryRow))
+		eventID := entryRow.EventID.String()
+		timetables[eventID] = append(timetables[eventID], timetableEntryFromRow(entryRow))
 	}
+	for i := range events {
+		events[i].Timetable = timetables[events[i].ID]
+	}
+	return events
+}
+
+// eventRowOfQuery is any event row type that sqlc generates for the queries
+// reading events. They all have the fields of db.GetEventRow, the one row
+// type eventFromRow converts.
+type eventRowOfQuery interface {
+	db.ListEventsRow | db.ListEventsOverlappingRow | db.FindEventsByDuplicateKeyRow
+}
+
+// eventsFromRows converts event rows without their timetable.
+func eventsFromRows[Row eventRowOfQuery](rows []Row) []core.Event {
 	events := make([]core.Event, 0, len(rows))
 	for _, row := range rows {
-		event := eventFromRow(row)
-		event.Timetable = timetables[row.ID]
-		events = append(events, event)
+		events = append(events, eventFromRow(db.GetEventRow(row)))
 	}
 	return events
 }
@@ -113,7 +127,7 @@ func (r *EventRepo) Create(ctx context.Context, event core.Event) (core.Event, e
 	if err != nil {
 		return core.Event{}, translateError("create event", err)
 	}
-	return r.withTimetable(ctx, row, event.Timetable)
+	return r.withTimetable(ctx, db.GetEventRow(row), event.Timetable)
 }
 
 // Update replaces the event with event.ID and its whole timetable, or
@@ -151,12 +165,12 @@ func (r *EventRepo) Update(ctx context.Context, event core.Event) (core.Event, e
 	if err := r.queries.DeleteTimetableEntriesOfEvent(ctx, row.ID); err != nil {
 		return core.Event{}, fmt.Errorf("delete timetable entries of event: %w", err)
 	}
-	return r.withTimetable(ctx, row, event.Timetable)
+	return r.withTimetable(ctx, db.GetEventRow(row), event.Timetable)
 }
 
 // withTimetable inserts the entries for the stored event row and returns
 // the event with the stored entries.
-func (r *EventRepo) withTimetable(ctx context.Context, row db.Event, entries []core.TimetableEntry) (core.Event, error) {
+func (r *EventRepo) withTimetable(ctx context.Context, row db.GetEventRow, entries []core.TimetableEntry) (core.Event, error) {
 	event := eventFromRow(row)
 	for _, entry := range entries {
 		entryRow, err := r.queries.CreateTimetableEntry(ctx, db.CreateTimetableEntryParams{
@@ -191,11 +205,7 @@ func (r *EventRepo) FindByDuplicateKey(ctx context.Context, key core.DuplicateKe
 	if err != nil {
 		return nil, fmt.Errorf("find events by duplicate key: %w", err)
 	}
-	events := make([]core.Event, 0, len(rows))
-	for _, row := range rows {
-		events = append(events, eventFromRow(row))
-	}
-	return events, nil
+	return eventsFromRows(rows), nil
 }
 
 // Delete removes the event with id; its timetable goes with it by the
@@ -254,6 +264,17 @@ func (r *EventRepo) UpdateDerived(ctx context.Context, id string, derived core.D
 	return nil
 }
 
+// MarkArchived sets the archive mark to now on every event whose effective
+// end is at or before now and that has no mark yet, in one statement, and
+// returns how many it marked.
+func (r *EventRepo) MarkArchived(ctx context.Context, now time.Time) (int, error) {
+	marked, err := r.queries.MarkEventsArchived(ctx, instantParam(now))
+	if err != nil {
+		return 0, fmt.Errorf("mark archived events: %w", err)
+	}
+	return int(marked), nil
+}
+
 // eventColumns are the stored columns of an event besides its ID; it
 // converts to the parameters of CreateEvent.
 type eventColumns db.CreateEventParams
@@ -284,7 +305,7 @@ func eventColumnsOf(event core.Event) (eventColumns, error) {
 	}, nil
 }
 
-func eventFromRow(row db.Event) core.Event {
+func eventFromRow(row db.GetEventRow) core.Event {
 	return core.Event{
 		ID:         row.ID.String(),
 		Title:      row.Title,

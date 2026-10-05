@@ -65,3 +65,6 @@
   evidence: Story 2.1 führt oapi-codegen und die CI-Prüfung ein; die Befehle stehen nur in der README, AGENTS.md darf im Build nicht geändert werden.
   status: done
   target: Retro Epic 1, A4 (bmad-project-context-Refresh vom 2026-10-05)
+- source_spec: none
+  summary: Story 2.5, Teil B – vollständige Neuberechnung beim Start: `RecomputeDerived` zieht `name_key` nach, erkennt Kollisionen vorab, merkt fehlgeschlagene Events/Orte im Speicher und markiert sie in Event- und Ortsliste im Admin mit „prüfen“; Postgres-Test für `name_key`.
+  evidence: Beim Build von Story 2.5 per Scope-Prüfung abgetrennt (2026-10-05): eigenständig auslieferbar neben Teil A (tägliche Bereinigung mit `archived_at`/`MarkArchived`); einzige Nahtstelle ist die Startreihenfolge in `cmd/eventstore`.

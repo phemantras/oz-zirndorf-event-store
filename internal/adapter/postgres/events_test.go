@@ -382,6 +382,7 @@ func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 		"Update":        func() error { _, err := repo.Update(ctx, update); return err },
 		"UpdateDerived": func() error { return repo.UpdateDerived(ctx, unknownEventID, core.Derived{Period: event.Period}) },
 		"Delete":        func() error { return repo.Delete(ctx, unknownEventID) },
+		"MarkArchived":  func() error { _, err := repo.MarkArchived(ctx, event.Period.End); return err },
 		"CountByLocation": func() error {
 			_, err := repo.CountByLocation(ctx, unknownLocationID)
 			return err
@@ -453,3 +454,231 @@ func assertDuplicateCheckAgainstDatabase(t *testing.T, service *core.EventServic
 type fixedClock time.Time
 
 func (c fixedClock) Now() time.Time { return time.Time(c) }
+
+// christmasNoon is the clock of the archive examples: 2026-12-24 12:00
+// Europe/Berlin.
+func christmasNoon(t *testing.T) time.Time {
+	t.Helper()
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Fatalf("load Europe/Berlin: %v", err)
+	}
+	return time.Date(2026, time.December, 24, 12, 0, 0, 0, berlin)
+}
+
+// createEventEndingAt stores an event titled title whose effective period
+// ends at end.
+func createEventEndingAt(t *testing.T, fixture eventFixture, title string, end time.Time) core.Event {
+	t.Helper()
+	event := minimalEvent(t, fixture.hall.ID)
+	event.Title, event.TitleKey = title, core.NormalizeKey(title)
+	event.Period = core.Period{Start: end.Add(-time.Hour), End: end}
+	return createEvent(t, fixture.repo, event)
+}
+
+// archivedAtOf reads the archive mark of the event with id; nil is no mark.
+func archivedAtOf(t *testing.T, pool *pgxpool.Pool, id string) *time.Time {
+	t.Helper()
+	var archivedAt *time.Time
+	if err := pool.QueryRow(context.Background(), "SELECT archived_at FROM events WHERE id = $1", id).Scan(&archivedAt); err != nil {
+		t.Fatalf("read archived_at of %s: %v", id, err)
+	}
+	return archivedAt
+}
+
+// setArchivedAt marks the event with id as archived at archivedAt, as an
+// earlier run would have.
+func setArchivedAt(t *testing.T, pool *pgxpool.Pool, id string, archivedAt time.Time) {
+	t.Helper()
+	if _, err := pool.Exec(context.Background(), "UPDATE events SET archived_at = $2 WHERE id = $1", id, archivedAt); err != nil {
+		t.Fatalf("mark %s archived: %v", id, err)
+	}
+}
+
+func TestMigrationAddsANullableArchiveMark(t *testing.T) {
+	fixture := newEventFixture(t)
+	var dataType, nullable string
+	err := fixture.pool.QueryRow(context.Background(),
+		`SELECT data_type, is_nullable FROM information_schema.columns
+		 WHERE table_name = 'events' AND column_name = 'archived_at'`).Scan(&dataType, &nullable)
+	if err != nil {
+		t.Fatalf("read column archived_at: %v", err)
+	}
+	if dataType != "timestamp with time zone" || nullable != "YES" {
+		t.Errorf("archived_at is %s, nullable %s, want a nullable timestamptz", dataType, nullable)
+	}
+	created := createEvent(t, fixture.repo, minimalEvent(t, fixture.hall.ID))
+	if mark := archivedAtOf(t, fixture.pool, created.ID); mark != nil {
+		t.Errorf("new event has archive mark %v, want none", mark)
+	}
+}
+
+func TestEventRepoMarkArchivedMarksEndedUnmarkedEventsOnce(t *testing.T) {
+	fixture := newEventFixture(t)
+	ctx := context.Background()
+	now := christmasNoon(t)
+	earlier := now.AddDate(0, 0, -4)
+	endedBefore := createEventEndingAt(t, fixture, "Krippenspiel", now.Add(-time.Hour))
+	endingNow := createEventEndingAt(t, fixture, "Adventssingen", now)
+	running := createEventEndingAt(t, fixture, "Christmette", now.Add(time.Minute))
+	marked := createEventEndingAt(t, fixture, "Adventsbasar", earlier.Add(-time.Hour))
+	setArchivedAt(t, fixture.pool, marked.ID, earlier)
+
+	count, err := fixture.repo.MarkArchived(ctx, now)
+	if err != nil || count != 2 {
+		t.Fatalf("MarkArchived = %d, %v, want 2 marked", count, err)
+	}
+	want := map[string]*time.Time{endedBefore.ID: &now, endingNow.ID: &now, running.ID: nil, marked.ID: &earlier}
+	assertArchiveMarks(t, fixture.pool, want)
+
+	count, err = fixture.repo.MarkArchived(ctx, now)
+	if err != nil || count != 0 {
+		t.Fatalf("second MarkArchived = %d, %v, want 0 marked", count, err)
+	}
+	assertArchiveMarks(t, fixture.pool, want)
+}
+
+// assertArchiveMarks compares the archive mark of each event ID with want,
+// nil being no mark.
+func assertArchiveMarks(t *testing.T, pool *pgxpool.Pool, want map[string]*time.Time) {
+	t.Helper()
+	for id, wantMark := range want {
+		got := archivedAtOf(t, pool, id)
+		if (got == nil) != (wantMark == nil) || (got != nil && !got.Equal(*wantMark)) {
+			t.Errorf("archived_at of %s = %v, want %v", id, got, wantMark)
+		}
+	}
+}
+
+// TestSavingAnArchivedEventClearsItsArchiveMark moves an archived event to
+// 2027 through the core: the save clears the mark, and the next run leaves
+// the event unmarked.
+func TestSavingAnArchivedEventClearsItsArchiveMark(t *testing.T) {
+	fixture := newEventFixture(t)
+	service := core.NewEventService(postgres.NewTxRunner(fixture.pool), fixture.repo, fixture.locations)
+	ctx := context.Background()
+	in := core.EventInput{
+		Title: "Adventsbasar", Type: string(core.EventTypeMarket), LocationID: fixture.hall.ID,
+		StartDate: "2026-12-20", Source: core.EventSource{Description: "Amtsblatt"},
+	}
+	saved, err := service.SaveEvent(ctx, "", in, core.RejectDuplicates)
+	if err != nil {
+		t.Fatalf("SaveEvent: %v", err)
+	}
+	clock := fixedClock(christmasNoon(t))
+	if marked, err := service.MarkArchived(ctx, clock); err != nil || marked != 1 {
+		t.Fatalf("MarkArchived = %d, %v, want 1 marked", marked, err)
+	}
+
+	in.StartDate = "2027-12-20"
+	if _, err := service.SaveEvent(ctx, saved.ID, in, core.RejectDuplicates); err != nil {
+		t.Fatalf("SaveEvent to 2027: %v", err)
+	}
+	if mark := archivedAtOf(t, fixture.pool, saved.ID); mark != nil {
+		t.Errorf("archived_at after moving to 2027 = %v, want none", mark)
+	}
+	if marked, err := service.MarkArchived(ctx, clock); err != nil || marked != 0 {
+		t.Errorf("MarkArchived after moving to 2027 = %d, %v, want 0 marked", marked, err)
+	}
+}
+
+// lockWaitPollInterval is how often the concurrency test looks for the
+// blocked cleanup statement.
+const lockWaitPollInterval = 10 * time.Millisecond
+
+// lockWaitTimeout bounds how long the concurrency test waits for it.
+const lockWaitTimeout = 5 * time.Second
+
+// TestMarkArchivedWaitsForASaveThatMakesTheEventActiveAgain runs the
+// cleanup while a transaction holds the row of a past event that it moves
+// to 2027. The cleanup's one UPDATE waits for the row lock and then checks
+// its WHERE against the committed row, so it marks nothing.
+func TestMarkArchivedWaitsForASaveThatMakesTheEventActiveAgain(t *testing.T) {
+	fixture := newEventFixture(t)
+	ctx := context.Background()
+	now := christmasNoon(t)
+	past := createEventEndingAt(t, fixture, "Adventsbasar", now.Add(-time.Hour))
+
+	tx, err := fixture.pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	moved := eventWithTimes(t, fixture.hall.ID, core.EventTimes{StartDate: core.LocalDate{Year: 2027, Month: time.December, Day: 20}})
+	moved.ID, moved.Title, moved.TitleKey = past.ID, past.Title, past.TitleKey
+	if _, err := postgres.NewEventRepo(tx).Update(ctx, moved); err != nil {
+		t.Fatalf("Update in open transaction: %v", err)
+	}
+
+	done := make(chan markResult, 1)
+	go func() {
+		marked, err := fixture.repo.MarkArchived(ctx, now)
+		done <- markResult{marked, err}
+	}()
+	waitForBlockedCleanup(t, fixture.pool, done)
+
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	got := <-done
+	if got.err != nil || got.marked != 0 {
+		t.Errorf("MarkArchived = %d, %v, want 0 marked", got.marked, got.err)
+	}
+	if mark := archivedAtOf(t, fixture.pool, past.ID); mark != nil {
+		t.Errorf("archived_at of the event made active again = %v, want none", mark)
+	}
+}
+
+// markResult is what MarkArchived returned in a goroutine.
+type markResult struct {
+	marked int
+	err    error
+}
+
+// waitForBlockedCleanup polls pg_stat_activity until the cleanup statement
+// waits for a lock, so the test does not depend on timing. It fails if the
+// cleanup finished early or never blocked.
+func waitForBlockedCleanup(t *testing.T, pool *pgxpool.Pool, done <-chan markResult) {
+	t.Helper()
+	deadline := time.Now().Add(lockWaitTimeout)
+	for {
+		var blocked bool
+		err := pool.QueryRow(context.Background(),
+			`SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+			                WHERE datname = current_database() AND pid <> pg_backend_pid()
+			                  AND wait_event_type = 'Lock' AND query LIKE '%MarkEventsArchived%')`).Scan(&blocked)
+		if err != nil {
+			t.Fatalf("read pg_stat_activity: %v", err)
+		}
+		if blocked {
+			return
+		}
+		select {
+		case got := <-done:
+			t.Fatalf("MarkArchived = %d, %v before the save committed, want it to wait for the row lock", got.marked, got.err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("MarkArchived never waited for the row lock")
+		}
+		time.Sleep(lockWaitPollInterval)
+	}
+}
+
+// TestUpdateDerivedClearsTheArchiveMark recomputes a marked event to a
+// period in the future, as a rule change at startup may: the mark goes, or
+// it would stay forever since the cleanup only fills empty marks.
+func TestUpdateDerivedClearsTheArchiveMark(t *testing.T) {
+	fixture := newEventFixture(t)
+	now := christmasNoon(t)
+	past := createEventEndingAt(t, fixture, "Adventsbasar", now.Add(-time.Hour))
+	setArchivedAt(t, fixture.pool, past.ID, now)
+
+	future := core.Period{Start: now.AddDate(1, 0, 0), End: now.AddDate(1, 0, 1)}
+	if err := fixture.repo.UpdateDerived(context.Background(), past.ID, core.Derived{Period: future, TitleKey: past.TitleKey}); err != nil {
+		t.Fatalf("UpdateDerived: %v", err)
+	}
+	if mark := archivedAtOf(t, fixture.pool, past.ID); mark != nil {
+		t.Errorf("archived_at after recomputing into the future = %v, want none", mark)
+	}
+}

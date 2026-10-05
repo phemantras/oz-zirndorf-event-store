@@ -28,8 +28,9 @@ type EventRepo interface {
 	// generated IDs, or yields ErrConflict when its location no longer
 	// exists.
 	Create(ctx context.Context, event Event) (Event, error)
-	// Update replaces the event with event.ID and its whole timetable, or
-	// yields ErrNotFound, or ErrConflict when its location no longer exists.
+	// Update replaces the event with event.ID and its whole timetable and
+	// clears its archive mark, or yields ErrNotFound, or ErrConflict when its
+	// location no longer exists.
 	Update(ctx context.Context, event Event) (Event, error)
 	// Delete removes the event with id together with its timetable, or
 	// yields ErrNotFound.
@@ -42,8 +43,13 @@ type EventRepo interface {
 	// timetable.
 	FindByDuplicateKey(ctx context.Context, key DuplicateKey) ([]Event, error)
 	// UpdateDerived replaces only the stored derived values of the event
-	// with id, or yields ErrNotFound.
+	// with id and clears its archive mark, or yields ErrNotFound.
 	UpdateDerived(ctx context.Context, id string, derived Derived) error
+	// MarkArchived marks, in one statement, every event whose stored
+	// effective end is at or before now and that is not marked yet with now
+	// as archive mark, and returns how many it marked. Marked events keep
+	// their mark.
+	MarkArchived(ctx context.Context, now time.Time) (int, error)
 }
 
 // Derived are the values of an event that the core derives from its input
@@ -252,6 +258,35 @@ func deleteEvent(ctx context.Context, repos Repos, id string) (string, error) {
 		return "", fmt.Errorf("delete event: %w", err)
 	}
 	return current.ID, nil
+}
+
+// MarkArchived marks every event that is over at the time of clock and not
+// marked yet as archived, in one transaction, and returns how many it
+// marked (AD-5, AD-13). The mark is bookkeeping only: whether an event is
+// archived stays Period.IsOver, so lists and the API never read it. Running
+// it again without changes marks nothing.
+func (s *EventService) MarkArchived(ctx context.Context, clock Clock) (int, error) {
+	// One instant for the whole run, read once.
+	now := clock.Now()
+	var marked int
+	err := s.tx.InTx(ctx, func(repos Repos) error {
+		var err error
+		marked, err = markArchived(ctx, repos, now)
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+	return marked, nil
+}
+
+// markArchived is the transaction-bound part of MarkArchived.
+func markArchived(ctx context.Context, repos Repos, now time.Time) (int, error) {
+	marked, err := repos.Events.MarkArchived(ctx, now)
+	if err != nil {
+		return 0, fmt.Errorf("mark archived events: %w", err)
+	}
+	return marked, nil
 }
 
 // GetEvent returns the event with id and its timetable sorted, or
