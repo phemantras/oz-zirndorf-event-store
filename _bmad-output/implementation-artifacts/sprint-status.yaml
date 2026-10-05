@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 2026-10-04
+last_updated: 2026-10-05
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -49,7 +49,7 @@ development_status:
   1-10-warnung-bei-duplikatverdacht: done
 
   1-11-events-und-orte-löschen: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: in-progress
   2-1-api-vertrag-v1-und-liste-der-event-typen: done
@@ -66,3 +66,56 @@ development_status:
   3-4-testsammlung-ins-format-v1-überführen: backlog
   3-5-testsammlung-importieren-und-abnahme: backlog
   epic-3-retrospective: optional
+action_items:
+  - id: "epic-1-retro-item-1-a1-fix-pr-epic-1-nahtstellen-errconflict"
+    epic: 1
+    action: "A1 Fix-PR Epic-1-Nahtstellen: ErrConflict beim Event-Speichern als Ortsfehler,
+      Trotzdem-speichern an Duplikatschlüssel binden, title_key in RecomputeDerived
+      auch bei scheiternder Periode, Abbruch statt prüfen bei DB-/Kontextfehlern,
+      Löschrückfrage mit gespeichertem Titel, Server-Timeouts, goose-Session-Locker"
+    owner: "Andreas / Dev-Agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
+  - id: "epic-1-retro-item-2-a2-contract-pr-ad-17-pg_dump-prod-auf-ti"
+    epic: 1
+    action: "A2 Contract-PR (AD-17): pg_dump, Prod auf title_key leer und leere Adressteile
+      prüfen, Migration entfernt locations.address und Defaults von street, postal_code,
+      city, title_key"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
+  - id: "epic-1-retro-item-3-a3-backup-probelauf-und-getesteten-resto"
+    epic: 1
+    action: "A3 Backup-Probelauf und getesteten Restore-Befehl in README"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
+  - id: "epic-1-retro-item-4-a4-bmad-project-context-refresh-sqlc-bef"
+    epic: 1
+    action: "A4 bmad-project-context-Refresh: sqlc-Befehl und CI-Prüfung generierter
+      Code in AGENTS.md, TODO schließen"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
+  - id: "epic-1-retro-item-5-a5-bmad-correct-course-name_key-und-abla"
+    epic: 1
+    action: "A5 bmad-correct-course: name_key und Ablaufplan-Grenzen in RecomputeDerived
+      zuordnen, Stabilität der Ablaufplan-IDs vor 2.2, SaveLocation tx-Kern, Längengrenzen
+      und Schutz gegen gleichzeitige Duplikate vor Epic 3"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
+  - id: "epic-1-retro-item-6-a6-deferred-work-md-pflegen-erledigtes-s"
+    epic: 1
+    action: "A6 deferred-work.md pflegen (Erledigtes schließen, Status und Ziel je
+      Eintrag), epic-1 auf done setzen"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
+  - id: "epic-1-retro-item-7-a7-prozess-pflichtzeile-nahtstellen-in-s"
+    epic: 1
+    action: "A7 Prozess: Pflichtzeile Nahtstellen in Story-Specs, die frühere Anwendungsfälle
+      oder Formulare erweitern (bmad-customize)"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
