@@ -103,7 +103,7 @@ action_items:
       zuordnen, Stabilität der Ablaufplan-IDs vor 2.2, SaveLocation tx-Kern, Längengrenzen
       und Schutz gegen gleichzeitige Duplikate vor Epic 3"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
   - id: "epic-1-retro-item-6-a6-deferred-work-md-pflegen-erledigtes-s"
     epic: 1
