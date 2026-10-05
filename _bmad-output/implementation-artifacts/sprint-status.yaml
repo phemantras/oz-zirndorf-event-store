@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 10-05-2026 13:33
+last_updated: 10-05-2026 14:00
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -51,7 +51,7 @@ development_status:
   1-11-events-und-orte-löschen: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-api-vertrag-v1-und-liste-der-event-typen: done
   2-3-events-von-heute-und-nach-zeitraum-und-typ-abfragen: done
   2-4-archiv-abfragen: done
@@ -131,7 +131,7 @@ action_items:
     action: "B2 epic-2 auf done setzen; Deferred-Eintrag Pool-Close-Test neu zuordnen
       (2.6 hat ihn nicht aufgenommen)"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
   - id: "epic-2-retro-item-10-b3-prozess-bmad-customize-bmad-build-def"
     epic: 2
@@ -154,7 +154,7 @@ action_items:
     action: "B5 Entscheidung: Events mit prüfen in der öffentlichen API (ausblenden,
       kennzeichnen oder dokumentieren)"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
   - id: "epic-2-retro-item-13-b6-bmad-project-context-refresh-postgres"
     epic: 2

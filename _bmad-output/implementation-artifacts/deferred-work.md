@@ -14,7 +14,7 @@
   summary: Test, dass `run` den Datenbank-Pool beim Shutdown schließt.
   evidence: Nur `defer pool.Close()` in `cmd/eventstore/main.go`; kein Test beobachtet das, eine Prüfung braucht eine Injektionsnaht oder `pg_stat_activity`.
   status: open
-  target: Story 2.6
+  target: Retro Epic 2, B1 (Fix-PR „Epic-2-Kleinigkeiten“); Story 2.6 hat den Eintrag nicht aufgenommen
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-auslieferung-auf-railway.md`
   summary: Befristetes Log von `X-Forwarded-For` und `RemoteAddr` in `/healthz` (`cmd/eventstore/health.go`) nach der ENT-21-Messung per Folge-PR wieder entfernen, spätestens mit Story 1.3.
   evidence: Entscheidung vom 2026-10-02 in der Spec; im Dauerbetrieb dürfen keine Client-IPs im Log stehen.
