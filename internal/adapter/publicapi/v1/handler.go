@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -15,6 +16,18 @@ const (
 	// specPath serves the contract itself, outside the spec's paths.
 	specPath        = basePath + "/openapi.yaml"
 	specContentType = "application/yaml"
+	// docsPath serves the spec as readable HTML documentation (NFR-3); the
+	// page loads the Redoc script from docsScriptPath.
+	docsPath       = basePath + "/docs"
+	docsScriptPath = docsPath + "/redoc.standalone.js"
+	// docsPageFile and docsScriptFile are the files behind the docs paths
+	// in staticFiles.
+	docsPageFile   = "static/docs.html"
+	docsScriptFile = "static/redoc.standalone.js"
+	// The content types are set explicitly, since the extension lookup
+	// depends on the operating system.
+	htmlContentType       = "text/html; charset=utf-8"
+	javaScriptContentType = "text/javascript; charset=utf-8"
 )
 
 // HTTP header names and values of the public API.
@@ -43,7 +56,8 @@ type Config struct {
 }
 
 // NewHandler returns the public API v1 below /v1/: the operations of
-// api/v1/openapi.yaml, the spec itself at /v1/openapi.yaml, open CORS on
+// api/v1/openapi.yaml, the spec itself at /v1/openapi.yaml and as readable
+// documentation at /v1/docs, open CORS on
 // every answer, 405 for write methods and 404 for unknown paths.
 func NewHandler(cfg Config) http.Handler {
 	return newHandler(cfg, server{events: cfg.Events, clock: cfg.Clock})
@@ -66,8 +80,25 @@ func newHandler(cfg Config, strictServer StrictServerInterface) http.Handler {
 		w.Header().Set(headerContentType, specContentType)
 		respond.writeBody(w, apispec.OpenAPISpec)
 	})
+	mux.HandleFunc(http.MethodGet+" "+docsPath, respond.serveStaticFile(docsPageFile, htmlContentType))
+	mux.HandleFunc(http.MethodGet+" "+docsScriptPath, respond.serveStaticFile(docsScriptFile, javaScriptContentType))
 	mux.HandleFunc(basePath+"/", respond.notFound)
 	return readOnlyCORS(mux, respond)
+}
+
+// serveStaticFile returns a handler that serves the embedded file name
+// with the given Content-Type. Like the spec, it answers every GET with the
+// whole file, so no range or precondition answer bypasses Problem Details.
+func (rp responder) serveStaticFile(name, contentType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := staticFiles.ReadFile(name)
+		if err != nil {
+			rp.internalServerError(w, r, fmt.Errorf("read embedded file %s: %w", name, err))
+			return
+		}
+		w.Header().Set(headerContentType, contentType)
+		rp.writeBody(w, body)
+	}
 }
 
 // readOnlyCORS allows every origin on every answer, answers preflight

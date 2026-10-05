@@ -271,6 +271,10 @@ func TestPeriodOfTheOtherListPointsThereAsTheSpecExampleSays(t *testing.T) {
 			"Parameter to lies before today, but /v1/events lists only active events; use /v1/archive/events for past events."},
 		{"afterNow", archivePath + "?from=2027-01-01",
 			"Parameter from lies at or after now, but /v1/archive/events lists only past events; use /v1/events for active and future events."},
+		{"unknownType", eventsPath + "?type=fair",
+			"Parameter type must be an event type code: festival, market, culture, politics, club, sports, other."},
+		{"emptyPeriod", eventsPath + "?from=2026-12-24&to=2026-12-23",
+			"Parameters from and to give an empty period; to must not lie before from."},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

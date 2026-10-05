@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml` sowie die Endpunkte `GET /v1/events`, `GET /v1/archive/events` und `GET /v1/event-types`.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml`, lesbar unter `/v1/docs`, sowie die Endpunkte `GET /v1/events`, `GET /v1/archive/events` und `GET /v1/event-types`.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -19,7 +19,7 @@ Für OZ-Backends gibt es noch keine gemeinsamen Schnittstellenregeln. Dieses Pro
 | Konvention | Umsetzung |
 | --- | --- |
 | Versionierung | Hauptversion im Pfad (`/v1/…`). Nach einer neuen Version läuft die alte mindestens 6 Monate weiter, das Abschaltdatum steht in der Doku und im `Sunset`-Header. |
-| Vertrag | **Spec-first:** `api/v1/openapi.yaml` (OpenAPI 3.1) ist die einzige Quelle, der Server-Code wird daraus generiert. Die Spec ist öffentlich unter `/v1/openapi.yaml` abrufbar. |
+| Vertrag | **Spec-first:** `api/v1/openapi.yaml` (OpenAPI 3.1) ist die einzige Quelle, der Server-Code wird daraus generiert. Die Spec ist öffentlich unter `/v1/openapi.yaml` abrufbar und unter `/v1/docs` als lesbare Dokumentation. |
 | Fehler | [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457) (`application/problem+json`), Texte auf Englisch |
 | Zeiten | Datum `YYYY-MM-DD` und getrennte Uhrzeit `HH:MM` (lokal Europe/Berlin, `null` = unbekannt). Berechnete Zeitpunkte als ISO 8601 mit Offset. |
 | Zeitraumfilter | `from` / `to`, beide inklusive. Ein Event ist enthalten, wenn sich sein Zeitraum mit dem Filter überschneidet. Fehlt `to`, ist der Zeitraum nach hinten offen. |
@@ -52,7 +52,7 @@ Ein Event passt, wenn sein berechneter Zeitraum `[effectiveStart, effectiveEnd)`
 
 `GET /v1/archive/events` nimmt dieselben Parameter mit denselben Regeln und Fehlern, aber anderen Standardwerten: Fehlt `from`, ist der Zeitraum nach vorn offen; fehlt `to`, endet er jetzt. Nur `from` ab jetzt ergibt 400 mit Verweis auf `/v1/events`; liegen `from` und `to` beide in der Zukunft, ist die Liste leer. Ein Event ist ab der Minute seines `effectiveEnd` im Archiv und nicht mehr in `/v1/events`, unabhängig von der Bereinigung; jedes Event steht zu jedem Zeitpunkt in genau einer der beiden Listen.
 
-Der Vertrag selbst liegt unter `GET /v1/openapi.yaml`. Jede Antwort unter `/v1/` erlaubt jede Herkunft (`Access-Control-Allow-Origin: *`), Preflight-Anfragen (`OPTIONS`) beantwortet die API mit 204. Andere Methoden als `GET`, `HEAD` und `OPTIONS` lehnt sie mit 405 ab, unbekannte Pfade mit 404, beides als `application/problem+json`.
+Der Vertrag selbst liegt unter `GET /v1/openapi.yaml`, als lesbare HTML-Dokumentation unter `GET /v1/docs` (Redoc, ohne CDN und ohne Anfragen an fremde Hosts). Jede Antwort unter `/v1/` erlaubt jede Herkunft (`Access-Control-Allow-Origin: *`), Preflight-Anfragen (`OPTIONS`) beantwortet die API mit 204. Andere Methoden als `GET`, `HEAD` und `OPTIONS` lehnt sie mit 405 ab, unbekannte Pfade mit 404, beides als `application/problem+json`.
 
 ```sh
 curl -s localhost:8080/v1/events
@@ -63,6 +63,7 @@ curl -s 'localhost:8080/v1/archive/events?to=2026-06-30&type=festival'
 curl -s localhost:8080/v1/event-types
 # {"data":[{"code":"festival","label":"Fest/Kirchweih"},{"code":"market","label":"Markt"},…]}
 curl -s localhost:8080/v1/openapi.yaml
+# Lesbare Doku im Browser: http://localhost:8080/v1/docs
 ```
 
 Ein Event aus `GET /v1/events` (gekürzt):
@@ -71,32 +72,32 @@ Ein Event aus `GET /v1/events` (gekürzt):
 {
   "data": [
     {
-      "title": "Zirndorfer Weihnachtsmarkt",
+      "title": "Zirndorfer Weihnachtsmarkt, 1. Adventswochenende",
       "type": "market",
       "startDate": "2026-11-27",
-      "startTime": null,
-      "endDate": "2026-12-21",
+      "startTime": "17:00",
+      "endDate": "2026-11-29",
       "endTime": null,
       "allDay": false,
-      "startPrecision": "dateOnly",
+      "startPrecision": "exact",
       "endPrecision": "dateOnly",
-      "effectiveStart": "2026-11-27T00:00:00+01:00",
-      "effectiveEnd": "2026-12-22T00:00:00+01:00",
+      "effectiveStart": "2026-11-27T17:00:00+01:00",
+      "effectiveEnd": "2026-11-30T00:00:00+01:00",
       "archived": false,
       "location": {
-        "name": "Marktplatz",
+        "name": "Marktplatz Zirndorf",
         "address": { "street": "Marktplatz", "postalCode": "90513", "city": "Zirndorf" },
-        "latitude": 49.4425,
-        "longitude": 10.9547,
+        "latitude": 49.4427,
+        "longitude": 10.9545,
         "precision": "street"
       },
-      "source": { "description": "Stadt Zirndorf, Veranstaltungskalender", "url": "https://…" }
+      "source": { "description": "Amtsblatt der Stadt Zirndorf, November 2026", "url": "https://www.zirndorf.de/amtsblatt" }
     }
   ]
 }
 ```
 
-*Die Beispieldaten sind erfunden. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml` mit den Schemas `Event` (Leseform) und `EventInput` (Schreibform für den Import). Die API gibt keine Kennungen aus; ein Ort ist an seinem eindeutigen Namen erkennbar.*
+*Die Beispieldaten sind erfunden. Ein Event mit Lücken wie der Weihnachtsmarkt steht als ein Event je zusammenhängendem Block in der API (hier je Adventswochenende), damit er an den Werktagen dazwischen nicht als laufend gilt. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml` mit den Schemas `Event` (Leseform) und `EventInput` (Schreibform für den Import). Die API gibt keine Kennungen aus; ein Ort ist an seinem eindeutigen Namen erkennbar.*
 
 ## Architektur
 
@@ -127,11 +128,14 @@ Alle 17 Entscheidungen mit Regeln stehen im [Architecture Spine](_bmad-output/pl
 | Datenbank | PostgreSQL 18 |
 | Datenbankzugriff | sqlc + pgx v5, Migrationen mit goose |
 | API-Code | oapi-codegen (aus OpenAPI generiert) |
+| API-Doku | Redoc 2.5.4 unter `/v1/docs`, eingebettet, kein CDN |
 | Admin-Oberfläche | serverseitiges HTML (`html/template`) + htmx 2, Kartenpicker mit Leaflet und OpenStreetMap |
 | Hosting | [Railway](https://railway.com): ein Service für die App, einer für PostgreSQL |
 | CI | GitHub Actions. Railway deployt erst, wenn die CI grün ist. |
 
 htmx und Leaflet 1.9.4 liegen als Dateien unter `internal/adapter/admin/static/` und werden ins Programm eingebettet, kein CDN. Leaflet stammt unverändert aus dem npm-Paket `leaflet@1.9.4` (`dist/`, Lizenz in `static/leaflet/LICENSE`); `.gitattributes` schützt die Dateien vor Zeilenende-Umwandlung. Die Kartenkacheln kommen direkt von `tile.openstreetmap.org`. Das ist nach der [Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/) der OSM Foundation für geringe Nutzung wie diesen einen Admin erlaubt, verlangt aber den sichtbaren Hinweis „© OpenStreetMap-Mitwirkende“ mit Link auf die [Urheberseite](https://www.openstreetmap.org/copyright). Ohne JavaScript oder ohne Kacheln bleibt die Karte unsichtbar bzw. leer; Speichern über die Zahlenfelder funktioniert weiter.
+
+Redoc 2.5.4 für die API-Doku unter `/v1/docs` liegt ebenfalls eingebettet unter `internal/adapter/publicapi/v1/static/`: `redoc.standalone.js` unverändert aus dem npm-Paket `redoc@2.5.4` (`bundles/`, Lizenz MIT in `static/LICENSE`, Hinweise der gebündelten Bibliotheken in `static/redoc.standalone.js.LICENSE.txt`), ebenfalls per `.gitattributes` geschützt. Redoc zeigt in der Seitenleiste ein Logo von `cdn.redoc.ly`; eine Content-Security-Policy in `static/docs.html` lässt Bilder, Schriften und Anfragen nur vom eigenen Host zu, sodass der Browser es gar nicht erst lädt.
 
 ## Projektstruktur
 
@@ -226,6 +230,11 @@ go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...   # -p 1: beid
 ```
 
 Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung, die Prüfung, ob der generierte sqlc- und oapi-codegen-Code aktuell ist, sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
+
+### Abnahme
+
+- **SM-1 (Fixture):** `cmd/eventstore/acceptance_test.go` speichert zwei der vier Adventswochenenden des Weihnachtsmarkts 2026 über `SaveEvent` und prüft bei fester `Clock` (20.11.2026), dass `GET /v1/events?from=2026-11-29&to=2026-12-24` ihn mit Zeitraum, Ort mit Koordinaten, Zeit- und Ortsgenauigkeit und Quelle liefert. Der Test läuft mit den Postgres-Tests. Die Prüfung mit echten Daten in Produktion folgt in Story 3.5.
+- **SM-4 (manuell):** Ein OZ-Mitglied öffnet `/v1/docs` und sieht die Doku durch: Lassen sich Versionierung, Fehlerformat, Zeitformat und Filterkonventionen ohne Rückfrage übernehmen? Das ist ein manueller Schritt, keine Bedingung für den Abschluss einer Story.
 
 ### Generierter Datenbankcode (sqlc)
 

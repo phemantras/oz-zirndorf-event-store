@@ -2,3 +2,5 @@
 *.sh text eol=lf
 # Vendored Leaflet stays byte-identical to the npm package (CRLF included).
 internal/adapter/admin/static/leaflet/** -text
+# Vendored Redoc stays byte-identical to the npm package.
+internal/adapter/publicapi/v1/static/redoc.standalone.js -text

@@ -118,13 +118,22 @@ type Event struct {
 	// AllDay Whether the event lasts whole days; then both times are `null`.
 	AllDay bool `json:"allDay"`
 
-	// Archived Whether the event is over, that is its `effectiveEnd` is not after now.
+	// Archived Whether the event is over, that is its `effectiveEnd` is not
+	// after now. It is `false` for every event in `/v1/events` and
+	// `true` for every event in `/v1/archive/events`, computed at the
+	// moment of the request, independent of any background job.
 	Archived bool `json:"archived"`
 
-	// EffectiveEnd Computed end of the half-open effective period, with the offset of Europe/Berlin.
+	// EffectiveEnd Computed end of the half-open effective period, with the offset
+	// of Europe/Berlin: the end date at the end time; 00:00 of the day
+	// after the end date when the end time is unknown or the event is
+	// all day; 00:00 of the day after the start date when there is no
+	// end date. The event is over from this instant on.
 	EffectiveEnd time.Time `json:"effectiveEnd"`
 
-	// EffectiveStart Computed start of the half-open effective period, with the offset of Europe/Berlin.
+	// EffectiveStart Computed start of the half-open effective period, with the
+	// offset of Europe/Berlin: the start date at the start time, or
+	// at 00:00 when the time is unknown or the event is all day.
 	EffectiveStart time.Time `json:"effectiveStart"`
 
 	// EndDate Local end date `YYYY-MM-DD`, or `null` when the event has no end date.
@@ -176,7 +185,9 @@ type Event struct {
 // field names of Event without the derived fields, plus `importKey`,
 // and no identifiers. The import schema includes it.
 type EventInput struct {
-	// AllDay Whether the event lasts whole days; then no times may be given.
+	// AllDay Whether the event lasts whole days, at start and end together.
+	// Then no times may be given; an all-day event with a start or end
+	// time is rejected.
 	AllDay *bool `json:"allDay,omitempty"`
 
 	// EndDate Local end date `YYYY-MM-DD`; missing or `null` when there is none.

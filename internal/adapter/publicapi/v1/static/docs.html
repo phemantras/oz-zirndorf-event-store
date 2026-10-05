@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Redoc shows a logo from its CDN in the sidebar; the policy keeps
+       images, fonts and requests on this host (ENT-14). -->
+  <meta http-equiv="Content-Security-Policy" content="img-src 'self' data:; font-src 'self' data:; connect-src 'self'">
+  <title>OZ Zirndorf Event Store API v1</title>
+  <style>
+    body { margin: 0; }
+    .contract { margin: 0; padding: 8px 16px; font: 14px/1.5 sans-serif; border-bottom: 1px solid #ddd; }
+  </style>
+</head>
+<body>
+  <p class="contract">Machine-readable contract: <a href="openapi.yaml">openapi.yaml</a> (OpenAPI 3.1)</p>
+  <redoc spec-url="openapi.yaml"></redoc>
+  <script src="docs/redoc.standalone.js"></script>
+</body>
+</html>

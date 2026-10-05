@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -130,8 +131,120 @@ func TestServesTheEmbeddedSpec(t *testing.T) {
 	}
 }
 
+func TestServesTheDocsPage(t *testing.T) {
+	rec := serve(newTestHandler(), http.MethodGet, docsPath)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/html; charset=utf-8", got)
+	}
+	assertAllowsAnyOrigin(t, rec.Header())
+	page := rec.Body.String()
+	for _, want := range []string{
+		`<script src="docs/redoc.standalone.js">`,
+		`<redoc spec-url="openapi.yaml"`,
+		`<a href="openapi.yaml">`,
+		// The policy keeps Redoc's logo from cdn.redoc.ly off the page.
+		`<meta http-equiv="Content-Security-Policy" content="img-src 'self' data:; font-src 'self' data:; connect-src 'self'">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %s:\n%s", want, page)
+		}
+	}
+	// The page must not load anything from another host (ENT-14).
+	for _, external := range []string{"http://", "https://", `src="//`, `href="//`} {
+		if strings.Contains(page, external) {
+			t.Errorf("page refers to another host with %q", external)
+		}
+	}
+}
+
+func TestDocsPageIgnoresRangeRequests(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, docsPath, nil)
+	req.Header.Set("Range", "bytes=99999999-")
+	rec := httptest.NewRecorder()
+	newTestHandler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	page, err := fs.ReadFile(staticFiles, docsPageFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), page) {
+		t.Error("body is not the full docs page")
+	}
+}
+
+func TestMissingStaticFileIsAnInternalServerErrorAndLogged(t *testing.T) {
+	var logs bytes.Buffer
+	respond := responder{logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+
+	rec := httptest.NewRecorder()
+	respond.serveStaticFile("static/missing.html", htmlContentType)(rec, httptest.NewRequest(http.MethodGet, docsPath, nil))
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/problem+json" {
+		t.Errorf("Content-Type = %q, want application/problem+json", got)
+	}
+	if !strings.Contains(logs.String(), "missing.html") {
+		t.Errorf("log %q does not name the missing file", logs.String())
+	}
+}
+
+func TestServesTheEmbeddedRedocScript(t *testing.T) {
+	rec := serve(newTestHandler(), http.MethodGet, docsScriptPath)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "text/javascript; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/javascript; charset=utf-8", got)
+	}
+	assertAllowsAnyOrigin(t, rec.Header())
+	script, err := fs.ReadFile(staticFiles, docsScriptFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(script) == 0 || !bytes.Equal(rec.Body.Bytes(), script) {
+		t.Error("body is not the embedded Redoc script")
+	}
+}
+
+func TestHeadOnTheDocsPageAnswersWithoutBody(t *testing.T) {
+	server := httptest.NewServer(newTestHandler())
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodHead, server.URL+docsPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := server.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if len(body) != 0 {
+		t.Errorf("body = %q, want none", body)
+	}
+	assertAllowsAnyOrigin(t, resp.Header)
+}
+
 func TestPreflightIsAnsweredOnEveryPath(t *testing.T) {
-	for _, path := range []string{eventTypesPath, specPath, unknownPath, "/v1/"} {
+	for _, path := range []string{eventTypesPath, specPath, docsPath, docsScriptPath, unknownPath, "/v1/"} {
 		req := httptest.NewRequest(http.MethodOptions, path, nil)
 		req.Header.Set("Origin", "https://karte.example")
 		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
@@ -176,22 +289,22 @@ func TestPreflightWithoutRequestHeadersAllowsNoHeaders(t *testing.T) {
 
 func TestWriteMethodsAreRejectedOnEveryPath(t *testing.T) {
 	for _, method := range writeMethods {
-		for _, path := range []string{eventTypesPath, specPath, unknownPath} {
+		for _, path := range []string{eventTypesPath, specPath, docsPath, docsScriptPath, unknownPath} {
 			rec := serve(newTestHandler(), method, path)
 
 			detail := assertProblem(t, rec, http.StatusMethodNotAllowed)
 			if got := rec.Header().Get("Allow"); got != "GET, HEAD, OPTIONS" {
 				t.Errorf("%s %s Allow = %q, want %q", method, path, got, "GET, HEAD, OPTIONS")
 			}
-			if !strings.Contains(detail, method) {
-				t.Errorf("%s %s detail %q does not name the method", method, path, detail)
+			if want := "Method " + method + " is not allowed; the API is read-only and allows GET, HEAD and OPTIONS."; detail != want {
+				t.Errorf("%s %s detail = %q, want %q as the KON-3 example says", method, path, detail, want)
 			}
 		}
 	}
 }
 
 func TestUnknownPathsAreNotFound(t *testing.T) {
-	for _, path := range []string{unknownPath, "/v1/", "/v1/event-types/festival"} {
+	for _, path := range []string{unknownPath, "/v1/", "/v1/event-types/festival", "/v1/docs/nope", "/v1/docs/"} {
 		rec := serve(newTestHandler(), http.MethodGet, path)
 
 		detail := assertProblem(t, rec, http.StatusNotFound)
@@ -260,7 +373,7 @@ func TestFailedWritesAreLogged(t *testing.T) {
 
 func TestEveryAnswerAllowsAnyOrigin(t *testing.T) {
 	for _, method := range slices.Concat([]string{http.MethodGet, http.MethodHead, http.MethodOptions}, writeMethods) {
-		for _, path := range []string{eventTypesPath, specPath, unknownPath} {
+		for _, path := range []string{eventTypesPath, specPath, docsPath, docsScriptPath, unknownPath} {
 			rec := serve(newTestHandler(), method, path)
 			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
 				t.Errorf("%s %s Access-Control-Allow-Origin = %q, want *", method, path, got)
