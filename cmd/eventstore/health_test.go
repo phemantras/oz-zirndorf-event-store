@@ -52,7 +52,7 @@ func TestHealthReturnsUnavailableAndLogsWhenPingFails(t *testing.T) {
 }
 
 func TestRouterServesHealthOnlyForGet(t *testing.T) {
-	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), http.NotFoundHandler())
+	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), routeHandlers{admin: http.NotFoundHandler(), public: http.NotFoundHandler()})
 
 	get := httptest.NewRecorder()
 	router.ServeHTTP(get, httptest.NewRequest(http.MethodGet, healthPath, nil))
@@ -72,7 +72,7 @@ func TestRouterMountsAdminBelowAdminPath(t *testing.T) {
 	admin := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(adminMarker))
 	})
-	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), admin)
+	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), routeHandlers{admin: admin, public: http.NotFoundHandler()})
 
 	for _, path := range []string{"/admin/", "/admin/login", "/admin/static/htmx.min.js"} {
 		rec := httptest.NewRecorder()
@@ -86,6 +86,31 @@ func TestRouterMountsAdminBelowAdminPath(t *testing.T) {
 	router.ServeHTTP(health, httptest.NewRequest(http.MethodGet, healthPath, nil))
 	if health.Code != http.StatusOK || health.Body.String() == adminMarker {
 		t.Errorf("health status = %d, want %d from the health handler", health.Code, http.StatusOK)
+	}
+}
+
+func TestRouterMountsPublicAPIBelowV1(t *testing.T) {
+	const publicMarker = "public-stub"
+	public := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(publicMarker))
+	})
+	router := newRouter(&fakePinger{}, slog.New(slog.DiscardHandler), routeHandlers{admin: http.NotFoundHandler(), public: public})
+
+	for _, path := range []string{"/v1/events", "/v1/archive/events", "/v1/event-types", "/v1/openapi.yaml", "/v1/nope"} {
+		for _, method := range []string{http.MethodGet, http.MethodOptions, http.MethodPost} {
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+			if rec.Body.String() != publicMarker {
+				t.Errorf("%s %s did not reach the public API handler", method, path)
+			}
+		}
+	}
+	for _, path := range []string{"/admin/login", healthPath} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Body.String() == publicMarker {
+			t.Errorf("GET %s reached the public API handler", path)
+		}
 	}
 }
 

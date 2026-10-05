@@ -268,6 +268,58 @@ func (q *Queries) ListEvents(ctx context.Context) ([]Event, error) {
 	return items, nil
 }
 
+const listEventsOverlapping = `-- name: ListEventsOverlapping :many
+SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
+       source_description, source_url, note, effective_start, effective_end, title_key
+FROM events
+WHERE ($1::timestamptz IS NULL OR effective_end > $1)
+  AND ($2::timestamptz IS NULL OR effective_start < $2)
+`
+
+type ListEventsOverlappingParams struct {
+	Lo pgtype.Timestamptz
+	Hi pgtype.Timestamptz
+}
+
+// The one filter predicate of AD-16 on the stored effective period; a NULL
+// lo leaves the period open at the start, a NULL hi open-ended. The core
+// passes lo and hi as parameters.
+func (q *Queries) ListEventsOverlapping(ctx context.Context, arg ListEventsOverlappingParams) ([]Event, error) {
+	rows, err := q.db.Query(ctx, listEventsOverlapping, arg.Lo, arg.Hi)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Event
+	for rows.Next() {
+		var i Event
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Type,
+			&i.LocationID,
+			&i.StartDate,
+			&i.StartTime,
+			&i.EndDate,
+			&i.EndTime,
+			&i.AllDay,
+			&i.SourceDescription,
+			&i.SourceUrl,
+			&i.Note,
+			&i.EffectiveStart,
+			&i.EffectiveEnd,
+			&i.TitleKey,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTimetableEntries = `-- name: ListTimetableEntries :many
 SELECT id, event_id, description, date, start_time, end_time
 FROM timetable_entries
@@ -308,6 +360,39 @@ WHERE event_id = $1
 
 func (q *Queries) ListTimetableEntriesOfEvent(ctx context.Context, eventID pgtype.UUID) ([]TimetableEntry, error) {
 	rows, err := q.db.Query(ctx, listTimetableEntriesOfEvent, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TimetableEntry
+	for rows.Next() {
+		var i TimetableEntry
+		if err := rows.Scan(
+			&i.ID,
+			&i.EventID,
+			&i.Description,
+			&i.Date,
+			&i.StartTime,
+			&i.EndTime,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTimetableEntriesOfEvents = `-- name: ListTimetableEntriesOfEvents :many
+SELECT id, event_id, description, date, start_time, end_time
+FROM timetable_entries
+WHERE event_id = ANY($1::uuid[])
+`
+
+func (q *Queries) ListTimetableEntriesOfEvents(ctx context.Context, eventIds []pgtype.UUID) ([]TimetableEntry, error) {
+	rows, err := q.db.Query(ctx, listTimetableEntriesOfEvents, eventIds)
 	if err != nil {
 		return nil, err
 	}

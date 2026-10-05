@@ -1,0 +1,828 @@
+openapi: 3.1.0
+info:
+  title: OZ Zirndorf Event Store API
+  version: 1.0.0
+  summary: Public, read-only API for events in Zirndorf.
+  description: |
+    Public, read-only REST API of the OZ Zirndorf Event Store. It lists
+    events in Zirndorf (Bavaria, Germany) with honest precision: every
+    event says how exactly its time and place are known and where the
+    information comes from. No authentication is needed.
+
+    This document is the contract of version 1. Field names, parameters,
+    enum codes and the error format are defined here and nowhere else.
+
+    The API delivers events only as filtered lists. It gives out no
+    identifiers: neither events nor locations nor timetable entries carry
+    an ID, and there is no endpoint for a single event or for the list of
+    locations. A location is recognized by its name, which is unique and
+    serves to group events by place.
+
+    ## Conventions
+
+    These conventions apply to the whole public API. Other OpenZirndorf
+    backends are welcome to adopt them.
+
+    - **KON-1 Major version in the path.** Every resource lives below a
+      major version, here `/v1/…`.
+    - **KON-2 Parallel operation.** When a new major version appears, the
+      previous one stays available for at least 6 months. Its shutdown date
+      is then announced in this `info` section and in a `Sunset` response
+      header. No shutdown date is set for v1.
+    - **KON-3 Errors.** Errors follow RFC 9457 (Problem Details) with media
+      type `application/problem+json`, `type` `about:blank` and an English
+      `title` and `detail`. This also applies to unknown paths (404) and to
+      methods other than `GET`, `HEAD` and `OPTIONS` (405).
+    - **KON-4 Dates and times.** Start and end are a date `YYYY-MM-DD` plus
+      a separate, optional local time `HH:MM` (Europe/Berlin). An unknown
+      time is `null`, never `00:00`. Computed instants are ISO 8601 with
+      offset, for example `2026-11-27T00:00:00+01:00`.
+    - **KON-5 Period filters.** `from` and `to` accept a date `YYYY-MM-DD`
+      or an instant `YYYY-MM-DDTHH:MM[:SS[.fraction]]` with `Z` or an
+      offset `±HH:MM`, and are both inclusive: a date covers its whole day
+      in Europe/Berlin, an instant in `to` its whole minute. An event
+      matches when its effective period overlaps the filter period. Without
+      `to` the period is open-ended. The defaults when a bound is missing
+      are documented per endpoint. A given but empty `from` or `to` is an
+      error. In a query string the `+` of an offset must be URL-encoded as
+      `%2B` (`to=2026-12-24T18:00%2B01:00`); an unencoded `+` arrives as a
+      space and the value is rejected.
+    - **KON-6 Sort order.** Event lists are sorted by start ascending, the
+      archive descending.
+    - **KON-7 English technical terms.** Field names (camelCase),
+      parameters, paths, error messages and enum codes are English. Content
+      such as titles and labels stays German.
+    - **KON-8 List envelope.** Lists are delivered in an envelope
+      `{ "data": [ … ] }`, never as a bare array, so metadata can be added
+      later without a breaking change.
+
+    ## Time model
+
+    - **Time precision.** `startPrecision` and `endPrecision` say how
+      exactly start and end are known: `exact` (date and time), `dateOnly`
+      (only the date) or `allDay`. They are derived from the stored values.
+      `endPrecision` is `null` when the event has no end date.
+    - **All-day events.** `allDay` applies to start and end together. An
+      all-day event has no times; `startTime` and `endTime` are `null`.
+    - **Effective period.** `effectiveStart` and `effectiveEnd` are the
+      computed, half-open period `[effectiveStart, effectiveEnd)` of an
+      event, ISO 8601 with the offset of Europe/Berlin (`+01:00` or
+      `+02:00`). A start without time begins at 00:00 of its day; an end
+      without time ends at 00:00 of the day after the end day; a missing
+      end ends at 00:00 of the day after the start day. Filters compare
+      only these values.
+    - **Past events.** An event is over, and archived, as soon as
+      `effectiveEnd` is reached, independent of any background job: an
+      event that ends at 14:00 is no longer active from 14:00 on.
+      `archived` says which of the two lists an event belongs to.
+
+    ## Location precision
+
+    `location.precision` says how exactly the coordinates mark the place,
+    from `building` to `district`. The coordinates belong to the location:
+    every event at the same location has the same name and coordinates.
+
+    ## Versioning
+
+    Incompatible changes, for example to the list of event types or to
+    field names, only happen in a new major version. New optional fields
+    may be added to v1 at any time; clients must ignore fields they do not
+    know.
+
+    ## CORS
+
+    Every response below `/v1/` allows any origin
+    (`Access-Control-Allow-Origin: *`). Preflight requests (`OPTIONS`) are
+    answered for every path with status 204.
+
+    ## Machine-readable contract
+
+    This document is served at `/v1/openapi.yaml`.
+servers:
+  - url: /v1
+    description: Version 1 on the current host.
+paths:
+  /events:
+    get:
+      operationId: listEvents
+      summary: List the active events of today or of a period
+      description: |
+        Returns the active events, those whose `effectiveEnd` is after now,
+        whose effective period overlaps the filter period, sorted by
+        `effectiveStart` ascending. Past events are never part of this
+        list, even with a filter; `/v1/archive/events` lists them.
+
+        Defaults: without `from` and `to` the filter period is today
+        (Europe/Berlin), so a multi-day event is listed on each of its
+        days. Without `from` the period starts today; without `to` it is
+        open-ended.
+
+        The filter period is normalized to a half-open interval
+        `[lo, hi)`: `from` gives `lo` (for a date its 00:00), `to` gives
+        `hi` (for a date 00:00 of the next day, for an instant its minute
+        plus one minute, so an event starting exactly at `to` is
+        included). An event matches when `effectiveStart < hi` and
+        `effectiveEnd > lo`. An empty interval (`lo >= hi`) is an error.
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: |
+            Start of the filter period, inclusive: a date `YYYY-MM-DD`
+            (from 00:00 Europe/Berlin) or an instant with `Z` or an offset
+            `±HH:MM`. Defaults to today; a given but empty `from` is an
+            error. Send the `+` of an offset URL-encoded as `%2B`
+            (`from=2026-12-24T18:00%2B01:00`).
+          schema:
+            type: string
+          examples:
+            date:
+              summary: A date
+              value: '2026-11-29'
+            instant:
+              summary: An instant with offset
+              value: '2026-12-24T18:00+01:00'
+        - name: to
+          in: query
+          required: false
+          description: |
+            End of the filter period, inclusive: a date `YYYY-MM-DD` (to
+            the end of that day in Europe/Berlin) or an instant with `Z` or
+            an offset `±HH:MM` (including its minute). Without `to` the
+            period is open-ended; without `from` and `to` it is today. A
+            `to` before today without `from` is an error, since past events
+            are listed only by `/v1/archive/events`; so is a given but empty
+            `to`. Send the `+` of an offset URL-encoded as `%2B`
+            (`to=2026-12-24T18:00%2B01:00`).
+          schema:
+            type: string
+          examples:
+            date:
+              summary: A date
+              value: '2026-12-24'
+            instant:
+              summary: An instant with offset
+              value: '2026-12-24T18:00+01:00'
+        - $ref: '#/components/parameters/EventTypeFilter'
+      responses:
+        '200':
+          description: The active events in the filter period, by start ascending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventList'
+              example:
+                data:
+                  - title: Zirndorfer Weihnachtsmarkt
+                    type: market
+                    location:
+                      name: Marktplatz Zirndorf
+                      address:
+                        street: Marktplatz
+                        postalCode: '90513'
+                        city: Zirndorf
+                      latitude: 49.4427
+                      longitude: 10.9545
+                      precision: street
+                      note: null
+                    startDate: '2026-11-27'
+                    startTime: null
+                    endDate: '2026-12-24'
+                    endTime: null
+                    allDay: false
+                    startPrecision: dateOnly
+                    endPrecision: dateOnly
+                    source:
+                      description: Amtsblatt der Stadt Zirndorf, November 2026
+                      url: https://www.zirndorf.de/amtsblatt
+                    note: null
+                    timetable:
+                      - description: Eröffnung durch den Bürgermeister
+                        date: '2026-11-27'
+                        startTime: '17:00'
+                        endTime: null
+                    effectiveStart: '2026-11-27T00:00:00+01:00'
+                    effectiveEnd: '2026-12-25T00:00:00+01:00'
+                    archived: false
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /archive/events:
+    get:
+      operationId: listArchivedEvents
+      summary: List the past events
+      description: |
+        Returns the archived events, those whose `effectiveEnd` is not
+        after now, whose effective period overlaps the filter period,
+        sorted by `effectiveStart` descending. An event is archived from
+        the minute its `effectiveEnd` is reached, independent of any
+        background job, and is never deleted automatically. At any moment
+        every event is in exactly one of `/v1/events` and
+        `/v1/archive/events`. The events have the same form as in
+        `/v1/events`, with `archived` set to `true`.
+
+        Defaults: without `from` the filter period is open at the start;
+        without `to` it ends now. So without parameters every past event
+        is listed.
+
+        The filter period is normalized to `[lo, hi)` and matched exactly
+        as in `/v1/events`, with the same parameters and errors. An empty
+        interval (`lo >= hi`) is an error; a `from` at or after now without
+        `to` is one too, since future events are listed only by
+        `/v1/events`. A period in the future with both `from` and `to` is
+        valid and yields an empty list.
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: |
+            Start of the filter period, inclusive: a date `YYYY-MM-DD`
+            (from 00:00 Europe/Berlin) or an instant with `Z` or an offset
+            `±HH:MM`. Without `from` the period is open at the start. A
+            `from` at or after now without `to` is an error, since active
+            and future events are listed only by `/v1/events`; so is a
+            given but empty `from`. Send the `+` of an offset URL-encoded as
+            `%2B` (`from=2026-12-24T18:00%2B01:00`).
+          schema:
+            type: string
+          examples:
+            date:
+              summary: A date
+              value: '2026-12-01'
+            instant:
+              summary: An instant with offset
+              value: '2026-12-24T10:00+01:00'
+        - name: to
+          in: query
+          required: false
+          description: |
+            End of the filter period, inclusive: a date `YYYY-MM-DD` (to
+            the end of that day in Europe/Berlin) or an instant with `Z` or
+            an offset `±HH:MM` (including its minute). Without `to` the
+            period ends now. A given but empty `to` is an error. Send the
+            `+` of an offset URL-encoded as `%2B`
+            (`to=2026-12-24T18:00%2B01:00`).
+          schema:
+            type: string
+          examples:
+            date:
+              summary: A date
+              value: '2026-06-30'
+            instant:
+              summary: An instant with offset
+              value: '2026-12-24T11:59+01:00'
+        - $ref: '#/components/parameters/EventTypeFilter'
+      responses:
+        '200':
+          description: The past events in the filter period, by start descending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventList'
+              example:
+                data:
+                  - title: Zirndorfer Kirchweih
+                    type: festival
+                    location:
+                      name: Festplatz Zirndorf
+                      address:
+                        street: Fürther Straße
+                        postalCode: '90513'
+                        city: Zirndorf
+                      latitude: 49.4459
+                      longitude: 10.9611
+                      precision: area
+                      note: null
+                    startDate: '2026-10-16'
+                    startTime: null
+                    endDate: '2026-10-19'
+                    endTime: null
+                    allDay: true
+                    startPrecision: allDay
+                    endPrecision: allDay
+                    source:
+                      description: Amtsblatt der Stadt Zirndorf, Oktober 2026
+                      url: null
+                    note: null
+                    timetable: []
+                    effectiveStart: '2026-10-16T00:00:00+02:00'
+                    effectiveEnd: '2026-10-20T00:00:00+02:00'
+                    archived: true
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /event-types:
+    get:
+      operationId: listEventTypes
+      summary: List the event types
+      description: |
+        Returns every event type code with its German label, in a fixed
+        display order. The list is part of the contract: a change is an
+        incompatible change and only happens in a new major version.
+      responses:
+        '200':
+          description: All seven event types in display order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventTypeList'
+              example:
+                data:
+                  - code: festival
+                    label: Fest/Kirchweih
+                  - code: market
+                    label: Markt
+                  - code: culture
+                    label: Kultur/Bühne
+                  - code: politics
+                    label: Politik/Sitzung
+                  - code: club
+                    label: Verein/Treff
+                  - code: sports
+                    label: Sport
+                  - code: other
+                    label: Sonstiges
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+components:
+  parameters:
+    EventTypeFilter:
+      name: type
+      in: query
+      required: false
+      description: |
+        Event type code; repeat the parameter for several types
+        (`type=market&type=club`). An event matches when it has any of
+        the types; a type given twice counts once. Without `type`
+        every type matches. An empty or unknown code is an error.
+      style: form
+      explode: true
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/EventType'
+      example:
+        - market
+        - club
+  responses:
+    BadRequest:
+      description: |
+        A query parameter is invalid. `detail` names the parameter: a date
+        or instant in the wrong form or without offset, an empty or unknown
+        event type, or an empty filter period. A period that can only hold
+        events of the other list is an error too: a `to` before today in
+        `/v1/events`, a `from` at or after now in `/v1/archive/events`;
+        `detail` then names the endpoint to use.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          examples:
+            invalidFrom:
+              summary: An instant without offset
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: >-
+                  Parameter from must be a date YYYY-MM-DD or an instant
+                  YYYY-MM-DDTHH:MM with Z or an offset such as +01:00; send
+                  the + URL-encoded as %2B.
+            beforeToday:
+              summary: Only to, before today
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: >-
+                  Parameter to lies before today, but /v1/events lists only
+                  active events; use /v1/archive/events for past events.
+            afterNow:
+              summary: Only from, at or after now, in the archive
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: >-
+                  Parameter from lies at or after now, but
+                  /v1/archive/events lists only past events; use /v1/events
+                  for active and future events.
+    InternalServerError:
+      description: The server failed to answer the request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Internal Server Error
+            status: 500
+            detail: The server failed to answer the request.
+  schemas:
+    EventType:
+      type: string
+      description: |
+        Classifies an event for filters and map icons. Codes:
+        `festival` (festival or Kirchweih fair), `market` (market),
+        `culture` (culture or stage performance), `politics` (politics or
+        council meeting), `club` (club or meetup), `sports` (sports),
+        `other` (anything else).
+      enum:
+        - festival
+        - market
+        - culture
+        - politics
+        - club
+        - sports
+        - other
+      example: market
+    TimePrecision:
+      type: string
+      description: |
+        How exactly the start or end of an event is known.
+        `exact`: date and local time are known.
+        `dateOnly`: only the date is known, the time is unknown.
+        `allDay`: the event lasts the whole day, it has no time.
+      enum:
+        - exact
+        - dateOnly
+        - allDay
+      example: dateOnly
+    LocationPrecision:
+      type: string
+      description: |
+        How exactly the coordinates of a location mark the place.
+        `building`: a single building or entrance.
+        `street`: a square or street.
+        `area`: an area such as a park or fairground.
+        `district`: only the district of Zirndorf is known.
+      enum:
+        - building
+        - street
+        - area
+        - district
+      example: street
+    Address:
+      type: object
+      description: |
+        Postal address of a location. A part is `null` only for locations
+        entered before addresses were split into parts.
+      required:
+        - street
+        - postalCode
+        - city
+      properties:
+        street:
+          type: [string, 'null']
+          description: Street with house number, or an area such as a square.
+          example: Volkhardtstraße 2
+        postalCode:
+          type: [string, 'null']
+          pattern: '^[0-9]{5}$'
+          description: German postal code, five digits.
+          example: '90513'
+        city:
+          type: [string, 'null']
+          description: City.
+          example: Zirndorf
+    Source:
+      type: object
+      description: Where the information about an event comes from.
+      required:
+        - description
+        - url
+      properties:
+        description:
+          type: string
+          description: Human-readable source, such as a newsletter or a poster.
+          example: Amtsblatt der Stadt Zirndorf, November 2026
+        url:
+          type: [string, 'null']
+          format: uri
+          description: Link to the source, an http(s) URL, or `null`.
+          example: https://www.zirndorf.de/amtsblatt
+    TimetableEntry:
+      type: object
+      description: |
+        One item of an event's timetable. An end time before the start time
+        ends on the following day.
+      required:
+        - description
+        - date
+        - startTime
+        - endTime
+      properties:
+        description:
+          type: string
+          description: What happens.
+          example: Eröffnung durch den Bürgermeister
+        date:
+          type: string
+          format: date
+          description: Local date `YYYY-MM-DD` (Europe/Berlin).
+          example: '2026-11-27'
+        startTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Local start time `HH:MM`, or `null` when unknown.
+          example: '17:00'
+        endTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Local end time `HH:MM`, or `null` when unknown.
+          example: null
+    EventLocation:
+      type: object
+      description: |
+        The complete location of an event. Every event at the same location
+        has the same name and coordinates.
+      required:
+        - name
+        - address
+        - latitude
+        - longitude
+        - precision
+        - note
+      properties:
+        name:
+          type: string
+          description: |
+            Name of the location. It identifies the location uniquely and
+            serves to group events by place; the API gives out no location
+            IDs.
+          example: Paul-Metz-Halle
+        address:
+          $ref: '#/components/schemas/Address'
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Latitude in degrees (WGS 84).
+          example: 49.4424
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Longitude in degrees (WGS 84).
+          example: 10.9539
+        precision:
+          $ref: '#/components/schemas/LocationPrecision'
+        note:
+          type: [string, 'null']
+          description: Note about the location, or `null`.
+          example: Eingang über den Hof
+    Event:
+      type: object
+      description: |
+        An event as the public API lists it (read form). It has the field
+        names of EventInput without `importKey`, a complete location, plus
+        the derived fields `startPrecision`, `endPrecision`,
+        `effectiveStart`, `effectiveEnd` and `archived`. It has no
+        identifiers.
+      required:
+        - title
+        - type
+        - location
+        - startDate
+        - startTime
+        - endDate
+        - endTime
+        - allDay
+        - startPrecision
+        - endPrecision
+        - source
+        - note
+        - timetable
+        - effectiveStart
+        - effectiveEnd
+        - archived
+      properties:
+        title:
+          type: string
+          description: Title of the event, German.
+          example: Zirndorfer Weihnachtsmarkt
+        type:
+          $ref: '#/components/schemas/EventType'
+        location:
+          $ref: '#/components/schemas/EventLocation'
+        startDate:
+          type: string
+          format: date
+          description: Local start date `YYYY-MM-DD` (Europe/Berlin).
+          example: '2026-11-27'
+        startTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Local start time `HH:MM`, or `null` when unknown or all day.
+          example: null
+        endDate:
+          type: [string, 'null']
+          format: date
+          description: Local end date `YYYY-MM-DD`, or `null` when the event has no end date.
+          example: '2026-12-24'
+        endTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Local end time `HH:MM`, or `null` when unknown or all day.
+          example: null
+        allDay:
+          type: boolean
+          description: Whether the event lasts whole days; then both times are `null`.
+          example: false
+        startPrecision:
+          $ref: '#/components/schemas/TimePrecision'
+        endPrecision:
+          description: How exactly the end is known, or `null` when the event has no end date.
+          anyOf:
+            - $ref: '#/components/schemas/TimePrecision'
+            - type: 'null'
+        source:
+          $ref: '#/components/schemas/Source'
+        note:
+          type: [string, 'null']
+          description: Note about the event, or `null`.
+          example: null
+        timetable:
+          type: array
+          description: Timetable of the event, sorted chronologically; empty when there is none.
+          items:
+            $ref: '#/components/schemas/TimetableEntry'
+        effectiveStart:
+          type: string
+          format: date-time
+          description: Computed start of the half-open effective period, with the offset of Europe/Berlin.
+          example: '2026-11-27T00:00:00+01:00'
+        effectiveEnd:
+          type: string
+          format: date-time
+          description: Computed end of the half-open effective period, with the offset of Europe/Berlin.
+          example: '2026-12-25T00:00:00+01:00'
+        archived:
+          type: boolean
+          description: Whether the event is over, that is its `effectiveEnd` is not after now.
+          example: false
+    EventList:
+      type: object
+      description: List envelope (KON-8) around events.
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          description: The events, sorted as the endpoint documents.
+          items:
+            $ref: '#/components/schemas/Event'
+    EventInputLocation:
+      type: object
+      description: |
+        The location an imported event brings along. `name` is required: a
+        name that already exists refers to that location and needs nothing
+        else, a new location needs address, coordinates and precision.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Unique name of the location.
+          example: Paul-Metz-Halle
+        address:
+          $ref: '#/components/schemas/Address'
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Latitude in degrees (WGS 84).
+          example: 49.4424
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Longitude in degrees (WGS 84).
+          example: 10.9539
+        precision:
+          $ref: '#/components/schemas/LocationPrecision'
+        note:
+          type: [string, 'null']
+          description: Note about the location.
+          example: null
+    EventInput:
+      type: object
+      description: |
+        An event as an import file delivers it (write form). It has the
+        field names of Event without the derived fields, plus `importKey`,
+        and no identifiers. The import schema includes it.
+      required:
+        - title
+        - type
+        - location
+        - startDate
+        - source
+      properties:
+        title:
+          type: string
+          description: Title of the event, German.
+          example: Zirndorfer Weihnachtsmarkt
+        type:
+          $ref: '#/components/schemas/EventType'
+        location:
+          $ref: '#/components/schemas/EventInputLocation'
+        startDate:
+          type: string
+          format: date
+          description: Local start date `YYYY-MM-DD` (Europe/Berlin).
+          example: '2026-11-27'
+        startTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Local start time `HH:MM`; missing or `null` means unknown, never 00:00.
+          example: null
+        endDate:
+          type: [string, 'null']
+          format: date
+          description: Local end date `YYYY-MM-DD`; missing or `null` when there is none.
+          example: '2026-12-24'
+        endTime:
+          type: [string, 'null']
+          pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+          description: Local end time `HH:MM`; requires `endDate`.
+          example: null
+        allDay:
+          type: boolean
+          description: Whether the event lasts whole days; then no times may be given.
+          example: false
+        source:
+          $ref: '#/components/schemas/Source'
+        note:
+          type: [string, 'null']
+          description: Note about the event.
+          example: null
+        timetable:
+          type: array
+          description: Timetable of the event, in any order.
+          items:
+            $ref: '#/components/schemas/TimetableEntry'
+        importKey:
+          type: [string, 'null']
+          description: |
+            Key of the event in the import source; importing the same key
+            again updates the event instead of creating another one.
+          example: weihnachtsmarkt-2026
+    EventTypeEntry:
+      type: object
+      description: An event type code with its German label.
+      required:
+        - code
+        - label
+      properties:
+        code:
+          $ref: '#/components/schemas/EventType'
+        label:
+          type: string
+          description: German display name of the event type.
+          example: Markt
+    EventTypeList:
+      type: object
+      description: List envelope (KON-8) around all event types.
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          description: Every event type, in display order.
+          items:
+            $ref: '#/components/schemas/EventTypeEntry'
+    Problem:
+      type: object
+      description: |
+        Error response according to RFC 9457 (Problem Details), delivered as
+        `application/problem+json`.
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          description: |
+            URI reference identifying the problem type. The API uses
+            `about:blank`, so the HTTP status alone names the problem.
+          example: about:blank
+        title:
+          type: string
+          description: Short English summary, the reason phrase of the HTTP status.
+          example: Not Found
+        status:
+          type: integer
+          description: HTTP status code of the response.
+          example: 404
+        detail:
+          type: string
+          description: English explanation of this occurrence of the problem.
+          example: No resource exists at path /v1/nope.

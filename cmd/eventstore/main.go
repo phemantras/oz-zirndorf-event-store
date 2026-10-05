@@ -20,6 +20,7 @@ import (
 
 	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/admin"
 	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
+	publicapi "github.com/phemantras/oz-zirndorf-event-store/internal/adapter/publicapi/v1"
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
@@ -82,13 +83,29 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 		return fmt.Errorf("listen on %s: %w", cfg.ListenAddress(), err)
 	}
 	cases := useCases{locations: core.NewLocationService(tx, locationRepo), events: events}
-	return serve(ctx, newServer(pool, logger, newAdminHandler(cfg, logger, cases)), listener, logger)
+	return serve(ctx, newServer(pool, logger, newRouteHandlers(cfg, logger, cases)), listener, logger)
 }
 
-// useCases are the core use cases the admin interface works with.
+// useCases are the core use cases the admin interface and the public API
+// work with.
 type useCases struct {
 	locations admin.LocationUseCases
-	events    admin.EventUseCases
+	events    eventUseCases
+}
+
+// eventUseCases are the event use cases of the admin and the event query of
+// the public API, both served by core.EventService.
+type eventUseCases interface {
+	admin.EventUseCases
+	publicapi.EventLister
+}
+
+// newRouteHandlers builds the admin interface and the public API.
+func newRouteHandlers(cfg config, logger *slog.Logger, cases useCases) routeHandlers {
+	return routeHandlers{
+		admin:  newAdminHandler(cfg, logger, cases),
+		public: publicapi.NewHandler(publicapi.Config{Logger: logger, Events: cases.events, Clock: systemClock{}}),
+	}
 }
 
 // newAdminHandler builds the admin interface from the validated
@@ -107,9 +124,9 @@ func newAdminHandler(cfg config, logger *slog.Logger, cases useCases) http.Handl
 }
 
 // newServer returns the HTTP server with all routes and timeouts.
-func newServer(db pinger, logger *slog.Logger, adminHandler http.Handler) *http.Server {
+func newServer(db pinger, logger *slog.Logger, handlers routeHandlers) *http.Server {
 	return &http.Server{
-		Handler:           newRouter(db, logger, adminHandler),
+		Handler:           newRouter(db, logger, handlers),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}

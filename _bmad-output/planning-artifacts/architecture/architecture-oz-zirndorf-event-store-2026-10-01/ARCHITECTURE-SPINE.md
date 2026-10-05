@@ -7,7 +7,7 @@ paradigm: 'Hexagonal light (Ports & Adapters)'
 scope: 'Gesamtes Backend v1: öffentliche Lese-API, Admin-Oberfläche, JSON-Import, Archiv/Bereinigung, Betrieb auf Railway'
 status: final
 created: '2026-10-01'
-updated: '2026-10-02'
+updated: '2026-10-04'
 binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, NFR-1, NFR-2, NFR-3, NFR-4, NFR-5, NFR-6, KON-1, KON-2, KON-3, KON-4, KON-5, KON-6, KON-7, KON-8]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-oz-zirndorf-event-store-2026-10-01/prd.md
@@ -88,7 +88,7 @@ flowchart LR
 
 - **Binds:** FR-8 bis FR-12, KON-4, KON-6
 - **Prevents:** Die Public API greift direkt auf die Datenbank zu, leitet Genauigkeit oder Archivstatus selbst ab oder sortiert anders.
-- **Rule:** Die Public API ruft Abfrage-Anwendungsfälle des Kerns auf: `ListActiveEvents`, `ListArchivedEvents`, `GetEvent`, `ListLocations`, `ListEventTypes`. Sie liefern Kern-Objekte mit abgeleiteter Genauigkeit und `archived`. Der Adapter bildet sie nur auf die generierten Typen ab. Sortierung: aktive Events nach `effectiveStart` aufsteigend, das Archiv nach `effectiveStart` absteigend, bei Gleichstand nach `id`. Orte sortiert der Kern nach Namen: ohne Unterschied von Groß- und Kleinschreibung, Umlaute wie ihr Grundbuchstabe (ä→a, ö→o, ü→u, ß→ss), bei Gleichstand nach `id`. Die Sortierung der Datenbank wird dafür nicht genutzt.
+- **Rule:** Die Public API ruft Abfrage-Anwendungsfälle des Kerns auf: `ListActiveEvents`, `ListArchivedEvents`, `ListEventTypes`. Sie liefert Events nur als Listen; einen Einzelabruf und eine Ortsliste gibt es nicht (FR-11). `GetEvent` und `ListLocations` dienen nur dem Admin. Sie liefern Kern-Objekte mit abgeleiteter Genauigkeit und `archived`. Der Adapter bildet sie nur auf die generierten Typen ab. Sortierung: aktive Events nach `effectiveStart` aufsteigend, das Archiv nach `effectiveStart` absteigend, bei Gleichstand nach `id`. Orte sortiert der Kern nach Namen: ohne Unterschied von Groß- und Kleinschreibung, Umlaute wie ihr Grundbuchstabe (ä→a, ö→o, ü→u, ß→ss), bei Gleichstand nach `id`. Die Sortierung der Datenbank wird dafür nicht genutzt.
 
 ### AD-8 — OpenAPI ist der Vertrag (spec-first), eine Spec pro Hauptversion [ADOPTED]
 
@@ -119,7 +119,7 @@ flowchart LR
 - **Binds:** FR-6, FR-15, FR-16, FR-17, FR-18
 - **Prevents:** Import und Admin erkennen „dasselbe Event“ oder „denselben Ort“ unterschiedlich; eine Duplikatprüfung, die „trotzdem anlegen“ unmöglich macht oder stille Duplikate zulässt.
 - **Rule:**
-  - **IDs:** Events, Orte und Ablaufplan-Einträge haben UUIDv7-Kennungen, erzeugt per `DEFAULT uuidv7()` in PostgreSQL 18.
+  - **IDs:** Events, Orte und Ablaufplan-Einträge haben UUIDv7-Kennungen, erzeugt per `DEFAULT uuidv7()` in PostgreSQL 18. Sie sind **rein intern** (Datenbank, Kern, Admin-Oberfläche) und erscheinen weder in der öffentlichen API noch im Import-Schema. Nach außen kennzeichnet der eindeutige Ortsname einen Ort (`name_key`); Events haben nach außen keine Kennung.
   - **`importKey`:** Ein Event kann einen `importKey` haben. Ist er gesetzt, ist er eindeutig.
   - **Texteingaben:** Der Kern normalisiert alle Texte an **einer** Stelle beim Bau jedes Inputs auf Unicode NFC, für Admin und Import gleich (auch nach dem Dekodieren von JSON-Escapes). Ein Pflichtfeld, das nur aus Leerraum besteht, fehlt.
   - **Ortsnamen:** Der Kern bildet mit `NormalizeKey` einen Schlüssel und speichert ihn als eindeutige Spalte `name_key`. `NormalizeKey` trimmt, fasst jeden Leerraum (auch geschützte Leerzeichen) zu einem Leerzeichen zusammen und wandelt in Kleinbuchstaben um.
@@ -144,7 +144,7 @@ flowchart LR
 
 - **Binds:** FR-1, FR-2, FR-10, FR-16, KON-4, KON-7
 - **Prevents:** Zeitfelder, die in API, Import und Admin unterschiedlich heißen oder aussehen.
-- **Rule:** Die Schreibform `EventInput` enthält `title`, `type`, `locationId` oder `importLocation` (mitgebrachter Ort, nur Import, `oneOf`), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source`, `note`, `timetable` und `importKey` (nur Import). Die Leseform `Event` ist ein eigenes Schema mit denselben Feldnamen wie `EventInput` (ohne `importKey` und `importLocation`) **plus** abgeleitete Felder: `id`, `location` (vollständig), `startPrecision`, `endPrecision`, `effectiveStart`, `effectiveEnd` und `archived`. `source` ist in beiden Formen ein Objekt `{ "description": string, "url": string | null }`, `description` ist Pflicht, `url` muss eine http(s)-URL sein. Formate: `startDate`/`endDate` als `YYYY-MM-DD`, `startTime`/`endTime` als `HH:MM` lokale Zeit Europe/Berlin oder `null`, `effective*` als ISO 8601 mit dem lokalen Offset von Europe/Berlin (`+01:00` / `+02:00`). Die Kernfunktion `Canonicalize` bringt ein `EventInput` in eine kanonische Form (getrimmt, `""` als `null`, Ablaufplan sortiert). `SaveEvent` speichert nur kanonische Formen, und der Import-Vergleich nutzt sie.
+- **Rule:** Die Schreibform `EventInput` (Import) enthält `title`, `type`, `location` (mitgebrachter Ort: `name` Pflicht; `address`, `latitude`, `longitude`, `precision`, `note` optional, weil ein vorhandener Name sie nicht braucht), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source`, `note`, `timetable` und `importKey`. Die Leseform `Event` ist ein eigenes Schema mit denselben Feldnamen wie `EventInput` (ohne `importKey`), wobei `location` vollständig ist, **plus** abgeleitete Felder: `startPrecision`, `endPrecision`, `effectiveStart`, `effectiveEnd` und `archived`. **Keine Form nach außen enthält interne Werte:** keine Kennungen (Event, Ort, Programmpunkt), kein `importKey` in der Leseform, kein `archivedAt`, `title_key` oder `name_key`. Im Kern trägt `core.EventInput` entweder die interne Ortskennung (Admin-Formular) oder den mitgebrachten Ort (Import); die Spec kennt nur `location`. `source` ist in beiden Formen ein Objekt `{ "description": string, "url": string | null }`, `description` ist Pflicht, `url` muss eine http(s)-URL sein. Formate: `startDate`/`endDate` als `YYYY-MM-DD`, `startTime`/`endTime` als `HH:MM` lokale Zeit Europe/Berlin oder `null`, `effective*` als ISO 8601 mit dem lokalen Offset von Europe/Berlin (`+01:00` / `+02:00`). Die Kernfunktion `Canonicalize` bringt ein `EventInput` in eine kanonische Form (getrimmt, `""` als `null`, Ablaufplan sortiert). `SaveEvent` speichert nur kanonische Formen, und der Import-Vergleich nutzt sie.
 
 ### AD-15 — Ablaufplan als Wertobjekt des Events [ADOPTED]
 
@@ -179,7 +179,7 @@ flowchart LR
 | Feldnamen JSON | camelCase (KON-7), Formen nach AD-14 |
 | Datenbank | snake_case, Tabellennamen im Plural: `events`, `locations`, `timetable_entries` |
 | Enum-Codes | Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`. Zeitgenauigkeit: `exact`, `dateOnly`, `allDay`. Ortsgenauigkeit: `building`, `street`, `area`, `district`. Quelle: AD-9 |
-| IDs | UUIDv7 als String in JSON |
+| IDs | UUIDv7, nur intern. Öffentliche API und Import-Schema enthalten keine Kennungen (AD-11, AD-14) |
 | Fehler | RFC 9457 Problem Details (`application/problem+json`), englischer `title`/`detail` (KON-3) |
 | Listen | Hülle `{ "data": [ … ] }` (KON-8). Sortierung nach AD-7 |
 | Fehlerbehandlung im Code | Der Kern liefert typisierte Fehler (`ErrValidation`, `ErrNotFound`, `ErrConflict`, `ErrDuplicateSuspect`). Nur die Adapter übersetzen sie in HTTP-Status oder Problem Details. |

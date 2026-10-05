@@ -27,6 +27,29 @@ func TestEventTypesAreTheSevenCodesInOrder(t *testing.T) {
 	}
 }
 
+func TestListEventTypesLabelsEveryCodeInGermanInOrder(t *testing.T) {
+	want := []EventTypeEntry{
+		{Code: EventTypeFestival, Label: "Fest/Kirchweih"},
+		{Code: EventTypeMarket, Label: "Markt"},
+		{Code: EventTypeCulture, Label: "Kultur/Bühne"},
+		{Code: EventTypePolitics, Label: "Politik/Sitzung"},
+		{Code: EventTypeClub, Label: "Verein/Treff"},
+		{Code: EventTypeSports, Label: "Sport"},
+		{Code: EventTypeOther, Label: "Sonstiges"},
+	}
+	got := ListEventTypes()
+	if !slices.Equal(got, want) {
+		t.Errorf("ListEventTypes() = %v, want %v", got, want)
+	}
+	var codes []EventType
+	for _, entry := range got {
+		codes = append(codes, entry.Code)
+	}
+	if !slices.Equal(codes, EventTypes()) {
+		t.Errorf("codes = %v, want the order of EventTypes() %v", codes, EventTypes())
+	}
+}
+
 func TestEventFieldNamesBesideTheTimeModel(t *testing.T) {
 	got := []string{EventFieldTitle, EventFieldType, EventFieldLocationID, EventFieldSourceDescription, EventFieldSourceURL, EventFieldNote}
 	want := []string{"title", "type", "locationId", "source.description", "source.url", "note"}

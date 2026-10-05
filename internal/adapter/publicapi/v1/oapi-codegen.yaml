@@ -1,0 +1,15 @@
+# oapi-codegen v2.8.0 configuration; run `go generate ./...`.
+package: v1
+generate:
+  std-http-server: true
+  strict-server: true
+  models: true
+output-options:
+  # Keep enum schemas no path uses yet (TimePrecision, LocationPrecision),
+  # so the enum comparison with the core covers every code (AD-9).
+  skip-prune: true
+compatibility:
+  # Name enum constants after their type (EventTypeMarket), so codes of
+  # different enums cannot collide.
+  always-prefix-enum-values: true
+output: api.gen.go

@@ -153,22 +153,24 @@ Ein Abnehmer kann Events nach Zeitraum (von/bis) und nach einem oder mehreren Ev
 
 #### FR-10: Kartengerechte Antwort
 
-Jedes ausgelieferte Event enthält alle Angaben aus FR-1 und den vollständigen Ort (Kennung, Name, Adresse, Koordinaten, Ortsgenauigkeit, Notiz).
+Jedes ausgelieferte Event enthält alle Angaben aus FR-1 und den vollständigen Ort (Name, Adresse, Koordinaten, Ortsgenauigkeit, Notiz).
 
 **Konsequenzen (testbar):**
-- Zwei Events am selben Ort liefern dieselbe Ort-Kennung und identische Koordinaten.
+- Zwei Events am selben Ort liefern denselben Ortsnamen und identische Koordinaten. Der Ortsname ist eindeutig und kennzeichnet den Ort.
 - Zeitgenauigkeit, Ortsgenauigkeit und Quelle sind bei jedem Event in der Antwort enthalten.
+- Die Antwort enthält keine internen Werte: keine Kennungen von Events, Orten oder Programmpunkten, keinen Import-Schlüssel und keine Hilfswerte wie Archivierungszeitpunkt oder Vergleichsschlüssel.
 
-#### FR-11: Einzelabruf und Nachschlagelisten
+#### FR-11: Nur Listen, Liste der Event-Typen
 
-Ein Abnehmer kann ein einzelnes Event über seine Kennung abrufen sowie die Liste aller Orte und aller Event-Typen abfragen.
+Die öffentliche API liefert Events ausschließlich als Liste (FR-8, FR-9, FR-12). Zusätzlich kann ein Abnehmer die Liste aller Event-Typen abfragen. Abnehmer müssen sich keine Kennungen merken: Was sie brauchen, erfragen sie erneut über Filter.
 
 **Konsequenzen (testbar):**
-- Der Abruf einer unbekannten Event-Kennung liefert „nicht gefunden“ im einheitlichen Fehlerformat.
-- Ein archiviertes Event ist über seine Kennung weiterhin abrufbar und als archiviert erkennbar. Maßgeblich ist die Vorbei-Regel, nicht der Zeitpunkt der täglichen Bereinigung.
+- Es gibt keinen Abruf eines einzelnen Events und keine eigene Liste der Orte. Orte erscheinen nur eingebettet im Event.
+- Ob ein Event archiviert ist, erkennt der Abnehmer an `archived`. Maßgeblich ist die Vorbei-Regel, nicht der Zeitpunkt der täglichen Bereinigung.
 
 **Out of Scope (gesamte Lese-API):**
 - Schreibzugriff jeder Art über die öffentliche API.
+- Einzelabruf über eine Kennung, eigene Ortsliste.
 - Volltextsuche, Umkreissuche, Paginierung. Bei ein paar hundert Events sind sie nicht nötig.
 
 ### 4.4 Archiv
@@ -225,7 +227,7 @@ Die Import-Datei hat eine Formatversion und ist dokumentiert.
 **Konsequenzen (testbar):**
 - Eine Datei mit unbekannter oder fehlender Formatversion wird mit einer klaren Meldung abgelehnt.
 - Das Format kann alle Angaben aus FR-1 bis FR-6 abbilden, einschließlich des optionalen Import-Schlüssels pro Event.
-- Ein Event in der Import-Datei kann auf einen vorhandenen Ort verweisen oder einen Ort mitbringen. Ein mitgebrachter Ort mit demselben Namen wie ein vorhandener wird dem vorhandenen zugeordnet.
+- Jedes Event in der Import-Datei bringt seinen Ort mit, mindestens mit Namen. Ein mitgebrachter Ort mit demselben Namen wie ein vorhandener wird dem vorhandenen zugeordnet. Die Import-Datei enthält keine internen Kennungen.
 - Ein mitgebrachter Ort, dessen Name noch nicht existiert, wird als neuer Ort angelegt. Dafür muss er Adresse und Koordinaten enthalten, sonst ist der Eintrag fehlerhaft. Die Import-Vorschau (FR-17) zeigt neu anzulegende Orte gesondert an.
 
 #### FR-17: Import-Vorschau
@@ -289,7 +291,7 @@ Diese Konventionen sind das Muster, das andere OZ-Backends übernehmen können. 
 
 - Event-Bestand mit Zeitgenauigkeit, Ortsgenauigkeit, Quelle, Ablaufplan und fester Event-Typen-Liste (FR-1 bis FR-5)
 - Orte als eigene, referenzierte Objekte (FR-6, FR-7)
-- Öffentliche, versionierte, nur lesende API mit Standardabfrage „heute“, Filtern, Einzelabruf und Nachschlagelisten (FR-8 bis FR-11)
+- Öffentliche, versionierte, nur lesende API mit Standardabfrage „heute“, Filtern, Archiv und Liste der Event-Typen, ausschließlich als Listen (FR-8 bis FR-11)
 - Archiv mit täglicher Archivierung und eigenem Zugriff (FR-12, FR-13)
 - Admin-Oberfläche für einen Admin mit Anmeldung, Pflege und JSON-Import mit Vorschau und Duplikatentscheidung (FR-14 bis FR-18)
 - API-Konventionen (§6), OpenAPI-Dokumentation, CORS offen

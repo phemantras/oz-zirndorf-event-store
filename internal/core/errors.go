@@ -50,6 +50,15 @@ const (
 	// ProblemOutsideEvent means a timetable entry does not lie within the
 	// effective period of its event.
 	ProblemOutsideEvent FieldProblem = "outsideEvent"
+	// ProblemEmptyPeriod means a period filter contains no instant: after
+	// normalization its start is not before its end.
+	ProblemEmptyPeriod FieldProblem = "emptyPeriod"
+	// ProblemBeforeToday means a period filter of active events ends before
+	// today, where only archived events can lie.
+	ProblemBeforeToday FieldProblem = "beforeToday"
+	// ProblemAfterNow means a period filter of archived events starts at or
+	// after now, where only active events can lie.
+	ProblemAfterNow FieldProblem = "afterNow"
 )
 
 // FieldError names one rejected field and why it was rejected.

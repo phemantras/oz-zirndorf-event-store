@@ -14,7 +14,7 @@ Dieses Addendum enthält Details, die nicht ins PRD gehören, aber für Architek
 - **Technologie:** frei wählbar (OZ-Prinzip). Im PRD ist nichts festgelegt.
 - **Archivierung:** täglicher Cron-Job, der Vorbei-Events in den Archiv-Bestand verschiebt. Ob das Archiv eine eigene Tabelle oder ein Statusfeld ist, entscheidet die Architektur. Fachlich gilt nur: getrennter Zugriff, dauerhafte Aufbewahrung.
 - **Vorbei-Regel:** Ein Event ist vorbei, wenn sein Ende überschritten ist. Ist beim Ende nur das Datum bekannt, gilt 23:59:59 des End-Tages. Ohne Ende gilt 23:59:59 des Beginn-Tages (Europe/Berlin). Reguläre Abfrage und Archiv-Zugriff wenden dieselbe Regel bei jeder Abfrage an. Der Cron-Lauf ist nur Aufräumen und darf das Ergebnis nicht verändern.
-- **Mögliche Ressourcen (Vorschlag):** `GET /v1/events` (Filter `from`, `to`, `type`), `GET /v1/events/{id}`, `GET /v1/locations`, `GET /v1/event-types`, `GET /v1/archive/events`. Die Namen sind englisch gemäß PRD KON-7.
+- **Mögliche Ressourcen (Vorschlag):** `GET /v1/events` (Filter `from`, `to`, `type`), `GET /v1/event-types`, `GET /v1/archive/events`. Einzelabruf und Ortsliste sind verworfen (Sprint Change Proposal 2026-10-04): Abnehmer arbeiten nur mit Listen und speichern keine Kennungen. Die Namen sind englisch gemäß PRD KON-7.
 - **Koordinaten-Auswahl im Admin:** z. B. ein Kartenpicker auf Basis von OpenStreetMap (Andreas' Idee). Die konkrete Bibliothek wählt die Architektur.
 - **API-Konventionen:** Versionierung, Fehlerformat, Zeit- und Filterformat sind im PRD (§6) festgelegt. RFC 9457 wurde gewählt, weil es ein verbreiteter Standard und für andere OZ-Backends leicht übernehmbar ist.
 

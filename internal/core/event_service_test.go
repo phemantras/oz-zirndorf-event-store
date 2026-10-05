@@ -27,12 +27,14 @@ type fakeEventRepo struct {
 	deleteErr        error
 	countErr         error
 	updateDerivedErr map[string]error
+	overlapErr       error
 
 	created        []Event
 	updated        []Event
 	deleted        []string
 	derivedUpdated []string
 	findCalls      int
+	overlaps       []Overlap
 }
 
 func newFakeEventRepo(events ...Event) *fakeEventRepo {
@@ -54,6 +56,26 @@ func (r *fakeEventRepo) List(context.Context) ([]Event, error) {
 	// Deliberately reverse ID order, so a missing core sort always fails.
 	slices.SortFunc(all, func(a, b Event) int { return strings.Compare(b.ID, a.ID) })
 	return all, nil
+}
+
+// ListOverlapping applies the one filter predicate of AD-16 and records
+// every overlap it was asked for.
+func (r *fakeEventRepo) ListOverlapping(ctx context.Context, overlap Overlap) ([]Event, error) {
+	r.overlaps = append(r.overlaps, overlap)
+	if r.overlapErr != nil {
+		return nil, r.overlapErr
+	}
+	all, err := r.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var matches []Event
+	for _, event := range all {
+		if (overlap.Hi == nil || event.Period.Start.Before(*overlap.Hi)) && (overlap.Lo == nil || event.Period.End.After(*overlap.Lo)) {
+			matches = append(matches, event)
+		}
+	}
+	return matches, nil
 }
 
 func (r *fakeEventRepo) Get(_ context.Context, id string) (Event, error) {

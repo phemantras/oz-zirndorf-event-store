@@ -2,7 +2,7 @@
 
 Der **OZ Zirndorf Event Store** sammelt Veranstaltungen in Zirndorf, also Kirchweihen und Feste, Märkte, Vorstellungen in der Paul-Metz-Halle, Vereinstreffen und Stadtratssitzungen, und stellt sie über eine öffentliche REST-API bereit. Erster Abnehmer ist die Karten-App von [OpenZirndorf](#über-openzirndorf), die Events als eigene Ebene zeigt.
 
-> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events und die öffentliche API folgen.
+> **Status:** Umsetzung läuft. PRD und Architektur sind fertig (siehe [Dokumentation](#dokumentation)). Es gibt das Grundgerüst mit Datenbank, Migrationen, Health Check und CI sowie die Auslieferung auf Railway, die Admin-Anmeldung und die Ortsverwaltung im Admin (anlegen, bearbeiten, auflisten). Events werden im Admin gepflegt. Von der öffentlichen API gibt es den Vertrag `api/v1/openapi.yaml` sowie die Endpunkte `GET /v1/events`, `GET /v1/archive/events` und `GET /v1/event-types`.
 
 ## Worum es geht: ehrliche Angaben
 
@@ -24,30 +24,53 @@ Für OZ-Backends gibt es noch keine gemeinsamen Schnittstellenregeln. Dieses Pro
 | Zeiten | Datum `YYYY-MM-DD` und getrennte Uhrzeit `HH:MM` (lokal Europe/Berlin, `null` = unbekannt). Berechnete Zeitpunkte als ISO 8601 mit Offset. |
 | Zeitraumfilter | `from` / `to`, beide inklusive. Ein Event ist enthalten, wenn sich sein Zeitraum mit dem Filter überschneidet. Fehlt `to`, ist der Zeitraum nach hinten offen. |
 | Listen | Immer eine Hülle `{ "data": [ … ] }`, nie ein nacktes Array. So lassen sich später Metadaten ohne Bruch ergänzen. |
-| Namen | Alles Technische englisch, Feldnamen in camelCase (`startDate`, `locationId`). Inhalte bleiben deutsch. |
+| Keine Kennungen | Events gibt es nur als gefilterte Listen, nie einzeln. Die API gibt keine internen IDs aus; Abnehmer müssen sich nichts merken. Ein Ort ist an seinem eindeutigen Namen erkennbar. |
+| Namen | Alles Technische englisch, Feldnamen in camelCase (`startDate`, `effectiveEnd`). Inhalte bleiben deutsch. |
 | CORS | Die öffentliche API ist offen für alle Herkünfte. Die Admin-Oberfläche ist davon getrennt und geschützt. |
 
 ## API im Überblick
 
-Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die geplanten Ressourcen:
+Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourcen:
 
 | Ressource | Zweck |
 | --- | --- |
-| `GET /v1/events` | Aktive Events. Ohne Filter: alles, was heute noch stattfindet. Filter: `from`, `to`, `type` |
-| `GET /v1/events/{id}` | Einzelnes Event, auch archivierte |
-| `GET /v1/archive/events` | Vergangene Events, gleiche Filter |
-| `GET /v1/locations` | Alle Orte. Events am selben Ort haben dieselbe Ort-ID und eignen sich so zum Gruppieren auf der Karte. |
+| `GET /v1/events` | Aktive Events. Ohne Filter: alles, was heute noch stattfindet. Filter: `from`, `to`, `type`. Events am selben Ort tragen denselben Ortsnamen und dieselben Koordinaten und lassen sich so auf der Karte gruppieren. |
+| `GET /v1/archive/events` | Vergangene Events (`effectiveEnd` erreicht), gleiche Filter, gleiche Form mit `archived: true`, absteigend nach `effectiveStart`. Ohne Filter: alle vergangenen Events. |
 | `GET /v1/event-types` | Liste der Event-Typen |
 
 Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`.
 
-Ein Event, so wie es geplant ist (gekürzt):
+Parameter von `GET /v1/events`, alle optional:
+
+| Parameter | Bedeutung |
+| --- | --- |
+| `from` | Beginn des Zeitraums, inklusive: Datum `YYYY-MM-DD` (ab 00:00 Europe/Berlin) oder Zeitpunkt mit `Z` oder Offset, z. B. `2026-12-24T18:00+01:00`, in der URL als `2026-12-24T18:00%2B01:00`. Fehlt er, beginnt der Zeitraum heute; leer angegeben (`from=`) ergibt 400. |
+| `to` | Ende des Zeitraums, inklusive: Datum (bis Tagesende) oder Zeitpunkt mit Offset (einschließlich seiner Minute). Fehlt er, ist der Zeitraum nach hinten offen; fehlen beide, gilt nur heute; leer angegeben (`to=`) ergibt 400. Nur `to` vor heute ergibt 400 mit Verweis auf `/v1/archive/events`. |
+| `type` | Event-Typ, wiederholbar (`type=market&type=club`), ODER-verknüpft. |
+
+Ein Event passt, wenn sein berechneter Zeitraum `[effectiveStart, effectiveEnd)` den Filterzeitraum überschneidet; geliefert werden nur aktive Events (`effectiveEnd` nach jetzt), aufsteigend nach `effectiveStart`. Das `+` eines Offsets muss in der URL als `%2B` kodiert sein; ein unkodiertes `+` kommt als Leerzeichen an und ergibt 400. Ungültige Parameter beantwortet die API mit 400 als `application/problem+json`, `detail` nennt den Parameter.
+
+`GET /v1/archive/events` nimmt dieselben Parameter mit denselben Regeln und Fehlern, aber anderen Standardwerten: Fehlt `from`, ist der Zeitraum nach vorn offen; fehlt `to`, endet er jetzt. Nur `from` ab jetzt ergibt 400 mit Verweis auf `/v1/events`; liegen `from` und `to` beide in der Zukunft, ist die Liste leer. Ein Event ist ab der Minute seines `effectiveEnd` im Archiv und nicht mehr in `/v1/events`, unabhängig von der Bereinigung; jedes Event steht zu jedem Zeitpunkt in genau einer der beiden Listen.
+
+Der Vertrag selbst liegt unter `GET /v1/openapi.yaml`. Jede Antwort unter `/v1/` erlaubt jede Herkunft (`Access-Control-Allow-Origin: *`), Preflight-Anfragen (`OPTIONS`) beantwortet die API mit 204. Andere Methoden als `GET`, `HEAD` und `OPTIONS` lehnt sie mit 405 ab, unbekannte Pfade mit 404, beides als `application/problem+json`.
+
+```sh
+curl -s localhost:8080/v1/events
+curl -s 'localhost:8080/v1/events?from=2026-11-29&to=2026-12-24&type=market'
+curl -s 'localhost:8080/v1/events?from=2026-12-24T18:00%2B01:00&type=culture'
+curl -s localhost:8080/v1/archive/events
+curl -s 'localhost:8080/v1/archive/events?to=2026-06-30&type=festival'
+curl -s localhost:8080/v1/event-types
+# {"data":[{"code":"festival","label":"Fest/Kirchweih"},{"code":"market","label":"Markt"},…]}
+curl -s localhost:8080/v1/openapi.yaml
+```
+
+Ein Event aus `GET /v1/events` (gekürzt):
 
 ```json
 {
   "data": [
     {
-      "id": "0192f0c4-…",
       "title": "Zirndorfer Weihnachtsmarkt",
       "type": "market",
       "startDate": "2026-11-27",
@@ -61,7 +84,6 @@ Ein Event, so wie es geplant ist (gekürzt):
       "effectiveEnd": "2026-12-22T00:00:00+01:00",
       "archived": false,
       "location": {
-        "id": "0192f0b1-…",
         "name": "Marktplatz",
         "address": { "street": "Marktplatz", "postalCode": "90513", "city": "Zirndorf" },
         "latitude": 49.4425,
@@ -74,7 +96,7 @@ Ein Event, so wie es geplant ist (gekürzt):
 }
 ```
 
-*Die Beispieldaten sind erfunden. Verbindlich ist die OpenAPI-Spec, sobald sie existiert.*
+*Die Beispieldaten sind erfunden. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml` mit den Schemas `Event` (Leseform) und `EventInput` (Schreibform für den Import). Die API gibt keine Kennungen aus; ein Ort ist an seinem eindeutigen Namen erkennbar.*
 
 ## Architektur
 
@@ -199,7 +221,7 @@ export EVENTSTORE_TEST_DATABASE_URL='postgres://eventstore:eventstore@localhost:
 go test -p 1 ./internal/adapter/postgres/... ./cmd/eventstore/...   # -p 1: beide Pakete migrieren dieselbe Datenbank
 ```
 
-Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung, die Prüfung, ob der generierte sqlc-Code aktuell ist, sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
+Die CI (GitHub Actions) führt bei jedem Pull Request und jedem Push auf `main` `go vet`, golangci-lint v2.14.0, Unit-, Architektur- und Postgres-Tests, die Abdeckungsprüfung, die Prüfung, ob der generierte sqlc- und oapi-codegen-Code aktuell ist, sowie einen Docker-Build (ohne Push) mit Startprüfung aus. Der Architekturtest (`internal/archtest`) lässt die CI scheitern, wenn `internal/core` mehr als die Standardbibliothek und `golang.org/x/text/unicode/norm` importiert oder ein Adapter einen anderen Adapter importiert.
 
 ### Generierter Datenbankcode (sqlc)
 
@@ -210,6 +232,16 @@ go run github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1 generate   # braucht cgo (gcc);
 ```
 
 Den erzeugten Code mit committen. Die CI erzeugt ihn erneut und scheitert bei einem Unterschied.
+
+### Generierter API-Code (oapi-codegen)
+
+Der Vertrag der öffentlichen API ist `api/v1/openapi.yaml` (OpenAPI 3.1). Daraus erzeugt [oapi-codegen](https://github.com/oapi-codegen/oapi-codegen) v2.8.0 das Servergerüst `internal/adapter/publicapi/v1/api.gen.go` (`std-http-server`, `strict-server`, Modelle), konfiguriert in `internal/adapter/publicapi/v1/oapi-codegen.yaml`. Den generierten Code nie von Hand ändern, sondern die Spec anpassen und neu erzeugen:
+
+```sh
+go generate ./...
+```
+
+Den erzeugten Code mit committen. Die CI erzeugt ihn erneut und scheitert bei einem Unterschied. Ein Test vergleicht die Enum-Codes der Spec (Event-Typ, Zeit- und Ortsgenauigkeit) mit den Konstanten im Kern und scheitert bei einer Abweichung. Die Abdeckungsprüfung zählt Dateien mit der Kopfzeile `// Code generated … DO NOT EDIT.` nicht mit.
 
 ## Deployment auf Railway
 
