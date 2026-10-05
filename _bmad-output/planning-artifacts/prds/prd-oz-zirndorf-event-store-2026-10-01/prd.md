@@ -2,7 +2,7 @@
 title: "PRD: OZ Zirndorf Event Store"
 status: final
 created: 2026-10-01
-updated: 2026-10-02
+updated: 2026-10-05
 ---
 
 # PRD: OZ Zirndorf Event Store
@@ -184,7 +184,7 @@ Ein Abnehmer kann archivierte Events abfragen, gefiltert nach Zeitraum und Event
 **Konsequenzen (testbar):**
 - Archivierte Events haben dieselbe Struktur wie aktive Events (FR-10).
 - Ein Event, das seit einer Minute vorbei ist, ist bereits im Archiv-Zugriff enthalten.
-- Jedes Event ist zu jedem Zeitpunkt in genau einem der beiden Zugriffe enthalten: in der regulären Abfrage oder im Archiv-Zugriff.
+- Jedes Event ist zu jedem Zeitpunkt in genau einem der beiden Zugriffe enthalten: in der regulären Abfrage oder im Archiv-Zugriff. Ausgenommen sind Events, deren gespeicherte Angaben nach einer Regeländerung nicht neu berechnet werden konnten (im Admin mit „prüfen“ markiert). Sie erscheinen in keinem der beiden Zugriffe, bis der Admin sie erfolgreich gespeichert hat.
 
 #### FR-13: Tägliche Bereinigung und Aufbewahrung
 

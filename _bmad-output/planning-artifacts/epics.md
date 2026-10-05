@@ -121,7 +121,7 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 - AD-15: Der Ablaufplan ist ein Wertobjekt des Events und wird nur über `SaveEvent` als ganze Liste ersetzt. Jeder Eintrag hat `description`, `date`, `startTime?` und `endTime?`. Einträge liegen in `[effectiveStart, effectiveEnd]`, über Mitternacht nach ENT-3, und ändern `effective*` nicht. Programmpunkt-IDs sind intern und nicht stabil (jedes Speichern ersetzt die Liste).
 
 **Archiv und Bereinigung**
-- AD-5: Es gibt eine Tabelle. Der Archivstatus ergibt sich nur aus AD-4. Das API-Feld `archived` ist abgeleitet. `archivedAt` ist nur eine Markierung für Statistik, die keine Abfrage auswertet. `SaveEvent` leert `archivedAt`, wenn das Event wieder aktiv ist.
+- AD-5: Es gibt eine Tabelle. Der Archivstatus ergibt sich nur aus AD-4. Das API-Feld `archived` ist abgeleitet. `archivedAt` ist nur eine Markierung für Statistik, die keine Abfrage auswertet. Sie bedeutet „zuletzt als archiviert markiert“: Jedes Speichern und jede ändernde Neuberechnung leert sie, `MarkArchived` setzt sie neu. Events mit „prüfen“ fehlen in beiden Listen.
 - AD-13: Der Bereinigungsjob läuft im Programm, einmal beim Start und danach täglich. Über `MarkArchived` setzt er `archivedAt` für `effectiveEnd <= now` und leeres `archivedAt` und ist idempotent.
 
 **API-Vertrag**
@@ -167,7 +167,7 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 - ENT-2 (→ AD-3) Ganztägig: `allDay` gilt für Beginn und Ende gemeinsam. Gemischte Angaben (ein Teil ganztägig, der andere mit Uhrzeit) sind nicht darstellbar und werden abgelehnt. Die Spec dokumentiert das.
 - ENT-3 (→ AD-15) Programmpunkte über Mitternacht: Liegt `endTime` vor `startTime`, endet der Punkt am Folgetag.
 - ENT-4 (→ AD-16) Filter-Standardwerte: In `GET /v1/events` gilt ohne `from` und `to` der heutige Tag (FR-8). Fehlt nur `from`, beginnt der Zeitraum mit dem heutigen Tag. Fehlt nur `to`, ist er offen. In `GET /v1/archive/events` ist ein fehlendes `from` offen und ein fehlendes `to` gleich `now`. Ein Zeitpunkt in `from`/`to` braucht einen Offset. Ein Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht (`hi`), damit `to` inklusive ist.
-- ENT-5 (→ AD-16) Neuberechnung beim Start: Schlägt sie für ein Event fehl (Zeitangaben abgelehnt oder Ablaufplan außerhalb des neuen Zeitraums), behält es seine gespeicherten Werte. Der Fehler wird mit der Event-Kennung geloggt, das Programm startet trotzdem, und der Admin markiert das Event mit „prüfen“. Die Menge der betroffenen IDs hält der Kern nur im Speicher (Mutex). Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` wird die ID entfernt. Für Orte mit kollidierendem neuen `name_key` gilt dasselbe; die Markierung „prüfen“ erscheint in der Ortsliste und verschwindet nach `SaveLocation` oder `DeleteLocation`.
+- ENT-5 (→ AD-16) Neuberechnung beim Start: Schlägt sie für ein Event fehl (Zeitangaben abgelehnt oder Ablaufplan außerhalb des neuen Zeitraums), behält es seine gespeicherten Werte. Der Fehler wird mit der Event-Kennung geloggt, das Programm startet trotzdem, und der Admin markiert das Event mit „prüfen“. Die Menge der betroffenen IDs hält der Kern nur im Speicher (Mutex). Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` wird die ID entfernt. Für Orte mit kollidierendem neuen `name_key` gilt dasselbe; die Markierung „prüfen“ erscheint in der Ortsliste und verschwindet nach `SaveLocation` oder `DeleteLocation`. Events mit „prüfen“ erscheinen in keiner öffentlichen Liste (Story 2.7).
 - ENT-6 (→ AD-12) Admin-Session: Signiertes Cookie mit `SESSION_SECRET`, ohne Zustand auf dem Server. Sie läuft nach 8 Stunden ohne Aktivität oder spätestens 7 Tage nach der Anmeldung ab. Abmelden löscht das Cookie im Browser. Ein kopiertes Cookie bleibt bis zum Ablauf gültig; das ist bewusst hingenommen. Ein neues `SESSION_SECRET` macht alle Sessions ungültig.
 - ENT-7 (→ AD-12) Anmeldeschutz: Nach 5 Fehlversuchen von einer Client-IP ist die Anmeldung von dieser IP für 15 Minuten gesperrt. Die Zähler liegen im Speicher; ein Neustart setzt sie zurück. Client-IP ist der Eintrag in `X-Forwarded-For`, den Railways Edge setzt (Prüfung nach ENT-21), ohne Header `RemoteAddr` ohne Port.
 - ENT-8 (→ AD-7) Sortierung nach Name: Der Kern sortiert Orte ohne Unterschied von Groß- und Kleinschreibung, Umlaute wie ihren Grundbuchstaben (ä→a, ö→o, ü→u, ß→ss), bei Gleichstand nach `id`. Die Datenbank-Sortierung wird nicht genutzt.
@@ -857,7 +857,7 @@ damit ich zum Beispiel zurückliegende Feste anzeigen kann und kein Event durch 
 
 **Angenommen** eine feste `Clock` und ein gemischter Bestand mit vergangenen, laufenden und zukünftigen Events
 **Wenn** `ListActiveEvents` ohne Untergrenze und `ListArchivedEvents` ohne Begrenzung verglichen werden (Kern-Test)
-**Dann** ist jedes Event in genau einer der beiden Listen enthalten
+**Dann** ist jedes Event in genau einer der beiden Listen enthalten (seit Story 2.7: jedes Event ohne „prüfen“)
 **Und** derselbe Vergleich über die API nutzt `GET /v1/events?from=1900-01-01` und `GET /v1/archive/events`
 
 **Außerdem gilt:**
@@ -915,7 +915,7 @@ damit ich den Bestand auswerten kann, nichts verloren geht und Regeländerungen 
 **Außerdem gilt:**
 - Archivierte Events werden nie automatisch gelöscht.
 - Ein Fehler im Job beendet das Programm nicht, sondern wird geloggt, und der nächste Lauf versucht es erneut.
-- `RecomputeDerived` läuft vor dem HTTP-Server und schreibt deshalb ohne `TxRunner`; das ist die einzige Ausnahme von der Hülle nach AD-6.
+- `RecomputeDerived` läuft vor dem HTTP-Server und schreibt deshalb ohne `TxRunner`; das ist die einzige Ausnahme von der Hülle nach AD-6. Seit Story 3.3 läuft sie in einer Transaktion unter der Sperre aus AD-6 (R3 der Retro Epic 2).
 - Die Fälle der Neuberechnung sind mit Kern-Tests ohne Datenbank abgedeckt (fester Bestand, Fake-Repos); ein Postgres-Test belegt die Neuberechnung von `name_key`.
 
 ### Story 2.6: Lesbare API-Dokumentation und Abnahme
@@ -947,6 +947,41 @@ damit der Event Store als Vorlage taugt.
 - Die Prüfung durch ein OZ-Mitglied (SM-4) ist als manueller Abnahmeschritt vermerkt, nicht als Bedingung für den Abschluss.
 - Die Prüfung von SM-1 in Produktion folgt in Story 3.5.
 
+### Story 2.7: Events mit „prüfen“ öffentlich ausblenden
+
+Als Karten-App,
+möchte ich keine Events bekommen, deren Zeitraum nach einer Regeländerung nicht neu berechnet werden konnte,
+damit ich keine Termine mit veraltetem Zeitraum oder falschem `archived` zeige.
+
+**Deckt ab:** FR-8, FR-12, AD-5, AD-7, AD-16, ENT-5
+
+**Acceptance Criteria:**
+
+**Angenommen** ein Event, dessen Neuberechnung beim Start gescheitert ist und das deshalb „prüfen“ trägt (ENT-5)
+**Wenn** ein Abnehmer `GET /v1/events` oder `GET /v1/archive/events` aufruft, mit oder ohne Filter
+**Dann** fehlt das Event in beiden Antworten
+**Und** die Event-Liste im Admin zeigt es weiter mit „prüfen“
+
+**Angenommen** dieses Event
+**Wenn** der Admin es erfolgreich speichert
+**Dann** erscheint es mit den neu berechneten Werten wieder in genau einer der beiden Listen
+**Und** wird es gelöscht, erscheint es in keiner
+
+**Angenommen** eine feste `Clock` und ein Bestand mit markierten und nicht markierten Events
+**Wenn** `ListActiveEvents` ohne Untergrenze und `ListArchivedEvents` ohne Begrenzung verglichen werden (Kern-Test)
+**Dann** ist jedes nicht markierte Event in genau einer der beiden Listen und kein markiertes in einer von ihnen
+
+**Angenommen** die Spec
+**Wenn** ich den Abschnitt „Time model“ und die Beschreibung von `/v1/archive/events` lese
+**Dann** steht dort, dass Events, deren gespeicherte Angaben nach einer Regeländerung nicht neu berechnet werden konnten, in keiner der beiden Listen erscheinen, bis sie korrigiert sind
+**Und** die Aussage „every event is in exactly one of `/v1/events` and `/v1/archive/events`“ nennt diese Ausnahme
+**Und** das Schema `Event` bleibt unverändert, ohne neues Feld (NFR-2)
+
+**Außerdem gilt:**
+- Die Auswahl trifft der Kern in den Abfragen über dieselbe Menge, die die Admin-Liste liest. Es gibt keine neue Spalte, keine SQL-Änderung, und der Handler filtert nichts (AD-2, AD-7).
+- Nahtstellen: `listMatchingEvents` (2.3, 2.4), der Partitionstest im Kern und der API-Vergleich in `cmd/eventstore` (2.4), die Menge „prüfen“ und ihr Leeren nach dem Commit (2.5b). Das AC aus 2.5 „Antworten vor und nach dem Job identisch“ gilt unverändert.
+- Kern-Tests mit fester `Clock` und Fake-Repos decken beide Listen ab, mit und ohne Filter.
+
 ## Epic 3: Andreas importiert Recherchen per JSON-Datei
 
 Andreas lädt eine Import-Datei hoch, sieht die Vorschau, entscheidet Duplikatverdachtsfälle und übernimmt alles in einem Schritt mit Zusammenfassung. SM-2 ist erfüllt, und SM-1 ist in Produktion bestätigt.
@@ -971,6 +1006,11 @@ damit ich Recherche-Dateien zuverlässig im richtigen Format erstellen kann.
 **Und** `address` ist dasselbe Objekt wie in der Leseform (`street`, `postalCode`, `city`), per `$ref` aus `openapi.yaml` eingebunden (AD-9)
 **Und** jedes Event kann einen `importKey` haben
 **Und** `GET /v1/import-v1.schema.json` liefert das Schema öffentlich aus
+
+**Angenommen** die Kern-Konstanten für Feldnamen (`EventField*`, `FilterField*`)
+**Wenn** die CI läuft
+**Dann** schlägt ein Test fehl, wenn ein Feldname, den der Kern in Fehlern oder Filtern nennt, nicht als Feld von `EventInput`/`Event` oder als Parameter in `openapi.yaml` vorkommt (AD-9)
+**Und** Feldnamen, die nur das Admin-Formular kennt (z. B. `locationId`), sind im Test ausdrücklich als Ausnahme gelistet
 
 **Angenommen** ich bin angemeldet
 **Wenn** ich im Admin eine Import-Datei hochlade
@@ -1100,13 +1140,19 @@ damit meine Recherche vollständig und ohne stille Duplikate im Bestand landet.
 **Dann** läuft die zweite erst nach dem Commit der ersten, weil `TxRunner` die Sperre aus AD-6 nimmt
 **Und** sie klassifiziert neu: Die Einträge des zweiten Imports sind `stale` oder `unchanged`, und es entsteht kein Duplikat
 
+**Angenommen** eine Deploy-Überlappung, in der die alte Instanz ein Event speichert, während die neue startet
+**Wenn** `RecomputeDerived` läuft
+**Dann** läuft die Neuberechnung von Events und Orten in einer Transaktion unter derselben Sperre wie `TxRunner` (AD-6, AD-16)
+**Und** sie liest erst nach Erhalt der Sperre, sodass sie keine gleichzeitig gespeicherten Werte überschreibt
+**Und** ein Postgres-Test belegt, dass eine parallele Schreib-Transaktion auf die Neuberechnung wartet
+
 **Angenommen** der Import ist abgeschlossen
 **Wenn** die Ergebnisseite erscheint
 **Dann** zeigt sie die Anzahl neuer, aktualisierter, unveränderter, übersprungener, nicht entschiedener, fehlerhafter und veralteter Einträge sowie die Zahl neu angelegter Orte
 **Und** die Summe der Einträge entspricht der Zahl der Einträge in der Datei (ENT-11)
 
 **Außerdem gilt:**
-- Nahtstellen: `SaveLocation` (Story 1.4, 1.8) und alle Hüllen über `TxRunner` (`SaveEvent`, `DeleteEvent`, `DeleteLocation`, `MarkArchived`). Der Kommentar zur nicht atomaren Namensprüfung in `location_service.go` entfällt.
+- Nahtstellen: `SaveLocation` (Story 1.4, 1.8), alle Hüllen über `TxRunner` (`SaveEvent`, `DeleteEvent`, `DeleteLocation`, `MarkArchived`) und `RecomputeDerived` (Story 2.5, 2.5b); die Ausnahme „ohne `TxRunner`“ aus Story 2.5 entfällt. Der Kommentar zur nicht atomaren Namensprüfung in `location_service.go` entfällt.
 - Ein Postgres-Test belegt mit zwei parallelen Transaktionen, dass die zweite auf die erste wartet und deren Ergebnis sieht.
 
 ### Story 3.4: Testsammlung ins Format v1 überführen

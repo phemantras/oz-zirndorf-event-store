@@ -76,7 +76,7 @@ flowchart LR
 
 - **Binds:** FR-8, FR-11, FR-12, FR-13, FR-15
 - **Prevents:** Eine Lücke oder Doppelung zwischen aktivem und archiviertem Bestand; API-Antworten, die vom Zeitpunkt des Jobs abhängen.
-- **Rule:** Alle Events liegen in **einer** Tabelle. Ob ein Event archiviert ist, entscheidet ausschließlich AD-4. Das API-Feld `archived` wird daraus abgeleitet. Der Bereinigungsjob setzt nur `archivedAt` als Markierung für Statistik. Keine Lese-Abfrage und keine Ausgabe wertet `archivedAt` aus. `SaveEvent` leert `archivedAt`, wenn das Event danach wieder aktiv ist.
+- **Rule:** Alle Events liegen in **einer** Tabelle. Ob ein Event archiviert ist, entscheidet ausschließlich AD-4. Das API-Feld `archived` wird daraus abgeleitet. Der Bereinigungsjob setzt nur `archivedAt` als Markierung für Statistik. Keine Lese-Abfrage und keine Ausgabe wertet `archivedAt` aus. `archivedAt` bedeutet „zuletzt als archiviert markiert“, nicht „archiviert seit“: Jedes Speichern eines Events (`SaveEvent`, `CommitImport`) und jede Neuberechnung, die seine abgeleiteten Werte ändert (`RecomputeDerived`), leert es; der nächste Lauf von `MarkArchived` setzt es neu, wenn das Event dann vorbei ist. Den ersten Archivierungszeitpunkt hält v1 nicht fest. Einzige Ausnahme von „genau eine der beiden Listen“: Events mit „prüfen“ (AD-16) fehlen in beiden.
 
 ### AD-6 — Schreiben nur über Kern-Anwendungsfälle [ADOPTED]
 
@@ -100,7 +100,7 @@ flowchart LR
 
 - **Binds:** FR-5, FR-16, KON-7
 - **Prevents:** Import-Schema, API und Go-Konstanten im Kern mit unterschiedlichen Feldnamen oder Enum-Codes.
-- **Rule:** Enum-Codes und die Eingabeform `EventInput` sind **nur** in `api/v1/openapi.yaml` (`components/schemas`) definiert. `api/v1/import-v1.schema.json` bindet sie per `$ref` ein, statt sie zu kopieren. Die Konstanten im Kern spiegeln die Codes. Ein Test in CI prüft, dass Kern-Konstanten und Spec übereinstimmen. Jede Import-Datei trägt `formatVersion`, der Kern lehnt unbekannte Versionen ab. Gleiches gilt für Längengrenzen (`maxLength`, `maxItems`): Sie stehen nur in der Spec, der Kern spiegelt sie, und derselbe Test prüft die Übereinstimmung.
+- **Rule:** Enum-Codes und die Eingabeform `EventInput` sind **nur** in `api/v1/openapi.yaml` (`components/schemas`) definiert. `api/v1/import-v1.schema.json` bindet sie per `$ref` ein, statt sie zu kopieren. Die Konstanten im Kern spiegeln die Codes und die Feldnamen, die der Kern in Fehlern oder Filtern nennt (`EventField*`, `FilterField*`). Ein Test in CI prüft, dass Kern-Konstanten und Spec übereinstimmen; Feldnamen, die nur das Admin-Formular kennt (z. B. `locationId`), sind ausdrücklich ausgenommen. Jede Import-Datei trägt `formatVersion`, der Kern lehnt unbekannte Versionen ab. Gleiches gilt für Längengrenzen (`maxLength`, `maxItems`): Sie stehen nur in der Spec, der Kern spiegelt sie, und derselbe Test prüft die Übereinstimmung.
 
 ### AD-10 — Zustandsloser Import, Abschluss in einer Transaktion [ADOPTED]
 
@@ -163,7 +163,7 @@ flowchart LR
   - **Filter:** Der Kern normalisiert `from`/`to` zu einem halboffenen Intervall `[lo, hi)`. Ist nur ein Datum angegeben, gilt der ganze Tag inklusive. Ein Zeitpunkt braucht einen Offset. Ein Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht (`hi`), damit `to` inklusive ist. Das einzige Filterprädikat lautet `effectiveStart < hi AND effectiveEnd > lo`.
   - **Standardwerte:** `GET /v1/events`: Fehlen `from` und `to`, gilt der heutige Tag (FR-8). Fehlt nur `from`, gilt der Beginn des heutigen Tages. Fehlt nur `to`, ist der Zeitraum offen. `GET /v1/archive/events`: Ein fehlendes `from` ist offen, ein fehlendes `to` gilt als `now`.
   - **Zeitzonendaten:** `cmd/eventstore` bettet `time/tzdata` ein.
-  - **Neuberechnung:** Beim Start berechnet `RecomputeDerived` alle abgeleiteten Werte neu (`effective*`, `title_key`, `name_key`). So greifen Änderungen an den Regeln sofort. Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server. Als fehlgeschlagen gilt ein Event, wenn die aktuellen Regeln seine Zeitangaben ablehnen oder sein Ablaufplan nicht mehr in den neu berechneten Zeitraum passt (AD-15). Es behält dann seine gespeicherten Werte, der Fehler wird mit der Event-Kennung geloggt, und das Programm startet trotzdem. Für Orte gilt dasselbe: Ergäben zwei Orte denselben neuen `name_key`, behalten beide ihren gespeicherten Schlüssel, der Fehler wird mit den Ort-Kennungen geloggt. Der Kern merkt sich die betroffenen Event- und Ort-IDs **nur im Speicher**, geschützt per Mutex. Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` (Event) bzw. `SaveLocation` oder `DeleteLocation` (Ort) wird die ID entfernt. Event- und Ortsliste im Admin lesen die Menge über eine Kern-Abfrage und markieren die Einträge mit „prüfen“. Nach einem Neustart baut die Neuberechnung die Menge neu auf.
+  - **Neuberechnung:** Beim Start berechnet `RecomputeDerived` alle abgeleiteten Werte neu (`effective*`, `title_key`, `name_key`). So greifen Änderungen an den Regeln sofort. Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server. Als fehlgeschlagen gilt ein Event, wenn die aktuellen Regeln seine Zeitangaben ablehnen oder sein Ablaufplan nicht mehr in den neu berechneten Zeitraum passt (AD-15). Es behält dann seine gespeicherten Werte, der Fehler wird mit der Event-Kennung geloggt, und das Programm startet trotzdem. Für Orte gilt dasselbe: Ergäben zwei Orte denselben neuen `name_key`, behalten beide ihren gespeicherten Schlüssel, der Fehler wird mit den Ort-Kennungen geloggt. Der Kern merkt sich die betroffenen Event- und Ort-IDs **nur im Speicher**, geschützt per Mutex. Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` (Event) bzw. `SaveLocation` oder `DeleteLocation` (Ort) wird die ID entfernt. Event- und Ortsliste im Admin lesen die Menge über eine Kern-Abfrage und markieren die Einträge mit „prüfen“. `ListActiveEvents` und `ListArchivedEvents` lassen Events aus dieser Menge aus, bis die ID entfernt ist; der Adapter filtert nichts selbst (AD-7). Nach einem Neustart baut die Neuberechnung die Menge neu auf, bevor der HTTP-Server startet. Die Neuberechnung (Events und Orte) läuft in einer Transaktion unter der Sperre aus AD-6, damit sie bei einer Deploy-Überlappung keine gleichzeitig gespeicherten Werte der alten Instanz überschreibt. Schreibt die alte Instanz danach noch mit alten Regeln, ist das hingenommen; der nächste Start rechnet neu.
 
 ### AD-17 — Migrationen ohne Datenverlust [ADOPTED]
 
@@ -200,6 +200,7 @@ flowchart LR
 | sqlc | 1.31.1 |
 | goose | v3.28.0 |
 | oapi-codegen | v2.8.0 |
+| oapi-codegen/runtime (Laufzeit des erzeugten Gerüsts) | v1.7.0 |
 | golang.org/x/crypto (bcrypt) | v0.57.0 |
 | golang.org/x/text (`unicode/norm`, NFC im Kern) | v0.42.0 |
 | htmx | 2.0.11 |
