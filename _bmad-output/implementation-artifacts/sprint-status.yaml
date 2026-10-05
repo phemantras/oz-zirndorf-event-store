@@ -154,7 +154,7 @@ action_items:
     action: "B5 Entscheidung: Events mit prüfen in der öffentlichen API (ausblenden,
       kennzeichnen oder dokumentieren)"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
   - id: "epic-2-retro-item-13-b6-bmad-project-context-refresh-postgres"
     epic: 2
