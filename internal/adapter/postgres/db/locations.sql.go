@@ -272,3 +272,22 @@ func (q *Queries) UpdateLocation(ctx context.Context, arg UpdateLocationParams) 
 	)
 	return i, err
 }
+
+const updateLocationNameKey = `-- name: UpdateLocationNameKey :execrows
+UPDATE locations
+SET name_key = $2
+WHERE id = $1
+`
+
+type UpdateLocationNameKeyParams struct {
+	ID      pgtype.UUID
+	NameKey string
+}
+
+func (q *Queries) UpdateLocationNameKey(ctx context.Context, arg UpdateLocationNameKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateLocationNameKey, arg.ID, arg.NameKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

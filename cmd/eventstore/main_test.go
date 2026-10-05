@@ -125,6 +125,96 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 	running.stop(t)
 }
 
+// Name keys of the location TestRunRecomputesStaleNameKeysBeforeListening
+// stores: the stale one it inserts and the one the core derives from its
+// name. Leftovers of an aborted run are removed under both.
+const (
+	staleNameKey      = "veraltet-schlüsselprüfung"
+	recomputedNameKey = "schlüsselprüfung"
+)
+
+// TestRunRecomputesStaleNameKeysBeforeListening stores a location whose
+// name key no longer matches its name and checks that the key is corrected
+// once the health check answers, so before the server listened (AD-16).
+func TestRunRecomputesStaleNameKeysBeforeListening(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	pool, _ := insertCleanupLocation(t, databaseURL)
+	for _, nameKey := range []string{staleNameKey, recomputedNameKey} {
+		removeLocationWithEvents(t, pool, nameKey)
+		t.Cleanup(func() { removeLocationWithEvents(t, pool, nameKey) })
+	}
+	var locationID string
+	err := pool.QueryRow(context.Background(),
+		`INSERT INTO locations (name, name_key, street, postal_code, city, latitude, longitude, precision)
+		 VALUES ('Schlüsselprüfung', $1, 'Marktplatz', '90513', 'Zirndorf', 49.44, 10.95, 'area')
+		 RETURNING id::text`, staleNameKey).Scan(&locationID)
+	if err != nil {
+		t.Fatalf("insert location: %v", err)
+	}
+
+	running := startRun(t, databaseURL, slog.New(slog.DiscardHandler))
+	var nameKey string
+	err = pool.QueryRow(context.Background(), "SELECT name_key FROM locations WHERE id = $1", locationID).Scan(&nameKey)
+	running.stop(t)
+
+	if err != nil {
+		t.Fatalf("read name_key: %v", err)
+	}
+	if nameKey != recomputedNameKey {
+		t.Errorf("name_key = %q when the server answers, want %q", nameKey, recomputedNameKey)
+	}
+}
+
+// Stored name keys of the two locations
+// TestRunMarksCollidingLocationsInTheAdminList inserts; both names normalize
+// to the same new key, so neither is rewritten.
+var collidingNameKeys = []string{"kollisionsprüfung-a", "kollisionsprüfung-b"}
+
+// TestRunMarksCollidingLocationsInTheAdminList stores two locations whose
+// names collide after NormalizeKey and checks that the start logs both IDs
+// and the admin, sharing the location use cases with the recomputation,
+// marks both prüfen (AD-16).
+func TestRunMarksCollidingLocationsInTheAdminList(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	pool, _ := insertCleanupLocation(t, databaseURL)
+	var ids []string
+	for index, name := range []string{"Kollisionsprüfung", "KOLLISIONSPRÜFUNG"} {
+		nameKey := collidingNameKeys[index]
+		removeLocationWithEvents(t, pool, nameKey)
+		t.Cleanup(func() { removeLocationWithEvents(t, pool, nameKey) })
+		var id string
+		err := pool.QueryRow(context.Background(),
+			`INSERT INTO locations (name, name_key, street, postal_code, city, latitude, longitude, precision)
+			 VALUES ($1, $2, 'Marktplatz', '90513', 'Zirndorf', 49.44, 10.95, 'area')
+			 RETURNING id::text`, name, nameKey).Scan(&id)
+		if err != nil {
+			t.Fatalf("insert location %s: %v", name, err)
+		}
+		ids = append(ids, id)
+	}
+	logs := &syncBuffer{}
+
+	running := startRun(t, databaseURL, newLogger(logs))
+	status, body := logIn(t, running.baseURL).get(t, adminLocationsPath)
+	running.stop(t)
+
+	if !strings.Contains(logs.String(), logMsgLocationRecomputeFailed) {
+		t.Errorf("log %q does not report the collision", logs.String())
+	}
+	if status != http.StatusOK {
+		t.Fatalf("GET %s: status = %d, want %d", adminLocationsPath, status, http.StatusOK)
+	}
+	for _, id := range ids {
+		if !strings.Contains(logs.String(), id) {
+			t.Errorf("log does not name the colliding location %s", id)
+		}
+		link := `<a href="` + adminLocationsPath + "/" + id + `">`
+		if row := tableRowWith(body, link); !strings.Contains(row, "prüfen") {
+			t.Errorf("row of location %s %q is not marked prüfen; body: %s", id, row, body)
+		}
+	}
+}
+
 // TestRunLogsEventsWhoseRecomputationFailsAndStartsAnyway stores an event
 // that today's rules reject (all day with a start time) and checks that the
 // start logs its ID and still serves (ENT-5).
@@ -577,6 +667,10 @@ func (emptyLocations) GetLocation(context.Context, string) (core.Location, error
 }
 
 func (emptyLocations) ListLocations(context.Context) ([]core.Location, error) {
+	return nil, nil
+}
+
+func (emptyLocations) ListLocationEntries(context.Context) ([]core.LocationListEntry, error) {
 	return nil, nil
 }
 

@@ -364,7 +364,8 @@ func compareListEntries(a, b EventListEntry) int {
 
 // RecomputeDerived recomputes the derived values of every event, effective
 // period and title key, and stores them where they changed (AD-16). An event
-// whose period the current rules reject keeps its stored period, gets the
+// whose period the current rules reject, or whose timetable no longer lies
+// within the recomputed period (AD-15), keeps its stored period, gets the
 // current title key, is marked for review and is returned as failure. An
 // event deleted meanwhile is skipped. Failing to list or store, and an ended
 // ctx, are errors: they say nothing about an event.
@@ -392,13 +393,14 @@ func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure
 
 // recomputeEvent writes the event's derived values if the current rules
 // derive other ones from its times and title. ruleErr reports a period the
-// rules reject, the stored period being kept; err reports a failed write.
+// rules reject or a timetable entry outside it, the stored period being
+// kept; err reports a failed write.
 func (s *EventService) recomputeEvent(ctx context.Context, event Event) (ruleErr, err error) {
 	derived := Derived{Period: event.Period, TitleKey: NormalizeKey(event.Title)}
 	period, periodErr := event.Times.EffectivePeriod()
 	if periodErr != nil {
 		ruleErr = fmt.Errorf("recompute effective period: %w", periodErr)
-	} else {
+	} else if ruleErr = timetableOutsidePeriod(event, period); ruleErr == nil {
 		derived.Period = period
 	}
 	if derived.Period.Start.Equal(event.Period.Start) && derived.Period.End.Equal(event.Period.End) && derived.TitleKey == event.TitleKey {
@@ -412,6 +414,25 @@ func (s *EventService) recomputeEvent(ctx context.Context, event Event) (ruleErr
 		return nil, fmt.Errorf("store derived values of event %s: %w", event.ID, err)
 	}
 	return ruleErr, nil
+}
+
+// timetableOutsidePeriod reports the first entry of the event's sorted
+// timetable that does not lie within period, naming the event, the entry and
+// the field with its problem; it returns nil when every entry fits.
+func timetableOutsidePeriod(event Event, period Period) error {
+	for index, entry := range sortedTimetable(event.Timetable) {
+		fields := timetableEntryFieldsAt(index)
+		var problems []FieldError
+		if entry.StartTime == nil && entry.EndTime == nil {
+			problems = dayEntryProblems(entry, fields, &period)
+		} else {
+			problems = timedEntryProblems(entry, fields, &period)
+		}
+		if problems != nil {
+			return fmt.Errorf("timetable entry %s of event %s against recomputed period: %w", entry.ID, event.ID, &ValidationError{Fields: problems})
+		}
+	}
+	return nil
 }
 
 func (s *EventService) markForReview(id string) {

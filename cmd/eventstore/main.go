@@ -1,7 +1,8 @@
 // Command eventstore starts the OZ Zirndorf Event Store: it reads the
 // configuration from the environment, applies the database migrations,
-// recomputes the derived values of all events, marks past events as archived
-// and only then starts the HTTP server. The marking repeats daily.
+// recomputes the name keys of all locations and the derived values of all
+// events, marks past events as archived and only then starts the HTTP
+// server. The marking repeats daily.
 package main
 
 import (
@@ -59,9 +60,10 @@ func newLogger(out io.Writer) *slog.Logger {
 }
 
 // run wires the service in startup order (configuration, database,
-// migrations, recomputation of derived values, cleanup, HTTP server) and
-// blocks until ctx is cancelled or a step fails. The cleanup runs once
-// before the server listens and then daily; its failures are only logged.
+// migrations, recomputation of name keys and derived values, cleanup, HTTP
+// server) and blocks until ctx is cancelled or a step fails. The cleanup
+// runs once before the server listens and then daily; its failures are only
+// logged.
 func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) error {
 	cfg, err := loadConfig(getenv)
 	if err != nil {
@@ -82,8 +84,9 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 
 	locationRepo := postgres.NewLocationRepo(pool)
 	tx := postgres.NewTxRunner(pool)
+	locations := core.NewLocationService(tx, locationRepo)
 	events := core.NewEventService(tx, postgres.NewEventRepo(pool), locationRepo)
-	if err := recomputeDerived(ctx, events, logger); err != nil {
+	if err := recomputeDerived(ctx, locations, events, logger); err != nil {
 		return err
 	}
 	jobCtx, stopJob := context.WithCancel(ctx)
@@ -94,7 +97,9 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.ListenAddress(), err)
 	}
-	cases := useCases{locations: core.NewLocationService(tx, locationRepo), events: events}
+	// The admin shares both services with the recomputation, so it sees
+	// their review marks.
+	cases := useCases{locations: locations, events: events}
 	return serve(ctx, newServer(pool, logger, newRouteHandlers(cfg, logger, cases)), listener, logger)
 }
 

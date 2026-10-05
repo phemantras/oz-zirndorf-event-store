@@ -182,6 +182,45 @@ func TestLocationRepoUpdateKeepsID(t *testing.T) {
 	}
 }
 
+func TestLocationRepoUpdateNameKeyReplacesOnlyTheKey(t *testing.T) {
+	repo, _ := migratedLocationRepo(t)
+	hall := createLocation(t, repo, hallLocation())
+	ctx := context.Background()
+
+	if err := repo.UpdateNameKey(ctx, hall.ID, "neuer schlüssel"); err != nil {
+		t.Fatalf("UpdateNameKey: %v", err)
+	}
+
+	want := hall
+	want.NameKey = "neuer schlüssel"
+	got, err := repo.Get(ctx, hall.ID)
+	if err != nil || got != want {
+		t.Errorf("Get = %+v, %v, want %+v", got, err, want)
+	}
+}
+
+func TestLocationRepoUpdateNameKeyReportsUnknownLocationsAsNotFound(t *testing.T) {
+	repo, _ := migratedLocationRepo(t)
+
+	for _, id := range []string{unknownLocationID, "kaputt"} {
+		if err := repo.UpdateNameKey(context.Background(), id, "x"); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("UpdateNameKey(%q) err = %v, want ErrNotFound", id, err)
+		}
+	}
+}
+
+func TestLocationRepoUpdateNameKeyReportsATakenKeyAsConflict(t *testing.T) {
+	repo, _ := migratedLocationRepo(t)
+	hall := createLocation(t, repo, hallLocation())
+	park := createLocation(t, repo, parkLocation())
+
+	err := repo.UpdateNameKey(context.Background(), park.ID, hall.NameKey)
+
+	if !errors.Is(err, core.ErrConflict) {
+		t.Errorf("err = %v, want ErrConflict", err)
+	}
+}
+
 // insertLegacyLocation inserts a location the way the code before Story 1.12
 // wrote it: with the free-text address and without address parts.
 func insertLegacyLocation(t *testing.T, pool *pgxpool.Pool) string {
@@ -299,6 +338,7 @@ func TestLocationRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 		"FindByNameKey": func() error { _, err := repo.FindByNameKey(ctx, "x"); return err },
 		"Create":        func() error { _, err := repo.Create(ctx, hallLocation()); return err },
 		"Update":        func() error { _, err := repo.Update(ctx, update); return err },
+		"UpdateNameKey": func() error { return repo.UpdateNameKey(ctx, unknownLocationID, "x") },
 		"Delete":        func() error { return repo.Delete(ctx, unknownLocationID) },
 	}
 	for name, call := range calls {

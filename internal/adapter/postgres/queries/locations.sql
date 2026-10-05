@@ -31,3 +31,8 @@ RETURNING id, name, name_key, street, postal_code, city, latitude, longitude, pr
 -- name: DeleteLocation :execrows
 DELETE FROM locations
 WHERE id = $1;
+
+-- name: UpdateLocationNameKey :execrows
+UPDATE locations
+SET name_key = $2
+WHERE id = $1;

@@ -35,9 +35,10 @@ type testServer struct {
 	passwordChecks int
 	// locations and events are the in-memory storage behind the real core
 	// use cases.
-	locations    *memoryLocationRepo
-	events       *memoryEventRepo
-	eventService *core.EventService
+	locations       *memoryLocationRepo
+	events          *memoryEventRepo
+	eventService    *core.EventService
+	locationService *core.LocationService
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -55,13 +56,14 @@ func newTestServer(t *testing.T) *testServer {
 	}
 	tx := memoryTx{repos: core.Repos{Events: ts.events, Locations: ts.locations}}
 	ts.eventService = core.NewEventService(tx, ts.events, ts.locations)
+	ts.locationService = core.NewLocationService(tx, ts.locations)
 	ts.handler = newHandler(Config{
 		User:          testUser,
 		PasswordHash:  hash,
 		SessionSecret: testSecret,
 		Logger:        slog.New(slog.NewJSONHandler(ts.logs, nil)),
 		Now:           ts.clock.now,
-		Locations:     core.NewLocationService(tx, ts.locations),
+		Locations:     ts.locationService,
 		Events:        ts.eventService,
 		Clock:         ts.clock,
 	})
