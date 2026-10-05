@@ -225,7 +225,7 @@ func TestDeleteLocationInUseByHTMXKeepsTheUnsavedInput(t *testing.T) {
 	rec := ts.htmxPost(locationDeletePath(hall.ID), edited)
 
 	assertStatusCode(t, rec, http.StatusConflict)
-	assertBodyContains(t, rec, locationInUseOneText, `value="Paul-Metz-Halle (umbenannt)"`, `value="49,5"`)
+	assertBodyContains(t, rec, locationInUseOneText, `value="Paul-Metz-Halle (umbenannt)"`, `value="49,5"`, locationConfirm(hallName))
 }
 
 func TestDeleteLocationRefusedByTheDatabaseSaysItIsStillUsed(t *testing.T) {
@@ -371,4 +371,134 @@ func TestDeleteRoutesRequireSessionAndSameOrigin(t *testing.T) {
 	if len(ts.events.events) != 1 || len(ts.locations.locations) != 2 {
 		t.Errorf("events = %d, locations = %d, want nothing deleted", len(ts.events.events), len(ts.locations.locations))
 	}
+}
+
+// eventConfirm is the delete question of the event titled title.
+func eventConfirm(title string) string {
+	return `hx-confirm="Event „` + title + `“ wirklich löschen? Der Ablaufplan wird mit gelöscht."`
+}
+
+// locationConfirm is the delete question of the location named name.
+func locationConfirm(name string) string {
+	return `hx-confirm="Ort „` + name + `“ wirklich löschen?"`
+}
+
+func TestDeleteQuestionNamesTheStoredEventAfterAnError(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	ts.seedEvent(t, marketForm(hall.ID))
+	concertForm := marketForm(hall.ID)
+	concertForm.Set(core.EventFieldTitle, "Konzert")
+	concert := ts.seedEvent(t, concertForm)
+	untitled := marketForm(hall.ID)
+	untitled.Set(core.EventFieldTitle, "")
+
+	responses := map[string]struct {
+		rec    *httptest.ResponseRecorder
+		status int
+	}{
+		"field problem": {ts.post(eventPath(concert.ID), untitled), http.StatusUnprocessableEntity},
+		"duplicate":     {ts.post(eventPath(concert.ID), marketForm(hall.ID)), http.StatusConflict},
+	}
+	for name, response := range responses {
+		t.Run(name, func(t *testing.T) {
+			assertStatusCode(t, response.rec, response.status)
+			assertBodyContains(t, response.rec, eventConfirm("Konzert"))
+		})
+	}
+}
+
+// storedEventFailingEvents refuses every save as invalid and cannot load
+// the stored event again for the form.
+type storedEventFailingEvents struct {
+	EventUseCases
+	getErr error
+}
+
+func (f storedEventFailingEvents) SaveEvent(context.Context, string, core.EventInput, core.DuplicatePolicy) (core.Event, error) {
+	return core.Event{}, &core.ValidationError{Fields: []core.FieldError{{Field: core.EventFieldTitle, Problem: core.ProblemMissing}}}
+}
+
+func (f storedEventFailingEvents) GetEvent(context.Context, string) (core.Event, error) {
+	return core.Event{}, f.getErr
+}
+
+func TestEventFormAfterAnErrorWhenTheStoredEventCannotBeLoaded(t *testing.T) {
+	t.Run("gone meanwhile", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.handler.events = storedEventFailingEvents{getErr: core.ErrNotFound}
+
+		rec := ts.post(eventPath(unknownEventID), marketForm(unknownLocationID))
+
+		assertStatusCode(t, rec, http.StatusNotFound)
+		assertBodyContains(t, rec, msgEventNotFoundText)
+	})
+	t.Run("storage down", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.handler.events = storedEventFailingEvents{getErr: errStorageDown}
+
+		assertServerErrorLogged(t, ts, ts.post(eventPath(unknownEventID), marketForm(unknownLocationID)))
+	})
+}
+
+func TestDeleteQuestionNamesTheStoredLocationAfterAnError(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	ts.seed(t, "Bibertpark")
+	unnamed := hallForm()
+	unnamed.Set(core.LocationFieldName, "")
+	taken := hallForm()
+	taken.Set(core.LocationFieldName, "Bibertpark")
+
+	responses := map[string]struct {
+		rec    *httptest.ResponseRecorder
+		status int
+	}{
+		"field problem": {ts.post(locationPath(hall.ID), unnamed), http.StatusUnprocessableEntity},
+		"name conflict": {ts.post(locationPath(hall.ID), taken), http.StatusConflict},
+	}
+	for name, response := range responses {
+		t.Run(name, func(t *testing.T) {
+			assertStatusCode(t, response.rec, response.status)
+			assertBodyContains(t, response.rec, locationConfirm(hallName))
+		})
+	}
+}
+
+// storedLocationFailingLocations refuses every save as invalid and cannot
+// load the stored location again for the form.
+type storedLocationFailingLocations struct {
+	LocationUseCases
+	getErr error
+}
+
+func (f storedLocationFailingLocations) SaveLocation(context.Context, string, core.LocationInput) (core.Location, error) {
+	return core.Location{}, &core.ValidationError{Fields: []core.FieldError{{Field: core.LocationFieldName, Problem: core.ProblemMissing}}}
+}
+
+func (f storedLocationFailingLocations) GetLocation(context.Context, string) (core.Location, error) {
+	return core.Location{}, f.getErr
+}
+
+func TestLocationFormAfterAnErrorWhenTheStoredLocationCannotBeLoaded(t *testing.T) {
+	t.Run("gone meanwhile", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.handler.locations = storedLocationFailingLocations{getErr: core.ErrNotFound}
+
+		rec := ts.post(locationPath(unknownLocationID), hallForm())
+
+		assertStatusCode(t, rec, http.StatusNotFound)
+		assertBodyContains(t, rec, msgLocationNotFound)
+	})
+	t.Run("storage down", func(t *testing.T) {
+		ts := newTestServer(t)
+		ts.handler.locations = storedLocationFailingLocations{getErr: errStorageDown}
+
+		rec := ts.post(locationPath(unknownLocationID), hallForm())
+
+		assertStatusCode(t, rec, http.StatusInternalServerError)
+		if !strings.Contains(ts.logs.String(), logMsgLocationsFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
+			t.Errorf("log %q does not record the failure", ts.logs.String())
+		}
+	})
 }

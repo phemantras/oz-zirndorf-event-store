@@ -190,7 +190,7 @@ func (h *handler) showLocations(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) showNewLocation(w http.ResponseWriter, _ *http.Request) {
-	h.render(w, locationFormTemplate, http.StatusOK, newLocationFormPage("", core.LocationInput{}))
+	h.render(w, locationFormTemplate, http.StatusOK, newLocationFormPage(locationForm{}))
 }
 
 func (h *handler) showLocation(w http.ResponseWriter, r *http.Request) {
@@ -204,7 +204,8 @@ func (h *handler) showLocation(w http.ResponseWriter, r *http.Request) {
 		h.failLocationRequest(w, err)
 		return
 	}
-	h.render(w, locationFormTemplate, http.StatusOK, newLocationFormPage(location.ID, inputFromLocation(location)))
+	form := locationForm{id: location.ID, storedName: location.Name, values: inputFromLocation(location)}
+	h.render(w, locationFormTemplate, http.StatusOK, newLocationFormPage(form))
 }
 
 func (h *handler) createLocation(w http.ResponseWriter, r *http.Request) {
@@ -226,18 +227,23 @@ func (h *handler) saveLocation(w http.ResponseWriter, r *http.Request, id string
 	values := inputFromForm(r.PostForm)
 	_, err := h.locations.SaveLocation(r.Context(), id, withDecimalPoints(values))
 
-	page := newLocationFormPage(id, values)
 	var validation *core.ValidationError
 	var conflict *core.LocationConflictError
 	switch {
 	case err == nil:
 		http.Redirect(w, r, locationsPath, http.StatusSeeOther)
 	case errors.As(err, &validation):
-		page.Fields.Errors = fieldErrorMessages(validation.Fields, locationFieldMessages)
-		h.render(w, locationFormTemplate, http.StatusUnprocessableEntity, page)
+		page, ok := h.locationFormPageAgain(w, r, id, values)
+		if ok {
+			page.Fields.Errors = fieldErrorMessages(validation.Fields, locationFieldMessages)
+			h.render(w, locationFormTemplate, http.StatusUnprocessableEntity, page)
+		}
 	case errors.As(err, &conflict):
-		page.Conflict = locationConflictOf(conflict)
-		h.render(w, locationFormTemplate, http.StatusConflict, page)
+		page, ok := h.locationFormPageAgain(w, r, id, values)
+		if ok {
+			page.Conflict = locationConflictOf(conflict)
+			h.render(w, locationFormTemplate, http.StatusConflict, page)
+		}
 	case errors.Is(err, core.ErrNotFound):
 		h.renderLocationNotFound(w)
 	default:
@@ -274,34 +280,46 @@ func (h *handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
 }
 
 // renderLocationInUse shows the form of the location with id again with
-// message, keeping the input.
+// message, keeping the unsaved input htmx sent along with the delete, or
+// showing the stored location when nothing was sent (no JavaScript).
 func (h *handler) renderLocationInUse(w http.ResponseWriter, r *http.Request, id, message string) {
-	values, err := h.locationValuesShownAgain(r, id)
+	location, err := h.locations.GetLocation(r.Context(), id)
 	if errors.Is(err, core.ErrNotFound) {
 		h.renderLocationGone(w)
 		return
 	}
 	if err != nil {
-		h.failLocationRequest(w, err)
+		h.failLocationRequest(w, fmt.Errorf("load location refused for deletion: %w", err))
 		return
 	}
-	page := newLocationFormPage(id, values)
+	form := locationForm{id: location.ID, storedName: location.Name, values: inputFromLocation(location)}
+	if r.PostForm.Has(core.LocationFieldName) {
+		form.values = inputFromForm(r.PostForm)
+	}
+	page := newLocationFormPage(form)
 	page.InUse = message
 	h.render(w, locationFormTemplate, http.StatusConflict, page)
 }
 
-// locationValuesShownAgain returns the unsaved input htmx sent along with
-// the delete, or the stored location when nothing was sent (no
-// JavaScript).
-func (h *handler) locationValuesShownAgain(r *http.Request, id string) (core.LocationInput, error) {
-	if r.PostForm.Has(core.LocationFieldName) {
-		return inputFromForm(r.PostForm), nil
+// locationFormPageAgain returns the form with values after a refused save.
+// The delete question of an existing location names its stored name, never
+// the unsaved one, so the stored location is loaded again; when that fails,
+// it answers the request itself and reports false.
+func (h *handler) locationFormPageAgain(w http.ResponseWriter, r *http.Request, id string, values core.LocationInput) (locationFormPage, bool) {
+	form := locationForm{id: id, values: values}
+	if id != "" {
+		location, err := h.locations.GetLocation(r.Context(), id)
+		if errors.Is(err, core.ErrNotFound) {
+			h.renderLocationNotFound(w)
+			return locationFormPage{}, false
+		}
+		if err != nil {
+			h.failLocationRequest(w, fmt.Errorf("load location refused for saving: %w", err))
+			return locationFormPage{}, false
+		}
+		form.storedName = location.Name
 	}
-	location, err := h.locations.GetLocation(r.Context(), id)
-	if err != nil {
-		return core.LocationInput{}, fmt.Errorf("load location refused for deletion: %w", err)
-	}
-	return inputFromLocation(location), nil
+	return newLocationFormPage(form), true
 }
 
 // locationInUseMessage names how many events refer to the location.
@@ -338,21 +356,29 @@ func locationConflictOf(conflict *core.LocationConflictError) *locationConflict 
 	}
 }
 
+// locationForm is what a location form shows: the location's id and stored
+// name (empty for a new one) and the values.
+type locationForm struct {
+	id         string
+	storedName string
+	values     core.LocationInput
+}
+
 // newLocationFormPage returns the form for a new location (empty id) or for
-// the location with id, filled with values.
-func newLocationFormPage(id string, values core.LocationInput) locationFormPage {
+// the location with id, filled with the values.
+func newLocationFormPage(form locationForm) locationFormPage {
 	page := locationFormPage{
 		Heading: headingNewLocation,
 		Action:  locationsPath,
 		FormID:  locationFormID,
-		Fields:  newLocationFields(locationFields{Values: values}),
+		Fields:  newLocationFields(locationFields{Values: form.values}),
 	}
-	if id != "" {
+	if form.id != "" {
 		page.Heading = headingEditLocation
-		page.Action = locationURL(id)
+		page.Action = locationURL(form.id)
 		page.Delete = &deleteForm{
-			Action:  locationURL(id) + deletePathSuffix,
-			Confirm: fmt.Sprintf(msgConfirmDeleteLocation, values.Name),
+			Action:  locationURL(form.id) + deletePathSuffix,
+			Confirm: fmt.Sprintf(msgConfirmDeleteLocation, form.storedName),
 			Include: "#" + locationFormID,
 		}
 	}

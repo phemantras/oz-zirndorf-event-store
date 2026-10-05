@@ -31,6 +31,13 @@ const (
 	shutdownTimeout = 10 * time.Second
 	// readHeaderTimeout protects the server against slow-header clients.
 	readHeaderTimeout = 5 * time.Second
+	// readTimeout bounds reading a whole request; the largest, an admin
+	// form of at most 64 KiB, needs far less.
+	readTimeout = 15 * time.Second
+	// writeTimeout bounds handling a request and writing its response.
+	writeTimeout = 30 * time.Second
+	// idleTimeout closes keep-alive connections that wait for a next request.
+	idleTimeout = 120 * time.Second
 )
 
 func main() {
@@ -128,6 +135,9 @@ func newServer(db pinger, logger *slog.Logger, handlers routeHandlers) *http.Ser
 	return &http.Server{
 		Handler:           newRouter(db, logger, handlers),
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 		ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelError),
 	}
 }

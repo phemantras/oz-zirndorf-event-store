@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
@@ -316,6 +317,25 @@ func TestSaveEventPassesRepositoryFailuresOn(t *testing.T) {
 	}
 }
 
+// TestSaveEventReportsALocationDeletedBeforeTheWriteAsNotFound covers the
+// race in which the location disappears between the check and the write,
+// so the repository refuses the event with ErrConflict.
+func TestSaveEventReportsALocationDeletedBeforeTheWriteAsNotFound(t *testing.T) {
+	for name, id := range map[string]string{"create": "", "update": marketID} {
+		t.Run(name, func(t *testing.T) {
+			events := newFakeEventRepo(storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday}))
+			events.writeErr = fmt.Errorf("%s event: %w", name, errors.Join(ErrConflict, errDatabaseDown))
+
+			_, err := newTestEventService(events, hall()).SaveEvent(context.Background(), id, validEventInput(), AllowDuplicates)
+
+			var validation *ValidationError
+			if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{EventFieldLocationID, ProblemNotFound}}) {
+				t.Errorf("err = %v, want only locationId notFound", err)
+			}
+		})
+	}
+}
+
 func TestGetEventReturnsStoredEventOrNotFound(t *testing.T) {
 	market := storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday})
 	service := newTestEventService(newFakeEventRepo(market), hall())
@@ -446,10 +466,9 @@ func TestRecomputeDerivedWritesOnlyChangedPeriods(t *testing.T) {
 
 func TestRecomputeDerivedKeepsValuesOfFailingEventsAndMarksThemForReview(t *testing.T) {
 	broken := brokenEvent(t, marketID)
-	unwritable := staleEvent(t, concertID)
+	otherBroken := brokenEvent(t, concertID)
 	fine := storedEvent(t, newEventID, "Flohmarkt", EventTimes{StartDate: kirchweihMonday})
-	repo := newFakeEventRepo(broken, unwritable, fine)
-	repo.updateDerivedErr = map[string]error{concertID: errDatabaseDown}
+	repo := newFakeEventRepo(broken, otherBroken, fine)
 	service := newTestEventService(repo, hall())
 	ctx := context.Background()
 
@@ -472,7 +491,81 @@ func TestRecomputeDerivedKeepsValuesOfFailingEventsAndMarksThemForReview(t *test
 	if got := repo.events[marketID].Period; got != broken.Period {
 		t.Errorf("broken event period = %+v, want the stored %+v", got, broken.Period)
 	}
+	if len(repo.derivedUpdated) != 0 {
+		t.Errorf("derived values updated for %v, want none: the title keys are current", repo.derivedUpdated)
+	}
 	assertNeedsReview(t, service, map[string]bool{marketID: true, concertID: true, newEventID: false})
+}
+
+func TestRecomputeDerivedStoresTheTitleKeyOfAnEventWhosePeriodFails(t *testing.T) {
+	broken := brokenEvent(t, marketID)
+	broken.TitleKey = ""
+	repo := newFakeEventRepo(broken)
+	service := newTestEventService(repo, hall())
+
+	failures, err := service.RecomputeDerived(context.Background())
+	if err != nil {
+		t.Fatalf("RecomputeDerived: %v", err)
+	}
+	if len(failures) != 1 || failures[0].EventID != marketID {
+		t.Errorf("failures = %v, want one for %s", failures, marketID)
+	}
+	stored := repo.events[marketID]
+	if stored.TitleKey != NormalizeKey(broken.Title) {
+		t.Errorf("title key = %q, want %q", stored.TitleKey, NormalizeKey(broken.Title))
+	}
+	if stored.Period != broken.Period {
+		t.Errorf("period = %+v, want the stored %+v", stored.Period, broken.Period)
+	}
+	assertNeedsReview(t, service, map[string]bool{marketID: true})
+}
+
+func TestRecomputeDerivedStopsAtStorageFailuresWithoutMarking(t *testing.T) {
+	keyless := brokenEvent(t, concertID)
+	keyless.TitleKey = ""
+	tests := map[string]Event{
+		"recomputed period": staleEvent(t, concertID),
+		"title key only":    keyless,
+	}
+	for name, event := range tests {
+		t.Run(name, func(t *testing.T) {
+			repo := newFakeEventRepo(event)
+			repo.updateDerivedErr = map[string]error{concertID: errDatabaseDown}
+			service := newTestEventService(repo, hall())
+
+			failures, err := service.RecomputeDerived(context.Background())
+
+			if !errors.Is(err, errDatabaseDown) || failures != nil {
+				t.Errorf("RecomputeDerived = %v, %v, want only %v", failures, err, errDatabaseDown)
+			}
+			assertNeedsReview(t, service, map[string]bool{concertID: false})
+		})
+	}
+}
+
+func TestRecomputeDerivedSkipsEventsDeletedMeanwhile(t *testing.T) {
+	repo := newFakeEventRepo(staleEvent(t, concertID))
+	repo.updateDerivedErr = map[string]error{concertID: fmt.Errorf("update derived: %w", ErrNotFound)}
+	service := newTestEventService(repo, hall())
+
+	failures, err := service.RecomputeDerived(context.Background())
+
+	if err != nil || failures != nil {
+		t.Errorf("RecomputeDerived = %v, %v, want no failures", failures, err)
+	}
+	assertNeedsReview(t, service, map[string]bool{concertID: false})
+}
+
+func TestRecomputeDerivedStopsWhenTheContextEnds(t *testing.T) {
+	repo := newFakeEventRepo(storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday}))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	failures, err := newTestEventService(repo, hall()).RecomputeDerived(ctx)
+
+	if !errors.Is(err, context.Canceled) || failures != nil {
+		t.Errorf("RecomputeDerived = %v, %v, want %v", failures, err, context.Canceled)
+	}
 }
 
 func TestSuccessfulSaveClearsTheReviewMark(t *testing.T) {

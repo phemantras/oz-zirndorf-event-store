@@ -6,12 +6,10 @@ import (
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
-// The button that confirms the duplicate warning sends this field and
-// value; any other form is saved only without suspected duplicates.
-const (
-	duplicatesField = "duplicates"
-	duplicatesAllow = "allow"
-)
+// duplicatesField is sent by the button that confirms the duplicate
+// warning, with the confirmation of the input the warning was shown for;
+// any other form is saved only without suspected duplicates.
+const duplicatesField = "duplicates"
 
 // msgDuplicateSuspect introduces the events the input may duplicate and
 // says where to decide, since the buttons sit after the plain save button.
@@ -37,21 +35,26 @@ type duplicateCandidate struct {
 }
 
 // duplicatePolicyOf returns AllowDuplicates only when the form was sent
-// with the confirm button of the warning.
-func duplicatePolicyOf(form url.Values) core.DuplicatePolicy {
-	if form.Get(duplicatesField) == duplicatesAllow {
+// with the confirm button of a warning shown for the duplicate key of
+// values; the confirmation of other input lapses.
+func duplicatePolicyOf(form url.Values, values core.EventInput) core.DuplicatePolicy {
+	if form.Get(duplicatesField) == core.DuplicateConfirmationOf(values) {
 		return core.AllowDuplicates
 	}
 	return core.RejectDuplicates
 }
 
 // duplicateWarningOf returns the warning for the candidates, their archive
-// status at the time of clock; nil when there are none.
-func duplicateWarningOf(candidates []core.Event, clock core.Clock) *duplicateWarning {
+// status at the time of clock, confirming values; nil when there are none.
+func duplicateWarningOf(candidates []core.Event, values core.EventInput, clock core.Clock) *duplicateWarning {
 	if len(candidates) == 0 {
 		return nil
 	}
-	warning := &duplicateWarning{Message: msgDuplicateSuspect, ConfirmField: duplicatesField, ConfirmValue: duplicatesAllow}
+	warning := &duplicateWarning{
+		Message:      msgDuplicateSuspect,
+		ConfirmField: duplicatesField,
+		ConfirmValue: core.DuplicateConfirmationOf(values),
+	}
 	for _, event := range candidates {
 		candidate := duplicateCandidate{
 			Title: event.Title,

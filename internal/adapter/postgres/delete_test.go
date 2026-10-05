@@ -173,6 +173,24 @@ func TestEventRepoReportsAMissingLocationAsConflict(t *testing.T) {
 	}
 }
 
+// TestEventRepoUpdateReportsAMissingLocationAsConflict covers the same race
+// for an edit: the foreign key refuses the update with core.ErrConflict.
+func TestEventRepoUpdateReportsAMissingLocationAsConflict(t *testing.T) {
+	fixture := newEventFixture(t)
+	ctx := context.Background()
+	stored, err := fixture.repo.Create(ctx, minimalEvent(t, fixture.hall.ID))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	stored.LocationID = unknownLocationID
+
+	_, err = fixture.repo.Update(ctx, stored)
+
+	if !errors.Is(err, core.ErrConflict) {
+		t.Errorf("err = %v, want ErrConflict", err)
+	}
+}
+
 // locationForeignKey is the constraint that ties events to their location.
 const locationForeignKey = "events_location_id_fkey"
 

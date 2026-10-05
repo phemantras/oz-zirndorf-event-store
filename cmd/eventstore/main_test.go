@@ -414,6 +414,22 @@ func TestServeReturnsErrorWhenListenerFails(t *testing.T) {
 	}
 }
 
+func TestServerBoundsEveryPhaseOfAConnection(t *testing.T) {
+	server := newServer(&fakePinger{}, slog.New(slog.DiscardHandler), routeHandlers{admin: http.NotFoundHandler(), public: http.NotFoundHandler()})
+
+	timeouts := map[string]struct{ got, want time.Duration }{
+		"read header": {server.ReadHeaderTimeout, 5 * time.Second},
+		"read":        {server.ReadTimeout, 15 * time.Second},
+		"write":       {server.WriteTimeout, 30 * time.Second},
+		"idle":        {server.IdleTimeout, 120 * time.Second},
+	}
+	for name, timeout := range timeouts {
+		if timeout.got != timeout.want {
+			t.Errorf("%s timeout = %v, want %v", name, timeout.got, timeout.want)
+		}
+	}
+}
+
 // publicEventTypesPath lists the event types of the public API.
 const publicEventTypesPath = "/v1/event-types"
 

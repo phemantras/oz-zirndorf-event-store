@@ -183,7 +183,7 @@ func (h *handler) showEvent(w http.ResponseWriter, r *http.Request) {
 		h.failEventRequest(w, err)
 		return
 	}
-	h.renderEventForm(w, r, http.StatusOK, eventForm{id: event.ID, values: core.EventInputOf(event)})
+	h.renderEventForm(w, r, http.StatusOK, eventForm{id: event.ID, storedTitle: event.Title, values: core.EventInputOf(event)})
 }
 
 func (h *handler) createEvent(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +209,7 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 		http.Error(w, http.StatusText(http.StatusBadRequest), http.StatusBadRequest)
 		return
 	}
-	_, err = h.events.SaveEvent(r.Context(), id, values, duplicatePolicyOf(r.PostForm))
+	_, err = h.events.SaveEvent(r.Context(), id, values, duplicatePolicyOf(r.PostForm, values))
 
 	var validation *core.ValidationError
 	var suspect *core.DuplicateSuspectError
@@ -224,9 +224,9 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 			errors:          fieldErrorMessages(eventFields, eventFieldMessages),
 			timetableErrors: timetableErrors,
 		}
-		h.renderEventForm(w, r, http.StatusUnprocessableEntity, form)
+		h.renderEventFormAgain(w, r, http.StatusUnprocessableEntity, form)
 	case errors.As(err, &suspect):
-		h.renderEventForm(w, r, http.StatusConflict, eventForm{id: id, values: values, duplicates: suspect.Candidates})
+		h.renderEventFormAgain(w, r, http.StatusConflict, eventForm{id: id, values: values, duplicates: suspect.Candidates})
 	case errors.Is(err, core.ErrNotFound):
 		h.renderEventNotFound(w)
 	default:
@@ -253,15 +253,35 @@ func (h *handler) deleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// eventForm is what an event form shows: the event's id (empty for a new
-// one), the values, the messages per field and per timetable entry and the
-// events the values may duplicate.
+// eventForm is what an event form shows: the event's id and stored title
+// (empty for a new one), the values, the messages per field and per
+// timetable entry and the events the values may duplicate.
 type eventForm struct {
 	id              string
+	storedTitle     string
 	values          core.EventInput
 	errors          map[string]string
 	timetableErrors map[int]map[string]string
 	duplicates      []core.Event
+}
+
+// renderEventFormAgain renders the form after a refused save. The delete
+// question of an existing event names its stored title, never the unsaved
+// one, so the stored event is loaded again.
+func (h *handler) renderEventFormAgain(w http.ResponseWriter, r *http.Request, status int, form eventForm) {
+	if form.id != "" {
+		stored, err := h.events.GetEvent(r.Context(), form.id)
+		if errors.Is(err, core.ErrNotFound) {
+			h.renderEventNotFound(w)
+			return
+		}
+		if err != nil {
+			h.failEventRequest(w, fmt.Errorf("load event refused for saving: %w", err))
+			return
+		}
+		form.storedTitle = stored.Title
+	}
+	h.renderEventForm(w, r, status, form)
 }
 
 // renderEventForm renders the form with the locations to choose from.
@@ -281,7 +301,7 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 		PrivacyHint:      msgNoPersonalData,
 		UnknownTimeHint:  msgUnknownTime,
 		Timetable:        timetableViews(form.values.Timetable, form.timetableErrors),
-		DuplicateWarning: duplicateWarningOf(form.duplicates, h.clock),
+		DuplicateWarning: duplicateWarningOf(form.duplicates, form.values, h.clock),
 	}
 	if len(form.timetableErrors) > 0 {
 		page.TimetableError = msgTimetableProblems
@@ -291,7 +311,7 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 		page.Action = eventURL(form.id)
 		page.Delete = &deleteForm{
 			Action:  eventURL(form.id) + deletePathSuffix,
-			Confirm: fmt.Sprintf(msgConfirmDeleteEvent, form.values.Title),
+			Confirm: fmt.Sprintf(msgConfirmDeleteEvent, form.storedTitle),
 		}
 	}
 	for _, eventType := range core.ListEventTypes() {
