@@ -74,7 +74,7 @@ action_items:
       auch bei scheiternder Periode, Abbruch statt prüfen bei DB-/Kontextfehlern,
       Löschrückfrage mit gespeichertem Titel, Server-Timeouts, goose-Session-Locker"
     owner: "Andreas / Dev-Agent"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-10-03.md"
   - id: "epic-1-retro-item-2-a2-contract-pr-ad-17-pg_dump-prod-auf-ti"
     epic: 1
