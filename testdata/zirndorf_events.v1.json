@@ -1,0 +1,1156 @@
+{
+  "formatVersion": 1,
+  "events": [
+    {
+      "importKey": "2026-05-13-kaerwa-lind",
+      "title": "Kärwa Lind (Kärwa-Saison-Opening)",
+      "type": "festival",
+      "location": {
+        "name": "Ortsteil Lind",
+        "address": {
+          "street": "Lind",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4206925,
+        "longitude": 10.934746,
+        "precision": "district",
+        "note": "Koordinate markiert den Ortskern; der Festplatz ist nicht veröffentlicht"
+      },
+      "startDate": "2026-05-13",
+      "startTime": null,
+      "endDate": "2026-05-14",
+      "endTime": null,
+      "allDay": true,
+      "source": {
+        "description": "festivalsindeutschland.de (nicht im städtischen Kalender)",
+        "url": "https://www.festivalsindeutschland.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-05-30-pain-and-gain",
+      "title": "Pain & Gain Festival Zirndorf",
+      "type": "festival",
+      "location": {
+        "name": "ASV Zirndorf, Schwabacher Straße 51",
+        "address": {
+          "street": "Schwabacher Str. 51",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4366836,
+        "longitude": 10.9454927,
+        "precision": "area",
+        "note": null
+      },
+      "startDate": "2026-05-30",
+      "startTime": "14:30",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Nicht im städtischen Kalender; Quelle in der Rohdatenerfassung nicht dokumentiert",
+        "url": null
+      },
+      "note": "Veranstalter ASV Zirndorf, Underground-Metal. Beginn 15:00, Einlass ab 14:30.",
+      "timetable": [
+        {
+          "description": "Einlass",
+          "date": "2026-05-30",
+          "startTime": "14:30",
+          "endTime": "15:00"
+        },
+        {
+          "description": "Beginn",
+          "date": "2026-05-30",
+          "startTime": "15:00",
+          "endTime": null
+        }
+      ]
+    },
+    {
+      "importKey": "2026-07-03-fischerfest",
+      "title": "Zirndorfer Fischerfest",
+      "type": "festival",
+      "location": {
+        "name": "Fischerheim am Bibertufer",
+        "address": {
+          "street": "Volkhardtstraße 35",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436589,
+        "longitude": 10.9542288,
+        "precision": "area",
+        "note": "Garten des Fischerheims (1. Fischereiverein Zirndorf)"
+      },
+      "startDate": "2026-07-03",
+      "startTime": null,
+      "endDate": "2026-07-05",
+      "endTime": null,
+      "allDay": true,
+      "source": {
+        "description": "Nicht im städtischen Kalender; Quelle in der Rohdatenerfassung nicht dokumentiert",
+        "url": null
+      },
+      "note": "Veranstalter 1. Fischereiverein Zirndorf."
+    },
+    {
+      "importKey": "2026-07-10-kirchweih-wintersdorf",
+      "title": "Kirchweih Wintersdorf",
+      "type": "festival",
+      "location": {
+        "name": "Ortsteil Wintersdorf",
+        "address": {
+          "street": "Wintersdorf",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4270516,
+        "longitude": 10.9084939,
+        "precision": "district",
+        "note": "Koordinate markiert den Ortskern; der Festplatz ist nicht veröffentlicht"
+      },
+      "startDate": "2026-07-10",
+      "startTime": null,
+      "endDate": "2026-07-13",
+      "endTime": null,
+      "allDay": true,
+      "source": {
+        "description": "festivalsindeutschland.de (nicht im städtischen Kalender)",
+        "url": "https://www.festivalsindeutschland.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-07-24-brauereihoffest",
+      "title": "Zirndorfer Stadt- und Brauereihoffest",
+      "type": "festival",
+      "location": {
+        "name": "Brauereihof Rote Straße",
+        "address": {
+          "street": "Rote Str. 8-10",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4428526,
+        "longitude": 10.9552309,
+        "precision": "area",
+        "note": null
+      },
+      "startDate": "2026-07-24",
+      "startTime": null,
+      "endDate": "2026-07-26",
+      "endTime": null,
+      "allDay": true,
+      "source": {
+        "description": "Nicht im städtischen Kalender; Quelle in der Rohdatenerfassung nicht dokumentiert",
+        "url": null
+      },
+      "note": "Neben dem Brauereihof ist auch städtisches Gebiet einbezogen."
+    },
+    {
+      "importKey": "2026-08-07-kirchweih-weinzierlein",
+      "title": "Kirchweih Weinzierlein",
+      "type": "festival",
+      "location": {
+        "name": "Ortsteil Weinzierlein",
+        "address": {
+          "street": "Weinzierlein",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4242636,
+        "longitude": 10.8972677,
+        "precision": "district",
+        "note": "Koordinate markiert den Ortskern; der Festplatz ist nicht veröffentlicht"
+      },
+      "startDate": "2026-08-07",
+      "startTime": null,
+      "endDate": "2026-08-10",
+      "endTime": null,
+      "allDay": true,
+      "source": {
+        "description": "festivalsindeutschland.de (nicht im städtischen Kalender)",
+        "url": "https://www.festivalsindeutschland.de"
+      },
+      "note": null,
+      "timetable": [
+        {
+          "description": "Eröffnung: Bieranstich, Stimmungsband im Festzelt",
+          "date": "2026-08-07",
+          "startTime": null,
+          "endTime": null
+        },
+        {
+          "description": "Kärwabaum-Aufstellen mit Dorfgemeinschaft, abends Tanzabend im Festzelt",
+          "date": "2026-08-08",
+          "startTime": null,
+          "endTime": null
+        },
+        {
+          "description": "Festgottesdienst, Frühschoppen, Festumzug der Trachtenpaare, Mittagessen",
+          "date": "2026-08-09",
+          "startTime": null,
+          "endTime": null
+        },
+        {
+          "description": "Kehraus: Frühschoppen, Versteigerung des Kärwabaums, abschließender Tanzabend",
+          "date": "2026-08-10",
+          "startTime": null,
+          "endTime": null
+        }
+      ]
+    },
+    {
+      "importKey": "2026-08-21-stadtkaerwa",
+      "title": "Zirndorfer Kirchweih (Stadtkärwa)",
+      "type": "festival",
+      "location": {
+        "name": "Kirchweih-Festmeile Marktplatz bis Schulsportplatz",
+        "address": {
+          "street": "Marktplatz bis Schulsportplatz",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4414119,
+        "longitude": 10.9570986,
+        "precision": "area",
+        "note": "Koordinate markiert den Marktplatz; die Festmeile reicht bis zum Schulsportplatz"
+      },
+      "startDate": "2026-08-21",
+      "startTime": "17:00",
+      "endDate": "2026-08-25",
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Kirchweih-Seite der Stadt Zirndorf; Tagesablauf nach redaktioneller Zusammenfassung von festivalsindeutschland.de",
+        "url": "https://www.zirndorf.de/kirchweih"
+      },
+      "note": "Uhrzeiten nur für Freitag bekannt; für die übrigen Tage ist nur der Tagesablauf veröffentlicht.",
+      "timetable": [
+        {
+          "description": "Aufstellen des Kärwabaums am Marktplatz mit der Stadtjugendkapelle Zirndorf",
+          "date": "2026-08-21",
+          "startTime": "17:00",
+          "endTime": null
+        },
+        {
+          "description": "Festzeltbetrieb mit Live-Musik",
+          "date": "2026-08-21",
+          "startTime": "18:00",
+          "endTime": null
+        },
+        {
+          "description": "Festzeltabend mit Tanzmusik, Schaustellerbetrieb auf der gesamten Festmeile",
+          "date": "2026-08-22",
+          "startTime": null,
+          "endTime": null
+        },
+        {
+          "description": "Familientag: Festgottesdienst, Frühschoppen im Festzelt, ermäßigte Fahrgeschäfte",
+          "date": "2026-08-23",
+          "startTime": null,
+          "endTime": null
+        },
+        {
+          "description": "Bartholomäi: Brauchtumstag mit Kerwabuam und Kerwamadla in fränkischer Tracht, Festzeltabend",
+          "date": "2026-08-24",
+          "startTime": null,
+          "endTime": null
+        },
+        {
+          "description": "Ausklang: Frühschoppen und letzter Festzeltabend",
+          "date": "2026-08-25",
+          "startTime": null,
+          "endTime": null
+        }
+      ]
+    },
+    {
+      "importKey": "2026-09-04-kirchweih-weiherhof",
+      "title": "Kirchweih Weiherhof",
+      "type": "festival",
+      "location": {
+        "name": "Ortsteil Weiherhof",
+        "address": {
+          "street": "Weiherhof",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4567254,
+        "longitude": 10.9276909,
+        "precision": "district",
+        "note": "Koordinate markiert den Ortskern; der Festplatz ist nicht veröffentlicht"
+      },
+      "startDate": "2026-09-04",
+      "startTime": null,
+      "endDate": "2026-09-07",
+      "endTime": null,
+      "allDay": true,
+      "source": {
+        "description": "festivalsindeutschland.de (nicht im städtischen Kalender)",
+        "url": "https://www.festivalsindeutschland.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-09-11-weinfest-lions",
+      "title": "Weinfest des Lions Club Zirndorf",
+      "type": "festival",
+      "location": {
+        "name": "Zimmermannspark",
+        "address": {
+          "street": "Grillenbergerstraße 12",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4434296,
+        "longitude": 10.9633645,
+        "precision": "area",
+        "note": null
+      },
+      "startDate": "2026-09-11",
+      "startTime": null,
+      "endDate": "2026-09-12",
+      "endTime": null,
+      "allDay": true,
+      "source": {
+        "description": "Nicht im städtischen Kalender; Quelle in der Rohdatenerfassung nicht dokumentiert",
+        "url": null
+      },
+      "note": "Charity-Veranstaltung."
+    },
+    {
+      "importKey": "2026-09-17-baederausschuss",
+      "title": "Bäderausschuss",
+      "type": "politics",
+      "location": {
+        "name": "Fürther Straße 8",
+        "address": {
+          "street": "Fürther Straße 8",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4420785,
+        "longitude": 10.9576928,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-09-17",
+      "startTime": "18:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Ratsinformationssystem der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://sitzung.zirndorf.de"
+      },
+      "note": "Großer Sitzungssaal"
+    },
+    {
+      "importKey": "2026-09-23-ratsch-cafe",
+      "title": "Ratsch Café (Seniorenbeirat)",
+      "type": "club",
+      "location": {
+        "name": "Evang. Gemeindehaus St. Rochus",
+        "address": {
+          "street": "Pfarrhof 3",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4424798,
+        "longitude": 10.9551828,
+        "precision": "building",
+        "note": "Koordinate markiert die Kirche St. Rochus, nicht das Gemeindehaus selbst"
+      },
+      "startDate": "2026-09-23",
+      "startTime": "14:00",
+      "endDate": "2026-09-23",
+      "endTime": "16:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-09-23-stadtrat",
+      "title": "Sitzung des Stadtrats Zirndorf",
+      "type": "politics",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-09-23",
+      "startTime": "18:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Ratsinformationssystem der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://sitzung.zirndorf.de"
+      },
+      "note": "Großer Saal"
+    },
+    {
+      "importKey": "2026-09-24-demenzwoche-nachmittag",
+      "title": "Gemeinsamer Nachmittag im Rahmen der Demenzwoche 2026",
+      "type": "club",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-09-24",
+      "startTime": "13:30",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-09-30-aeltere-verkehrsteilnehmer",
+      "title": "Ältere Verkehrsteilnehmer – Sicher auf dem Zweirad unterwegs",
+      "type": "other",
+      "location": {
+        "name": "Jakob-Wassermann-Straße 1",
+        "address": {
+          "street": "Jakob-Wassermann-Straße 1",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4413705,
+        "longitude": 10.943799,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-09-30",
+      "startTime": "15:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-09-30-haupt-finanzausschuss",
+      "title": "Haupt- und Finanzausschuss",
+      "type": "politics",
+      "location": {
+        "name": "Fürther Straße 8",
+        "address": {
+          "street": "Fürther Straße 8",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4420785,
+        "longitude": 10.9576928,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-09-30",
+      "startTime": "18:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Ratsinformationssystem der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://sitzung.zirndorf.de"
+      },
+      "note": "Großer Sitzungssaal"
+    },
+    {
+      "importKey": "2026-10-06-buergerversammlung-wintersdorf",
+      "title": "Bürgerversammlung für die Stadtteile Wintersdorf, Weinzierlein, Leichendorf, Bronnamberg",
+      "type": "politics",
+      "location": {
+        "name": "Frankenstraße 10",
+        "address": {
+          "street": "Frankenstraße 10",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4302408,
+        "longitude": 10.9126224,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-06",
+      "startTime": "19:00",
+      "endDate": "2026-10-06",
+      "endTime": "22:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-10-07-seniorentanz-4",
+      "title": "4. Seniorentanznachmittag 2026",
+      "type": "club",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-07",
+      "startTime": "14:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-10-07-buergerversammlung-kernstadt",
+      "title": "Bürgerversammlung für die Kernstadt Zirndorf",
+      "type": "politics",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-07",
+      "startTime": "19:00",
+      "endDate": "2026-10-07",
+      "endTime": "22:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-10-08-digitalcafe",
+      "title": "DigitalCafé (vhs kreativ)",
+      "type": "club",
+      "location": {
+        "name": "Volkhardtstraße 3",
+        "address": {
+          "street": "Volkhardtstraße 3",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4401285,
+        "longitude": 10.9555745,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-08",
+      "startTime": "15:30",
+      "endDate": "2026-10-08",
+      "endTime": "17:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-10-10-rosenball",
+      "title": "Rosenball der Stadt Zirndorf",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-10",
+      "startTime": "20:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-10-12-buergerversammlung-lind",
+      "title": "Bürgerversammlung für die Stadtteile Lind und Anwanden",
+      "type": "politics",
+      "location": {
+        "name": "Lindenstraße 51 (Lind)",
+        "address": {
+          "street": "Lindenstraße 51",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4221326,
+        "longitude": 10.9374028,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-12",
+      "startTime": "19:00",
+      "endDate": "2026-10-12",
+      "endTime": "22:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-10-14-buergerversammlung-weiherhof",
+      "title": "Bürgerversammlung für die Stadtteile Weiherhof und Banderbach",
+      "type": "politics",
+      "location": {
+        "name": "Banderbacher Straße 301",
+        "address": {
+          "street": "Banderbacher Str. 301",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4564193,
+        "longitude": 10.915487,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-14",
+      "startTime": "19:00",
+      "endDate": "2026-10-14",
+      "endTime": "22:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-10-18-herbstmarkt",
+      "title": "Zirndorfer Herbstmarkt",
+      "type": "market",
+      "location": {
+        "name": "Marktplatz Zirndorf",
+        "address": {
+          "street": "Marktplatz",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4414119,
+        "longitude": 10.9570986,
+        "precision": "street",
+        "note": null
+      },
+      "startDate": "2026-10-18",
+      "startTime": "11:00",
+      "endDate": "2026-10-18",
+      "endTime": "18:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": "Beginn 11:00 ergibt sich aus dem Programm am Museum; der Markt in der Innenstadt läuft 13:00–18:00. Kalendereintrag nennt für den Markt nur „Zirndorf, Innenstadt“.",
+      "timetable": [
+        {
+          "description": "Stadtführung: Zirndorfer Handel und Wandel (Treffpunkt Zirndorfer Museum, Spitalstraße 2)",
+          "date": "2026-10-18",
+          "startTime": "11:00",
+          "endTime": "12:30"
+        },
+        {
+          "description": "Herbstmarkt – Spiel und Spaß im und vor dem Zirndorfer Museum (Spitalstraße 2)",
+          "date": "2026-10-18",
+          "startTime": "11:00",
+          "endTime": "17:00"
+        },
+        {
+          "description": "Zirndorfer Herbstmarkt in der Innenstadt",
+          "date": "2026-10-18",
+          "startTime": "13:00",
+          "endTime": "18:00"
+        }
+      ]
+    },
+    {
+      "importKey": "2026-10-20-stadtrat",
+      "title": "Sitzung des Stadtrats Zirndorf",
+      "type": "politics",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-20",
+      "startTime": "18:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Ratsinformationssystem der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://sitzung.zirndorf.de"
+      },
+      "note": "Großer Saal"
+    },
+    {
+      "importKey": "2026-10-24-linedance",
+      "title": "Linedance Country Event",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-10-24",
+      "startTime": "19:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-11-08-museumsfuehrung-blech",
+      "title": "Museumsführung: Zirndorfer Blechgeschichte(n)",
+      "type": "culture",
+      "location": {
+        "name": "Zirndorfer Museum",
+        "address": {
+          "street": "Spitalstraße 2",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4412768,
+        "longitude": 10.955995,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-11-08",
+      "startTime": "14:00",
+      "endDate": "2026-11-08",
+      "endTime": "15:30",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-11-11-seniorentanz-5",
+      "title": "5. Seniorentanznachmittag 2026",
+      "type": "club",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-11-11",
+      "startTime": "14:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-11-19-digitalcafe",
+      "title": "DigitalCafé (vhs kreativ)",
+      "type": "club",
+      "location": {
+        "name": "Volkhardtstraße 3",
+        "address": {
+          "street": "Volkhardtstraße 3",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4401285,
+        "longitude": 10.9555745,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-11-19",
+      "startTime": "15:30",
+      "endDate": "2026-11-19",
+      "endTime": "17:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-11-21-klaus-karl-kraus",
+      "title": "Klaus Karl-Kraus – Budderblädzli, Bunsch und Bäggli",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-11-21",
+      "startTime": "20:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-11-28-luise-kinseher",
+      "title": "Luise Kinseher",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-11-28",
+      "startTime": "20:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-12-04-david-lugert",
+      "title": "David Lugert",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-12-04",
+      "startTime": "20:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-12-10-digitalcafe",
+      "title": "DigitalCafé (vhs kreativ)",
+      "type": "club",
+      "location": {
+        "name": "Volkhardtstraße 3",
+        "address": {
+          "street": "Volkhardtstraße 3",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.4401285,
+        "longitude": 10.9555745,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-12-10",
+      "startTime": "15:30",
+      "endDate": "2026-12-10",
+      "endTime": "17:00",
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2026-12-17-dschungelbuch",
+      "title": "Das Dschungelbuch",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2026-12-17",
+      "startTime": "15:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2027-01-28-schoene-und-biest",
+      "title": "Die Schöne und das Biest – Das Musical (Theater Liberi)",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2027-01-28",
+      "startTime": "16:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "eventim / songkick (nicht im städtischen Kalender)",
+        "url": null
+      },
+      "note": null
+    },
+    {
+      "importKey": "2027-03-13-helmut-binser",
+      "title": "Helmut Binser „BUMM“",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2027-03-13",
+      "startTime": null,
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": "Keine Uhrzeit im Kalender angegeben."
+    },
+    {
+      "importKey": "2027-04-24-brettl-spitzen",
+      "title": "Bayerischer Rundfunk Brettl-Spitzen live",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2027-04-24",
+      "startTime": null,
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": "Keine Uhrzeit im Kalender angegeben."
+    },
+    {
+      "importKey": "2027-05-07-stephan-bauer",
+      "title": "Stephan Bauer „Vor der Ehe wollt ich ewig leben“",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2027-05-07",
+      "startTime": null,
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": "Keine Uhrzeit im Kalender angegeben."
+    },
+    {
+      "importKey": "2027-11-20-willy-astor",
+      "title": "Willy Astor „Reimart und Lachkunde – Prädikat Wortvoll“",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2027-11-20",
+      "startTime": "20:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    },
+    {
+      "importKey": "2027-12-10-claudia-koreck",
+      "title": "Claudia Koreck Weihnachtsprogramm",
+      "type": "culture",
+      "location": {
+        "name": "Paul-Metz-Halle",
+        "address": {
+          "street": "Volkhardtstraße 33",
+          "postalCode": "90513",
+          "city": "Zirndorf"
+        },
+        "latitude": 49.436645881624074,
+        "longitude": 10.95525712249997,
+        "precision": "building",
+        "note": null
+      },
+      "startDate": "2027-12-10",
+      "startTime": "20:00",
+      "endDate": null,
+      "endTime": null,
+      "allDay": false,
+      "source": {
+        "description": "Veranstaltungskalender der Stadt Zirndorf (Stand 18.09.2026)",
+        "url": "https://www.zirndorf.de"
+      },
+      "note": null
+    }
+  ]
+}

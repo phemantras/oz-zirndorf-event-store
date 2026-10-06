@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -482,5 +483,43 @@ func TestImportFileFormatConstants(t *testing.T) {
 	}
 	if LocationFieldAddress != "address" {
 		t.Errorf("LocationFieldAddress = %q", LocationFieldAddress)
+	}
+}
+
+// The test collection in format v1 (Story 3.4). It holds 39 events, not the
+// 41 of the source file: Andreas merged three autumn market entries into one
+// event with a timetable. The Weihnachtsmarkt is entered in the admin.
+const (
+	testCollectionPath      = "../../testdata/zirndorf_events.v1.json"
+	testCollectionEvents    = 39
+	testCollectionLocations = 19
+)
+
+func TestPreviewImportAcceptsTheTestCollection(t *testing.T) {
+	data, err := os.ReadFile(testCollectionPath)
+	if err != nil {
+		t.Fatalf("read test collection: %v", err)
+	}
+
+	preview := previewOf(t, data)
+
+	if len(preview.Entries) != testCollectionEvents {
+		t.Errorf("entries = %d, want %d", len(preview.Entries), testCollectionEvents)
+	}
+	for _, entry := range preview.Entries {
+		if entry.Class != ImportClassNew {
+			t.Errorf("entry %d %q is %s with problems %+v, want new", entry.Position, entry.Title, entry.Class, entry.Problems)
+		}
+	}
+	if len(preview.NewLocations) != testCollectionLocations {
+		t.Errorf("new locations = %d, want %d", len(preview.NewLocations), testCollectionLocations)
+	}
+	importKeys := map[string]bool{}
+	for _, entry := range preview.Entries {
+		key := entry.Input.ImportKey
+		if key == "" || importKeys[key] {
+			t.Errorf("entry %d %q has import key %q, want a unique one", entry.Position, entry.Title, key)
+		}
+		importKeys[key] = true
 	}
 }

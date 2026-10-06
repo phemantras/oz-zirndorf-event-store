@@ -3,7 +3,7 @@
 _bmad*
 .claude
 *.md
-zirndorf_events.json
+/testdata
 .env*
 *.out
 coverage*
