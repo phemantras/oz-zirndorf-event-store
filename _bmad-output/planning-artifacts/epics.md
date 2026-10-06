@@ -68,7 +68,7 @@ FR-16: Die Import-Datei hat eine Formatversion und ist dokumentiert. Eine unbeka
 
 FR-17: Vor dem Übernehmen zeigt der Import für jedes Event: neu, Aktualisierung, Duplikatverdacht oder Fehler. Ein vorhandener Import-Schlüssel führt zu einer Aktualisierung. Ohne passenden Schlüssel, aber mit gleichem Titel, Beginn-Datum (nicht Uhrzeit) und Ort entsteht ein Duplikatverdacht. Gleicher Titel an einem anderen Datum ist kein Verdacht. Fehlerhafte Einträge werden einzeln mit Grund gemeldet und blockieren die übrigen nicht.
 
-FR-18: Der Admin entscheidet jeden Duplikatverdacht: überspringen, als neues Event anlegen oder das vorhandene überschreiben. Ohne Entscheidung wird nichts übernommen. Nach dem Import gibt es eine Zusammenfassung (neu, aktualisiert, übersprungen, fehlerhaft). Die Testsammlung (42 Events) lässt sich vollständig importieren, ein zweiter Import erzeugt keine neuen Events.
+FR-18: Der Admin entscheidet jeden Duplikatverdacht: überspringen, als neues Event anlegen oder das vorhandene überschreiben. Ohne Entscheidung wird nichts übernommen. Nach dem Import gibt es eine Zusammenfassung (neu, aktualisiert, übersprungen, fehlerhaft). Die Testsammlung (39 Events) lässt sich vollständig importieren, ein zweiter Import erzeugt keine neuen Events.
 
 ### NonFunctional Requirements
 
@@ -191,12 +191,12 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 ### Success Metrics
 
 - SM-1: Der Zirndorfer Weihnachtsmarkt ist im Bestand und über eine Zeitraumabfrage für die Adventszeit vollständig abrufbar.
-- SM-2: Die 42 Events werden vollständig importiert, ein zweiter Import erzeugt 0 zusätzliche Events. (Die Datei vom 2026-09-18 enthält 41 Events; die Zahl klärt Story 3.4.)
+- SM-2: Die Testsammlung im Format v1 (`testdata/zirndorf_events.v1.json`, 39 Events) wird vollständig importiert, ein zweiter Import erzeugt 0 zusätzliche Events.
 - SM-3: 100 % der ausgelieferten Events tragen Zeitgenauigkeit für Beginn und Ende, Ortsgenauigkeit und Quelle.
 - SM-4: Ein OZ-Mitglied bestätigt nach Durchsicht der OpenAPI-Dokumentation, dass es Versionierung, Fehlerformat, Zeitformat und Filterkonventionen ohne Rückfrage übernehmen könnte.
 - SM-C1 (Gegenmetrik Scheinpräzision): Genauigkeitswerte werden nie geraten, um die Karte schöner aussehen zu lassen. Im Zweifel gilt der vorsichtigere Wert.
 
-**Testsammlung:** `zirndorf_events.json` (Stand 2026-09-18, Mai 2026 bis Dezember 2027) wird in das Import-Format v1 überführt. Dabei kommen Typ, Zeitgenauigkeit statt `00:00`, Ortsgenauigkeit, eine aus dem Feld `name` herausgelöste Quelle und Import-Schlüssel dazu. Orte werden mitgebracht (es gibt keine Referenz per Kennung), damit die Datei in jeder Umgebung importierbar ist. Die Datei liegt derzeit im Repo-Root, Story 3.4 verschiebt sie nach `testdata/`.
+**Testsammlung:** `testdata/zirndorf_events.json` (Stand 2026-09-18, Mai 2026 bis Dezember 2027, 41 Events) ist mit Story 3.4 in das Import-Format v1 überführt: `testdata/zirndorf_events.v1.json` mit 39 Events (Herbstmarkt aus drei Einträgen zusammengelegt). Dabei kommen Typ, Zeitgenauigkeit statt `00:00`, Ortsgenauigkeit, eine aus dem Feld `name` herausgelöste Quelle und Import-Schlüssel dazu. Orte werden mitgebracht (es gibt keine Referenz per Kennung), damit die Datei in jeder Umgebung importierbar ist. Der Weihnachtsmarkt ist nicht in der Datei; er ist in Produktion über die Admin-Oberfläche angelegt (Sprint Change Proposal 2026-10-06).
 
 ### Out of Scope v1
 
@@ -1184,7 +1184,7 @@ damit ich sie importieren kann, ohne dass Genauigkeiten geraten werden.
 
 **Außerdem gilt:**
 - Die Story ist abgeschlossen, wenn Andreas die gelisteten Fälle geprüft und freigegeben hat.
-- Die Quelldatei enthält 41 Events, PRD und SM-2 nennen 42. Die Story klärt die Abweichung und hält die gültige Zahl fest; die folgenden Kriterien sprechen von „allen Events der Datei“.
+- Geklärt (2026-10-06): Die v1-Datei enthält 39 Events; die 42 aus PRD und SM-2 waren ein Zählfehler. Der Weihnachtsmarkt ist nicht in der Datei, sondern im Admin angelegt. Die folgenden Kriterien sprechen von „allen Events der Datei“.
 
 ### Story 3.5: Testsammlung importieren und Abnahme
 
@@ -1205,10 +1205,10 @@ damit der Bestand gefüllt ist und SM-1 und SM-2 belegt sind.
 **Wenn** dieselbe Datei ein zweites Mal importiert wird
 **Dann** entstehen 0 neue Events, und alle Einträge sind `unchanged`
 
-**Angenommen** grüne Integrationstests
-**Wenn** Andreas die Datei in Produktion importiert
-**Dann** liefert `GET /v1/events` mit einem Zeitraum über die Adventszeit den Weihnachtsmarkt mit Zeitraum, Ort, Zeitgenauigkeit, Ortsgenauigkeit und Quelle (SM-1)
+**Angenommen** grüne Integrationstests, die importierte Testsammlung und der im Admin angelegte Weihnachtsmarkt in Produktion
+**Wenn** `GET /v1/events` mit einem Zeitraum über die Adventszeit abgefragt wird
+**Dann** liefert die Antwort die Termine des Weihnachtsmarkts mit Zeitraum, Ort, Zeitgenauigkeit, Ortsgenauigkeit und Quelle (SM-1)
 
 **Außerdem gilt:**
 - Beide Importläufe sind als Integrationstest gegen PostgreSQL 18 in der CI abgedeckt; die feste `Clock` hält den Test unabhängig vom Datum.
-- Der Import in Produktion und die SM-1-Prüfung sind als manuelle Abschlussschritte vermerkt.
+- Die SM-1-Prüfung in Produktion ist ein manueller Abschlussschritt. Die Testsammlung ist dort seit 2026-10-06 importiert; ein weiterer Import in Produktion ist nicht nötig.

@@ -73,3 +73,5 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-testsammlung-ins-format-v1-ueberfuehren.md`
   summary: Planungsartefakte per `bmad-correct-course` an Story 3.4 angleichen (39 Events statt 42, Weihnachtsmarkt im Admin statt in der Datei, Datei unter `testdata/`), vor allem das SM-1-Kriterium von Story 3.5.
   evidence: `epics.md` Z. 194 und 199, PRD SM-2 und Story 3.5 („Wenn Andreas die Datei in Produktion importiert, dann liefert … den Weihnachtsmarkt“) widersprechen der Entscheidung vom 2026-10-06.
+  status: done
+  target: Sprint Change Proposal 2026-10-06 (vor Story 3.5)
