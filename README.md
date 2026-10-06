@@ -72,26 +72,33 @@ Ein Event aus `GET /v1/events` (gekürzt):
 {
   "data": [
     {
-      "title": "Zirndorfer Weihnachtsmarkt, 1. Adventswochenende",
+      "title": "Weihnachtsmarkt 1. Wochenende",
       "type": "market",
+      "location": {
+        "name": "Zimmermannspark",
+        "address": { "street": "Grillenbergerstraße 12", "postalCode": "90513", "city": "Zirndorf" },
+        "latitude": 49.443426,
+        "longitude": 10.963124,
+        "precision": "area",
+        "note": null
+      },
       "startDate": "2026-11-27",
-      "startTime": "17:00",
+      "startTime": "15:00",
       "endDate": "2026-11-29",
-      "endTime": null,
+      "endTime": "20:00",
       "allDay": false,
       "startPrecision": "exact",
-      "endPrecision": "dateOnly",
-      "effectiveStart": "2026-11-27T17:00:00+01:00",
-      "effectiveEnd": "2026-11-30T00:00:00+01:00",
-      "archived": false,
-      "location": {
-        "name": "Marktplatz Zirndorf",
-        "address": { "street": "Marktplatz", "postalCode": "90513", "city": "Zirndorf" },
-        "latitude": 49.4427,
-        "longitude": 10.9545,
-        "precision": "street"
-      },
-      "source": { "description": "Amtsblatt der Stadt Zirndorf, November 2026", "url": "https://www.zirndorf.de/amtsblatt" }
+      "endPrecision": "exact",
+      "source": { "description": "Zirndorf Marketing", "url": "https://www.zirndorf-marketing.de/zirndorfer-veranstaltungshoehepunkte-2026" },
+      "note": "1. und 2. Adventswochenende",
+      "timetable": [
+        { "description": "Eröffnung Christkind, Stadtjugendkapelle", "date": "2026-11-27", "startTime": "15:00", "endTime": "21:00" },
+        { "description": "Marktbetrieb", "date": "2026-11-28", "startTime": "15:00", "endTime": "21:00" },
+        { "description": "Marktbetrieb", "date": "2026-11-29", "startTime": "14:00", "endTime": "20:00" }
+      ],
+      "effectiveStart": "2026-11-27T15:00:00+01:00",
+      "effectiveEnd": "2026-11-29T20:00:00+01:00",
+      "archived": false
     }
   ]
 }
