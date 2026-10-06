@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 10-06-2026 16:11
+last_updated: 10-06-2026 21:19
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -67,7 +67,7 @@ development_status:
   3-3-duplikate-entscheiden-und-import-übernehmen: done
   3-4-testsammlung-ins-format-v1-überführen: done
   3-5-testsammlung-importieren-und-abnahme: done
-  epic-3-retrospective: optional
+  epic-3-retrospective: done
 action_items:
   - id: "epic-1-retro-item-1-a1-fix-pr-epic-1-nahtstellen-errconflict"
     epic: 1
@@ -165,3 +165,34 @@ action_items:
     owner: "Andreas"
     status: open
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
+  - id: "epic-3-retro-item-14-c1-fix-pr-import-härtung-nicht-utf-8-dat"
+    epic: 3
+    action: "C1 Fix-PR Import-Härtung: Nicht-UTF-8-Datei ablehnen, NUL/Steuerzeichen
+      als invalidFormat melden, mehrdeutigen Ortsnamen als Fehler melden, Überschreiben
+      bei anderem importKey nicht anbieten und Grund im ImportResult zeigen"
+    owner: "Andreas / Dev-Agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
+  - id: "epic-3-retro-item-15-c2-test-pr-import-absicherung-sourcefiel"
+    epic: 3
+    action: "C2 Test-PR Import-Absicherung: sourceField* im AD-9-Vertragstest, Commit
+      nahe 2 MiB mit 150 Entscheidungen ohne 413, Abnahmetest 3.5 mit RecomputeDerived/RecomputeNameKeys
+      nach dem Import"
+    owner: "Andreas / Dev-Agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
+  - id: "epic-3-retro-item-16-c3-deferred-work-md-pflegen-browser-test"
+    epic: 3
+    action: "C3 deferred-work.md pflegen: Browser-Tests (target Epic 3) neu zuordnen
+      oder schließen, Eintrag aus Spec 2.8 mit status und target"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
+  - id: "epic-3-retro-item-17-c4-bmad-correct-course-story-für-stale-b"
+    epic: 3
+    action: "C4 bmad-correct-course: Story für stale bei seit der Vorschau geändertem
+      Ziel-Event und importKey im Admin anzeigen/entfernen; R10 (importKey = ein Event,
+      keine Reihe) im Import-Format dokumentieren"
+    owner: "Andreas"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
