@@ -67,6 +67,7 @@ func TestImportShowsClassTargetChangesCandidatesAndHints(t *testing.T) {
 		"2": {
 			"2", "Kirchweihmarkt", "Duplikatverdacht",
 			"Mögliche Duplikate:", "Kirchweihmarkt (16.10.2026)", "Position 1: Kirchweihmarkt (16.10.2026)",
+			msgImportChoiceLegend, msgImportChoiceSkip, msgImportChoiceCreate, msgImportChoiceOverwrite + " Kirchweihmarkt (16.10.2026)",
 		},
 		"4": {
 			"4", "Lesung an der Veste", "neu",

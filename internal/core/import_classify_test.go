@@ -312,6 +312,13 @@ func TestPreviewImportListsANewLocationOnceWithEveryPositionBringingIt(t *testin
 	if preview.Entries[0].Hints != nil {
 		t.Errorf("hints of entry 1 = %v, want none", preview.Entries[0].Hints)
 	}
+	var bringsNew []bool
+	for _, entry := range preview.Entries {
+		bringsNew = append(bringsNew, entry.NewLocation)
+	}
+	if want := []bool{true, true, false, false}; !slices.Equal(bringsNew, want) {
+		t.Errorf("entries bringing a new location = %v, want %v", bringsNew, want)
+	}
 }
 
 func TestPreviewImportHintsAtGivenLocationDetailsThatDifferFromTheStoredOnes(t *testing.T) {
@@ -379,7 +386,7 @@ func TestPreviewImportPassesEventRepositoryFailuresOn(t *testing.T) {
 			events := newFakeEventRepo()
 			fail(events)
 
-			_, err := NewImportService(newFakeLocationRepo(hall()), events).PreviewImport(context.Background(), marshalImport(t, importFile(marketEntry())))
+			_, err := NewImportService(newEventServiceOn(events, newFakeLocationRepo(hall()))).PreviewImport(context.Background(), marshalImport(t, importFile(marketEntry())))
 
 			if !errors.Is(err, errDatabaseDown) {
 				t.Errorf("err = %v, want %v", err, errDatabaseDown)

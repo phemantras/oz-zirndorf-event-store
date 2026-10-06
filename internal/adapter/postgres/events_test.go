@@ -383,6 +383,7 @@ func TestEventRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 		"UpdateDerived": func() error { return repo.UpdateDerived(ctx, unknownEventID, core.Derived{Period: event.Period}) },
 		"Delete":        func() error { return repo.Delete(ctx, unknownEventID) },
 		"MarkArchived":  func() error { _, err := repo.MarkArchived(ctx, event.Period.End); return err },
+		"SetImportKey":  func() error { return repo.SetImportKey(ctx, unknownEventID, marketImportKey) },
 		"CountByLocation": func() error {
 			_, err := repo.CountByLocation(ctx, unknownLocationID)
 			return err

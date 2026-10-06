@@ -129,3 +129,26 @@ func TestSavingAnEventInTheAdminKeepsItsImportKey(t *testing.T) {
 		t.Errorf("returned import key = %q, want %q", updated.ImportKey, marketImportKey)
 	}
 }
+
+func TestEventRepoSetsTheImportKey(t *testing.T) {
+	fixture := newEventFixture(t)
+	ctx := context.Background()
+	keyed := createEvent(t, fixture.repo, minimalEvent(t, fixture.hall.ID))
+	other := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
+
+	if err := fixture.repo.SetImportKey(ctx, keyed.ID, marketImportKey); err != nil {
+		t.Fatalf("SetImportKey: %v", err)
+	}
+
+	if got := importKeyOf(t, fixture.pool, keyed.ID); got == nil || *got != marketImportKey {
+		t.Errorf("stored import key = %v, want %q", got, marketImportKey)
+	}
+	if err := fixture.repo.SetImportKey(ctx, other.ID, marketImportKey); !errors.Is(err, core.ErrConflict) {
+		t.Errorf("taken import key: err = %v, want ErrConflict", err)
+	}
+	for _, id := range []string{unknownEventID, "keine-uuid"} {
+		if err := fixture.repo.SetImportKey(ctx, id, "frei"); !errors.Is(err, core.ErrNotFound) {
+			t.Errorf("SetImportKey(%q) err = %v, want ErrNotFound", id, err)
+		}
+	}
+}

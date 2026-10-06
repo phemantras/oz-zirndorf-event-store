@@ -155,6 +155,7 @@ func (h *handler) routes() http.Handler {
 	protected.HandleFunc(http.MethodGet+" "+timetableEntryPath, h.showTimetableEntry)
 	protected.HandleFunc(http.MethodGet+" "+importPath, h.showImport)
 	protected.HandleFunc(http.MethodPost+" "+importPath, h.checkImport)
+	protected.HandleFunc(http.MethodPost+" "+importCommitPath, h.commitImport)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(http.MethodGet+" "+loginPath, h.showLogin)

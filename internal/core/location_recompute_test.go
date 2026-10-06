@@ -324,3 +324,30 @@ func TestLocationReviewMarksAreSafeForConcurrentUse(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestRecomputeNameKeysReadsAndWritesInOneTransaction(t *testing.T) {
+	outside, inTx := newFakeLocationRepo(), newFakeLocationRepo(tent())
+	tx := &fakeTx{repos: Repos{Events: newFakeEventRepo(), Locations: inTx}}
+
+	failures, err := NewLocationService(tx, outside).RecomputeNameKeys(context.Background())
+
+	if err != nil || failures != nil {
+		t.Fatalf("RecomputeNameKeys = %v, %v, want no failures", failures, err)
+	}
+	if tx.runs != 1 || !slices.Equal(inTx.nameKeysUpdated, []string{tentID}) {
+		t.Errorf("runs = %d, name keys updated in tx = %v, want the tent in one transaction", tx.runs, inTx.nameKeysUpdated)
+	}
+}
+
+func TestRecomputeNameKeysPassesTransactionFailureOnWithoutMarking(t *testing.T) {
+	repo := newFakeLocationRepo(hall(), renamed(park(), "Paul-Metz-Halle", "bibertpark"))
+	tx := &fakeTx{repos: Repos{Events: newFakeEventRepo(), Locations: repo}, beginErr: errDatabaseDown}
+	service := NewLocationService(tx, repo)
+
+	failures, err := service.RecomputeNameKeys(context.Background())
+
+	if !errors.Is(err, errDatabaseDown) || failures != nil {
+		t.Errorf("RecomputeNameKeys = %v, %v, want only %v", failureIDs(failures), err, errDatabaseDown)
+	}
+	assertLocationsNeedReview(t, service, map[string]bool{hallID: false, parkID: false})
+}

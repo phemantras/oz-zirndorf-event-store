@@ -89,3 +89,9 @@ WHERE id = $1;
 SELECT count(*)
 FROM events
 WHERE location_id = $1;
+
+-- name: UpdateEventImportKey :execrows
+-- Only the import commit sets the import key (Story 3.3).
+UPDATE events
+SET import_key = $2
+WHERE id = $1;

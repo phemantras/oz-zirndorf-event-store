@@ -462,3 +462,28 @@ func TestDeleteLocationPassesFailuresOn(t *testing.T) {
 		})
 	}
 }
+
+func TestSaveLocationWritesInOneTransaction(t *testing.T) {
+	outside, inTx := newFakeLocationRepo(), newFakeLocationRepo()
+	tx := &fakeTx{repos: Repos{Events: newFakeEventRepo(), Locations: inTx}}
+
+	saved, err := NewLocationService(tx, outside).SaveLocation(context.Background(), "", validLocationInput())
+
+	if err != nil {
+		t.Fatalf("SaveLocation: %v", err)
+	}
+	if tx.runs != 1 || len(inTx.created) != 1 || len(outside.created) != 0 || saved.ID != newID {
+		t.Errorf("runs = %d, created in tx = %d, outside = %d, want one write in one transaction", tx.runs, len(inTx.created), len(outside.created))
+	}
+}
+
+func TestSaveLocationPassesTransactionFailureOn(t *testing.T) {
+	repo := newFakeLocationRepo()
+	tx := &fakeTx{repos: Repos{Events: newFakeEventRepo(), Locations: repo}, beginErr: errDatabaseDown}
+
+	_, err := NewLocationService(tx, repo).SaveLocation(context.Background(), "", validLocationInput())
+
+	if !errors.Is(err, errDatabaseDown) || len(repo.created) != 0 {
+		t.Errorf("err = %v, created = %d, want %v and nothing written", err, len(repo.created), errDatabaseDown)
+	}
+}

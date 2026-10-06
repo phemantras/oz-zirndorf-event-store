@@ -63,7 +63,7 @@ func marshalImport(t *testing.T, file any) []byte {
 }
 
 func newTestImportService(locations *fakeLocationRepo) *ImportService {
-	return NewImportService(locations, newFakeEventRepo())
+	return NewImportService(newEventServiceOn(newFakeEventRepo(), locations))
 }
 
 func previewOf(t *testing.T, data []byte, locations ...Location) ImportPreview {
@@ -74,7 +74,7 @@ func previewOf(t *testing.T, data []byte, locations ...Location) ImportPreview {
 // previewWithEvents previews data against the stored events and locations.
 func previewWithEvents(t *testing.T, data []byte, events *fakeEventRepo, locations ...Location) ImportPreview {
 	t.Helper()
-	preview, err := NewImportService(newFakeLocationRepo(locations...), events).PreviewImport(context.Background(), data)
+	preview, err := NewImportService(newEventServiceOn(events, newFakeLocationRepo(locations...))).PreviewImport(context.Background(), data)
 	if err != nil {
 		t.Fatalf("PreviewImport: %v", err)
 	}
@@ -173,6 +173,7 @@ func TestPreviewImportRejectsTheWholeFile(t *testing.T) {
 		"events not a list":           {data: []byte(`{"formatVersion":1,"events":{"title":"Markt"}}`), want: ImportProblemMissingEvents},
 		"no entries":                  {data: []byte(`{"formatVersion":1,"events":[]}`), want: ImportProblemNoEntries},
 		"more than 2 MiB":             {data: tooLarge, want: ImportProblemTooLarge},
+		"more than 150 entries":       {data: importFileWithEntries(MaxImportEntries + 1), want: ImportProblemTooManyEntries},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -196,6 +197,24 @@ func TestPreviewImportRejectsTheWholeFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPreviewImportAcceptsTheMostEntries(t *testing.T) {
+	locations := newFakeLocationRepo()
+
+	preview, err := newTestImportService(locations).PreviewImport(context.Background(), importFileWithEntries(MaxImportEntries))
+	if err != nil {
+		t.Fatalf("PreviewImport: %v", err)
+	}
+	if len(preview.Entries) != MaxImportEntries {
+		t.Errorf("entries = %d, want %d", len(preview.Entries), MaxImportEntries)
+	}
+}
+
+// importFileWithEntries returns an import file of count empty entries.
+func importFileWithEntries(count int) []byte {
+	entries := strings.TrimSuffix(strings.Repeat("{},", count), ",")
+	return []byte(`{"formatVersion":1,"events":[` + entries + `]}`)
 }
 
 func TestPreviewImportAcceptsAFileWithByteOrderMark(t *testing.T) {

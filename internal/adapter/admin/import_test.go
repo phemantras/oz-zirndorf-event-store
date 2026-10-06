@@ -83,7 +83,7 @@ func TestImportPageOffersFileUploadWithHints(t *testing.T) {
 	assertStatusCode(t, rec, http.StatusOK)
 	assertBodyContains(t, rec,
 		`enctype="multipart/form-data"`, `action="`+importPath+`"`, `type="file"`, `name="`+importFileField+`"`,
-		msgImportPersonalData, msgImportNothingSaved, `href="/v1/import-v1.schema.json"`, `href="`+homePath+`"`,
+		msgImportPersonalData, "Beim Prüfen wird nichts gespeichert.", `href="/v1/import-v1.schema.json"`, `href="`+homePath+`"`,
 	)
 	assertBodyLacks(t, rec, "<table")
 }
@@ -211,6 +211,7 @@ func TestImportRejectsTheWholeFileWithAGermanMessage(t *testing.T) {
 		"no events":         {content: `{"formatVersion":1}`, want: "Die Datei enthält keine Event-Liste (events)."},
 		"no entries":        {content: `{"formatVersion":1,"events":[]}`, want: "Die Event-Liste der Datei ist leer."},
 		"larger than 2 MiB": {content: tooLarge, want: msgImportTooLarge},
+		"more than 150":     {content: `{"formatVersion":1,"events":[` + strings.Repeat("{},", core.MaxImportEntries) + `{}]}`, want: "Die Datei enthält mehr als 150 Events."},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -306,8 +307,8 @@ func importRowTexts(rec *httptest.ResponseRecorder, position string) []string {
 
 // isMarkup reports whether a part between angle brackets is a tag name.
 func isMarkup(text string) bool {
-	return slices.Contains([]string{"td", "/td", "ul", "/ul", "li", "/li", "p", "/p", "a", "/a", "span", "/span"}, text) ||
-		strings.HasPrefix(text, "ul ") || strings.HasPrefix(text, "a ") || strings.HasPrefix(text, "span ")
+	return slices.Contains([]string{"td", "/td", "ul", "/ul", "li", "/li", "p", "/p", "a", "/a", "span", "/span", "label", "/label", "fieldset", "/fieldset", "legend", "/legend"}, text) ||
+		strings.HasPrefix(text, "ul ") || strings.HasPrefix(text, "a ") || strings.HasPrefix(text, "span ") || strings.HasPrefix(text, "input ")
 }
 
 // failingFile fails to read or to close.

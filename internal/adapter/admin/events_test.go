@@ -64,10 +64,12 @@ func (r *memoryEventRepo) Create(_ context.Context, event core.Event) (core.Even
 	return event, nil
 }
 
+// Update keeps the stored import key, like the database does.
 func (r *memoryEventRepo) Update(_ context.Context, event core.Event) (core.Event, error) {
 	if r.writeErr != nil {
 		return core.Event{}, r.writeErr
 	}
+	event.ImportKey = r.events[event.ID].ImportKey
 	r.events[event.ID] = event
 	return event, nil
 }
@@ -103,6 +105,16 @@ func (r *memoryEventRepo) CountByLocation(_ context.Context, locationID string) 
 func (r *memoryEventRepo) UpdateDerived(_ context.Context, id string, derived core.Derived) error {
 	event := r.events[id]
 	event.Period, event.TitleKey = derived.Period, derived.TitleKey
+	r.events[id] = event
+	return nil
+}
+
+func (r *memoryEventRepo) SetImportKey(_ context.Context, id, importKey string) error {
+	event, ok := r.events[id]
+	if !ok {
+		return core.ErrNotFound
+	}
+	event.ImportKey = importKey
 	r.events[id] = event
 	return nil
 }

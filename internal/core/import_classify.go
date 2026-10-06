@@ -110,30 +110,34 @@ type importClassifier struct {
 	locationNames map[string]string
 	// eventsByImportKey holds the stored events that have an import key.
 	eventsByImportKey map[string]Event
+	// eventsByID holds every stored event by ID.
+	eventsByID map[string]Event
 }
 
-// newImportClassifier reads all stored locations and events, archived ones
-// included.
-func (s *ImportService) newImportClassifier(ctx context.Context) (*importClassifier, error) {
-	locations, err := s.locations.List(ctx)
+// newImportClassifier reads all locations and events that repos store,
+// archived ones included.
+func newImportClassifier(ctx context.Context, repos Repos) (*importClassifier, error) {
+	locations, err := repos.Locations.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list locations for import: %w", err)
 	}
-	events, err := s.events.List(ctx)
+	events, err := repos.Events.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list events for import: %w", err)
 	}
 	classifier := &importClassifier{
-		events:            s.events,
+		events:            repos.Events,
 		locationsByKey:    make(map[string]Location, len(locations)),
 		locationNames:     make(map[string]string, len(locations)),
 		eventsByImportKey: make(map[string]Event),
+		eventsByID:        make(map[string]Event, len(events)),
 	}
 	for _, location := range locations {
 		classifier.locationsByKey[NormalizeKey(location.Name)] = location
 		classifier.locationNames[location.ID] = location.Name
 	}
 	for _, event := range events {
+		classifier.eventsByID[event.ID] = event
 		if event.ImportKey != "" {
 			classifier.eventsByImportKey[event.ImportKey] = event
 		}
@@ -357,6 +361,7 @@ func collectNewLocations(entries []ImportEntry, imported []importedEvent) []Impo
 		if entry.Class == ImportClassError || !imported[index].isNewLocation() {
 			continue
 		}
+		entry.NewLocation = true
 		location := imported[index].location
 		first, seen := indexOf[location.NameKey]
 		if !seen {

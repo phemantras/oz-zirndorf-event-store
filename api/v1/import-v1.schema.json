@@ -11,9 +11,10 @@
       "const": 1
     },
     "events": {
-      "description": "The events to import, at least one.",
+      "description": "The events to import, at least one and at most 150.",
       "type": "array",
       "minItems": 1,
+      "maxItems": 150,
       "items": {
         "$ref": "openapi.yaml#/components/schemas/EventInput"
       }
