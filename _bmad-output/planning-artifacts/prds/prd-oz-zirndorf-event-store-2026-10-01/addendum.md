@@ -21,7 +21,7 @@ Dieses Addendum enthält Details, die nicht ins PRD gehören, aber für Architek
 ## 2. Ausgangsmaterial: `zirndorf_events.json` (Stand 2026-09-18)
 
 - Felder heute: `name`, `startTime`, `endTime`, `location { address, latitude, longitude, note? }`, `timetable[] { description, startTime, endTime }`. Metadaten: `generated`, `source_note`, `limitations_note`.
-- 42 Events von Mai 2026 bis Dezember 2027, ein Teil davon schon vorbei. Beim Import der Testsammlung gehören diese also sofort zum Archiv.
+- 41 Events von Mai 2026 bis Dezember 2027 (nach der Überführung in v1: 39, siehe Story 3.4), ein Teil davon schon vorbei. Beim Import der Testsammlung gehören diese also sofort zum Archiv.
 - Lücken gegenüber dem PRD, die das Import-Format v1 schließen muss: Event-Typ, Zeitgenauigkeit (heute `00:00` für „unbekannt“), Ortsgenauigkeit (heute Freitext in `note`), Quelle (heute im Namen), Import-Schlüssel, Ort als Referenz.
 - Die Paul-Metz-Halle kommt rund 20-mal mit identischen Daten vor. Das war der Anlass für das eigene Ort-Objekt.
 
