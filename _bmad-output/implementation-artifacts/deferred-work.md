@@ -78,3 +78,8 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-8-archived-aus-der-leseform-entfernen.md`
   summary: Die Beispiele in `api/v1/openapi.yaml` werden von keinem Test gegen ihre Schemas geprüft.
   evidence: `contract_test.go` prüft nur Feldnamen, Grenzen und `$ref`s; ein Beispiel mit einem gestrichenen Feld wie `archived` bliebe unbemerkt (Seam-Review Story 2.8).
+- source_spec: none
+  summary: Retro Epic 3, C2 (Test-PR „Import-Absicherung“): `sourceField*` in den AD-9-Vertragstest, Admin-Test Commit mit `MaxImportFileBytes` und 150 Entscheidungen ohne 413, Abnahmetest 3.5 mit `RecomputeDerived`/`RecomputeNameKeys` nach dem Import.
+  evidence: Beim Build von C1 per Scope-Prüfung abgetrennt (2026-10-06): C1 und C2 sind laut Retro getrennte PRs und unabhängig auslieferbar; C1 zuerst, weil R1/R2 Daten verfälschen.
+  status: open
+  target: Retro Epic 3, C2 (eigener `bmad-build`-Lauf nach C1)

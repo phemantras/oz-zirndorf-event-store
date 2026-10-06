@@ -57,6 +57,10 @@ type ImportCandidate struct {
 	// Fingerprint is the EventFingerprint of the stored event, empty for an
 	// entry of the file.
 	Fingerprint string
+	// CanOverwrite reports whether the entry may overwrite the stored
+	// event: false when both have an import key and they differ, and for an
+	// entry of the file.
+	CanOverwrite bool
 }
 
 // ImportHintKind says what an import hint points out.
@@ -107,8 +111,9 @@ const (
 type importClassifier struct {
 	events EventRepo
 	// locationsByKey holds the stored locations by NormalizeKey of their
-	// name.
-	locationsByKey map[string]Location
+	// name; more than one share a key where RecomputeNameKeys left a
+	// collision.
+	locationsByKey map[string][]Location
 	// locationNames holds the names of the stored locations by ID.
 	locationNames map[string]string
 	// eventsByImportKey holds the stored events that have an import key.
@@ -130,13 +135,14 @@ func newImportClassifier(ctx context.Context, repos Repos) (*importClassifier, e
 	}
 	classifier := &importClassifier{
 		events:            repos.Events,
-		locationsByKey:    make(map[string]Location, len(locations)),
+		locationsByKey:    make(map[string][]Location, len(locations)),
 		locationNames:     make(map[string]string, len(locations)),
 		eventsByImportKey: make(map[string]Event),
 		eventsByID:        make(map[string]Event, len(events)),
 	}
 	for _, location := range locations {
-		classifier.locationsByKey[NormalizeKey(location.Name)] = location
+		key := NormalizeKey(location.Name)
+		classifier.locationsByKey[key] = append(classifier.locationsByKey[key], location)
 		classifier.locationNames[location.ID] = location.Name
 	}
 	for _, event := range events {
@@ -212,9 +218,10 @@ func (c *importClassifier) classifyAgainstStore(ctx context.Context, entry *Impo
 	for _, candidate := range candidates {
 		// The candidates come without timetable; the stored event read
 		// before has it.
+		stored := c.eventsByID[candidate.ID]
 		addDuplicate(entry, ImportCandidate{
 			EventID: candidate.ID, Title: candidate.Title, StartDate: candidate.Times.StartDate,
-			Fingerprint: EventFingerprint(c.eventsByID[candidate.ID]),
+			Fingerprint: EventFingerprint(stored), CanOverwrite: !hasOtherImportKey(stored, *entry),
 		})
 	}
 	return nil

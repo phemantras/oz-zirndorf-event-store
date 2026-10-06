@@ -369,3 +369,74 @@ func TestImportCommitStaleWhenTheTargetChangedOrTheFormSentNoFingerprint(t *test
 		})
 	}
 }
+
+// otherKeyImportFile has the market with another import key than the
+// stored one, so it is a duplicate suspect of a market it may not
+// overwrite.
+const otherKeyImportFile = `{"formatVersion": 1, "events": [{"title": "Kirchweihmarkt", "type": "market", "importKey": "anderer-schluessel",
+  "location": {"name": "Paul-Metz-Halle"}, "startDate": "2026-10-16", "source": {"description": "Plakat"}}]}`
+
+func TestImportOffersNoOverwriteOfACandidateWithAnotherImportKeyAndSaysWhy(t *testing.T) {
+	ts := newTestServer(t)
+	market := ts.seedKeyedMarket(t)
+
+	rec := ts.postImport(t, importFileField, otherKeyImportFile)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec,
+		`name="class-1" value="duplicateSuspect"`, `name="choice-1" value="skip"`, `name="choice-1" value="create"`,
+		`name="candidates-1" value="`+market.ID+`"`,
+		`name="fingerprints-1" value="`+market.ID+`:`+core.EventFingerprint(market)+`"`,
+	)
+	assertBodyLacks(t, rec, `value="overwrite:`, msgImportChoiceOverwrite)
+	want := []string{
+		"1", "Kirchweihmarkt", "Duplikatverdacht",
+		"Mögliche Duplikate:", "Kirchweihmarkt (16.10.2026)",
+		"Hinweise:", msgImportNoOverwriteHint, "Kirchweihmarkt (16.10.2026)",
+		msgImportChoiceLegend, msgImportChoiceSkip, msgImportChoiceCreate,
+	}
+	if got := importRowTexts(rec, "1"); !slices.Equal(got, want) {
+		t.Errorf("row 1 = %q, want %q", got, want)
+	}
+}
+
+func TestImportCommitNamesWhyAnEntryWithoutProblemsIsErroneous(t *testing.T) {
+	ts := newTestServer(t)
+	market := ts.seedKeyedMarket(t)
+
+	rec := ts.postCommit(t, otherKeyImportFile,
+		decisionFields(entryDecision{
+			position: 1, class: core.ImportClassDuplicateSuspect, candidates: []string{market.ID},
+			choice:       string(core.ImportChoiceOverwrite) + importChoiceValueSeparator + market.ID,
+			fingerprints: fingerprintOf(market),
+		}))
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec, "<li>fehlerhaft: 1</li>", "<tr><td>1</td><td>Kirchweihmarkt</td><td>fehlerhaft: anderer Import-Schlüssel</td></tr>")
+	if got, found := ts.events.events[market.ID]; !found || !reflect.DeepEqual(got, market) {
+		t.Errorf("market = %+v (found %t), want it kept as %+v", got, found, market)
+	}
+}
+
+func TestImportSummaryNamesTheReasonOfAnErrorOnly(t *testing.T) {
+	summary := core.ImportSummary{Results: []core.ImportResult{
+		{Position: 1, Title: "A", Outcome: core.ImportOutcomeError, Reason: core.ImportErrorReasonSharedTarget},
+		{Position: 2, Title: "B", Outcome: core.ImportOutcomeError, Reason: core.ImportErrorReasonOtherImportKey},
+		{Position: 3, Title: "C", Outcome: core.ImportOutcomeError},
+		{Position: 4, Title: "D", Outcome: core.ImportOutcomeStale},
+		{Position: 5, Title: "E", Outcome: core.ImportOutcomeUndecided},
+	}}
+
+	got := importSummaryViewOf(summary).Rows
+
+	want := []importOutcomeRow{
+		{Position: 1, Title: "A", Outcome: "fehlerhaft: gleiches Ziel wie ein anderer Eintrag"},
+		{Position: 2, Title: "B", Outcome: "fehlerhaft: anderer Import-Schlüssel"},
+		{Position: 3, Title: "C", Outcome: "fehlerhaft"},
+		{Position: 4, Title: "D", Outcome: "veraltet"},
+		{Position: 5, Title: "E", Outcome: "ohne Entscheidung"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("rows = %+v, want %+v", got, want)
+	}
+}

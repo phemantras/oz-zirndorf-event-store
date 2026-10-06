@@ -153,6 +153,37 @@ func TestImportNamesEveryProblemByPositionTitleAndField(t *testing.T) {
 	}
 }
 
+func TestImportNamesAControlCharacterAndAnAmbiguousLocation(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	// A collision group RecomputeNameKeys left: the same NormalizeKey of
+	// the name under another name key.
+	twin := hall
+	twin.ID, twin.Name, twin.NameKey = "0192f0b1-0000-7000-9000-999999999999", strings.ToUpper(hall.Name), hall.NameKey+"-2"
+	ts.locations.locations[twin.ID] = twin
+	file := `{"formatVersion": 1, "events": [
+	  {"title": "Kirchweih\u0000markt", "type": "market", "startDate": "2026-10-16", "source": {"description": "Plakat"},
+	   "location": {"name": "Alte Veste", "address": {"street": "Burgweg 1", "postalCode": "90513", "city": "Zirndorf"},
+	                "latitude": 49.4501, "longitude": 10.9376, "precision": "building"}},
+	  {"title": "Flohmarkt", "type": "market", "location": {"name": "paul-metz-halle"}, "startDate": "2026-10-16", "source": {"description": "Plakat"}}]}`
+
+	rec := ts.postImport(t, importFileField, file)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec, "<li>fehlerhaft: 2</li>")
+	// A title with a control character is read as empty, so the row shows
+	// none.
+	wantRows := map[string][]string{
+		"1": {"1", importClassLabels[core.ImportClassError], "Titel: " + msgImportControlCharacter},
+		"2": {"2", "Flohmarkt", importClassLabels[core.ImportClassError], "Ortsname: " + msgImportAmbiguousLocation},
+	}
+	for position, want := range wantRows {
+		if got := importRowTexts(rec, position); !slices.Equal(got, want) {
+			t.Errorf("row %s = %q, want %q", position, got, want)
+		}
+	}
+}
+
 func TestImportLabelsEveryFieldOfTheFormatInGerman(t *testing.T) {
 	fields := []string{
 		core.EventFieldTitle, core.EventFieldType, core.EventFieldLocation, core.EventFieldStartDate,
@@ -182,15 +213,19 @@ func TestImportLabelsEveryFieldOfTheFormatInGerman(t *testing.T) {
 
 func TestImportMessagesFollowTheFormsOfEventAndLocation(t *testing.T) {
 	tests := map[core.FieldError]string{
-		{Field: core.EventFieldType, Problem: core.ProblemUnknownCode}:                         "Bitte einen der angebotenen Event-Typen auswählen.",
-		{Field: "location.latitude", Problem: core.ProblemOutOfRange}:                          "Die Breite muss zwischen −90 und 90 liegen.",
-		{Field: "location.address.city", Problem: core.ProblemTooLong, Limit: 100}:             "Höchstens 100 Zeichen.",
-		{Field: core.TimetableField(4, core.TimetableFieldDate), Problem: core.ProblemMissing}: "Bitte ein Datum angeben.",
-		{Field: core.EventFieldTimetable, Problem: core.ProblemTooMany, Limit: 100}:            "Höchstens 100 Programmpunkte.",
-		{Field: core.EventFieldAllDay, Problem: core.ProblemInvalidFormat}:                     msgImportWrongType,
-		{Field: "location.address", Problem: core.ProblemInvalidFormat}:                        msgImportWrongType,
-		{Field: core.EventFieldNote, Problem: core.ProblemOutOfRange}:                          msgFieldInvalid,
-		{Field: core.EventFieldImportKey, Problem: core.ProblemDuplicateInFile}:                "Diesen Import-Schlüssel tragen mehrere Einträge der Datei.",
+		{Field: core.EventFieldType, Problem: core.ProblemUnknownCode}:                                  "Bitte einen der angebotenen Event-Typen auswählen.",
+		{Field: "location.latitude", Problem: core.ProblemOutOfRange}:                                   "Die Breite muss zwischen −90 und 90 liegen.",
+		{Field: "location.address.city", Problem: core.ProblemTooLong, Limit: 100}:                      "Höchstens 100 Zeichen.",
+		{Field: core.TimetableField(4, core.TimetableFieldDate), Problem: core.ProblemMissing}:          "Bitte ein Datum angeben.",
+		{Field: core.EventFieldTimetable, Problem: core.ProblemTooMany, Limit: 100}:                     "Höchstens 100 Programmpunkte.",
+		{Field: core.EventFieldAllDay, Problem: core.ProblemInvalidFormat}:                              msgImportWrongType,
+		{Field: "location.address", Problem: core.ProblemInvalidFormat}:                                 msgImportWrongType,
+		{Field: core.EventFieldNote, Problem: core.ProblemOutOfRange}:                                   msgFieldInvalid,
+		{Field: core.EventFieldImportKey, Problem: core.ProblemDuplicateInFile}:                         "Diesen Import-Schlüssel tragen mehrere Einträge der Datei.",
+		{Field: "location.name", Problem: core.ProblemAmbiguous}:                                        msgImportAmbiguousLocation,
+		{Field: core.EventFieldTitle, Problem: core.ProblemControlCharacter}:                            msgImportControlCharacter,
+		{Field: "location.address.postalCode", Problem: core.ProblemControlCharacter}:                   msgImportControlCharacter,
+		{Field: core.TimetableField(0, core.TimetableFieldDate), Problem: core.ProblemControlCharacter}: msgImportControlCharacter,
 	}
 	for field, want := range tests {
 		if got := importProblemMessage(field); got != want {
@@ -211,7 +246,9 @@ func TestImportRejectsTheWholeFileWithAGermanMessage(t *testing.T) {
 		"no events":         {content: `{"formatVersion":1}`, want: "Die Datei enthält keine Event-Liste (events)."},
 		"no entries":        {content: `{"formatVersion":1,"events":[]}`, want: "Die Event-Liste der Datei ist leer."},
 		"larger than 2 MiB": {content: tooLarge, want: msgImportTooLarge},
-		"more than 150":     {content: `{"formatVersion":1,"events":[` + strings.Repeat("{},", core.MaxImportEntries) + `{}]}`, want: "Die Datei enthält mehr als 150 Events."},
+		// 0xFC is ü in Windows-1252, as an editor saves a file in ANSI.
+		"not UTF-8":     {content: `{"formatVersion":1,"events":[{"title":"Gr` + "\xfc" + `n"}]}`, want: "Die Datei ist nicht in UTF-8 gespeichert."},
+		"more than 150": {content: `{"formatVersion":1,"events":[` + strings.Repeat("{},", core.MaxImportEntries) + `{}]}`, want: "Die Datei enthält mehr als 150 Events."},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
