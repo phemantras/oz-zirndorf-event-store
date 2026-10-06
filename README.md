@@ -35,7 +35,7 @@ Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourc
 | Ressource | Zweck |
 | --- | --- |
 | `GET /v1/events` | Aktive Events. Ohne Filter: alles, was heute noch stattfindet. Filter: `from`, `to`, `type`. Events am selben Ort tragen denselben Ortsnamen und dieselben Koordinaten und lassen sich so auf der Karte gruppieren. |
-| `GET /v1/archive/events` | Vergangene Events (`effectiveEnd` erreicht), gleiche Filter, gleiche Form mit `archived: true`, absteigend nach `effectiveStart`. Ohne Filter: alle vergangenen Events. |
+| `GET /v1/archive/events` | Vergangene Events (`effectiveEnd` erreicht), gleiche Filter, gleiche Form, absteigend nach `effectiveStart`. Ohne Filter: alle vergangenen Events. |
 | `GET /v1/event-types` | Liste der Event-Typen |
 
 Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`.
@@ -72,33 +72,54 @@ Ein Event aus `GET /v1/events`:
 {
   "data": [
     {
-      "title": "Weihnachtsmarkt 1. Wochenende",
-      "type": "market",
+      "allDay": false,
+      "effectiveEnd": "2026-11-29T20:00:00+01:00",
+      "effectiveStart": "2026-11-27T15:00:00+01:00",
+      "endDate": "2026-11-29",
+      "endPrecision": "exact",
+      "endTime": "20:00",
       "location": {
-        "name": "Zimmermannspark",
-        "address": { "street": "Grillenbergerstraße 12", "postalCode": "90513", "city": "Zirndorf" },
+        "address": {
+          "city": "Zirndorf",
+          "postalCode": "90513",
+          "street": "Grillenbergerstraße 12"
+        },
         "latitude": 49.443426,
         "longitude": 10.963124,
-        "precision": "area",
-        "note": null
+        "name": "Zimmermannspark",
+        "note": null,
+        "precision": "area"
+      },
+      "note": "1. und 2. Adventswochenende",
+      "source": {
+        "description": "Zirndorf Marketing",
+        "url": "https://www.zirndorf-marketing.de/zirndorfer-veranstaltungshoehepunkte-2026"
       },
       "startDate": "2026-11-27",
-      "startTime": "15:00",
-      "endDate": "2026-11-29",
-      "endTime": "20:00",
-      "allDay": false,
       "startPrecision": "exact",
-      "endPrecision": "exact",
-      "source": { "description": "Zirndorf Marketing", "url": "https://www.zirndorf-marketing.de/zirndorfer-veranstaltungshoehepunkte-2026" },
-      "note": "1. und 2. Adventswochenende",
+      "startTime": "15:00",
       "timetable": [
-        { "description": "Eröffnung Christkind, Stadtjugendkapelle", "date": "2026-11-27", "startTime": "15:00", "endTime": "21:00" },
-        { "description": "Marktbetrieb", "date": "2026-11-28", "startTime": "15:00", "endTime": "21:00" },
-        { "description": "Marktbetrieb", "date": "2026-11-29", "startTime": "14:00", "endTime": "20:00" }
+        {
+          "date": "2026-11-27",
+          "description": "Eröffnung Christkind, Stadtjugendkapelle",
+          "endTime": "21:00",
+          "startTime": "15:00"
+        },
+        {
+          "date": "2026-11-28",
+          "description": "Marktbetrieb",
+          "endTime": "21:00",
+          "startTime": "15:00"
+        },
+        {
+          "date": "2026-11-29",
+          "description": "Marktbetrieb",
+          "endTime": "20:00",
+          "startTime": "14:00"
+        }
       ],
-      "effectiveStart": "2026-11-27T15:00:00+01:00",
-      "effectiveEnd": "2026-11-29T20:00:00+01:00",
-      "archived": false
+      "title": "Weihnachtsmarkt 1. Wochenende",
+      "type": "market"
     }
   ]
 }

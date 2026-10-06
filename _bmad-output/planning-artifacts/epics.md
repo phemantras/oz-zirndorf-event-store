@@ -48,7 +48,7 @@ FR-9: Filter nach Zeitraum (`from`/`to`) und einem oder mehreren Event-Typen (OD
 
 FR-10: Jedes ausgelieferte Event enthält alle Angaben aus FR-1 und den vollständigen Ort (Name, Adresse, Koordinaten, Ortsgenauigkeit, Notiz). Zwei Events am selben Ort liefern denselben, eindeutigen Ortsnamen und identische Koordinaten. Zeitgenauigkeit, Ortsgenauigkeit und Quelle sind immer enthalten. Die Antwort enthält keine internen Werte (Kennungen, Import-Schlüssel, Archivierungszeitpunkt, Vergleichsschlüssel).
 
-FR-11: Events gibt es nur als Listen (FR-8, FR-9, FR-12), dazu die Liste aller Event-Typen. Es gibt keinen Einzelabruf und keine eigene Ortsliste; Abnehmer speichern keine Kennungen. Ob ein Event archiviert ist, zeigt `archived`. Maßgeblich ist die Vorbei-Regel: Ein Event ist vorbei, sobald `effectiveEnd <= now` (AD-4). Außerhalb des Umfangs: Schreibzugriff, Einzelabruf, Ortsliste, Volltextsuche, Umkreissuche, Paginierung.
+FR-11: Events gibt es nur als Listen (FR-8, FR-9, FR-12), dazu die Liste aller Event-Typen. Es gibt keinen Einzelabruf und keine eigene Ortsliste; Abnehmer speichern keine Kennungen. Ob ein Event archiviert ist, ergibt sich aus der Liste, in der es steht; ein eigenes Feld gibt es nicht. Maßgeblich ist die Vorbei-Regel: Ein Event ist vorbei, sobald `effectiveEnd <= now` (AD-4). Außerhalb des Umfangs: Schreibzugriff, Einzelabruf, Ortsliste, Volltextsuche, Umkreissuche, Paginierung.
 
 **Archiv**
 
@@ -74,7 +74,7 @@ FR-18: Der Admin entscheidet jeden Duplikatverdacht: überspringen, als neues Ev
 
 NFR-1: CORS offen: Die öffentliche API ist von jeder Herkunft aufrufbar, die Admin-Funktionen sind es nicht.
 
-NFR-2: Versionierung: Inkompatible Änderungen (z. B. an der Event-Typen-Liste oder an Feldnamen) gibt es nur in einer neuen Hauptversion. Neue optionale Felder dürfen in der bestehenden Version ergänzt werden.
+NFR-2: Versionierung: Inkompatible Änderungen (z. B. an der Event-Typen-Liste oder an Feldnamen) gibt es nur in einer neuen Hauptversion. Neue optionale Felder dürfen in der bestehenden Version ergänzt werden. Einmalige Ausnahme: `archived` wurde vor dem ersten Abnehmer aus v1 entfernt (Story 2.8).
 
 NFR-3: Vorlage-taugliche Dokumentation: Die öffentliche API ist vollständig mit OpenAPI beschrieben, mit Filtern, Feldbedeutungen (besonders Zeit- und Ortsgenauigkeit), Fehlerformat und den Konventionen KON-1 bis KON-8. Die Dokumentation ist öffentlich abrufbar.
 
@@ -112,7 +112,7 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 - AD-1: Hexagonal light, genau eine Replika. `internal/core` importiert nur die Standardbibliothek, einzige Ausnahme ist `golang.org/x/text/unicode/norm` (NFC). Adapter importieren nur `core`, nie einander. Nur `cmd/eventstore` kennt alle. Der Kern definiert die Ports `EventRepo`, `LocationRepo`, `TxRunner` und `Clock`.
 - AD-2: Fachlogik nur im Kern. SQL macht nur CRUD und einfache Vergleiche, ohne Views, Trigger, Funktionen, `lower()`/`trim()` oder `now()`. Die aktuelle Zeit kommt als Parameter aus `Clock`. Abgeleitete Werte (`effective*`, `name_key`) berechnet der Kern und speichert sie.
 - AD-6: Schreiben nur über die Kern-Anwendungsfälle `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation`, `CommitImport`, `RecomputeDerived` und `MarkArchived`. Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern und eine Hülle mit `TxRunner`; `CommitImport` ruft nur die Kerne in einer Transaktion auf. `SaveEvent` aus dem Admin ändert `importKey` nie. Admin und Import nutzen denselben Eingabetyp `core.EventInput`. Der Löschschutz für Orte liegt im Kern und zusätzlich im Fremdschlüssel `ON DELETE RESTRICT`.
-- AD-7: Lesen über die Kern-Abfragen `ListActiveEvents`, `ListArchivedEvents` und `ListEventTypes`, nur Listen. `GetEvent` und `ListLocations` nur für den Admin. Sortierung: aktive Events nach `effectiveStart` aufsteigend, Archiv absteigend, bei Gleichstand nach der internen `id`. Orte nach Namen im Kern (ENT-8).
+- AD-7: Lesen über die Kern-Abfragen `ListActiveEvents`, `ListArchivedEvents` und `ListEventTypes`, nur Listen. `GetEvent` und `ListLocations` nur für den Admin. Sortierung: aktive Events nach `effectiveStart` aufsteigend, Archiv absteigend, bei Gleichstand nach der internen `id`. Orte nach Namen im Kern (ENT-8). Den Archivstatus gibt die Public API nicht aus.
 
 **Zeitmodell**
 - AD-3: Gespeichert werden `startDate` (Pflicht), `startTime`, `endDate`, `endTime` (optional) und `allDay` (bool), lokal Europe/Berlin. Eine leere Uhrzeit heißt „unbekannt“. `allDay` gilt für Beginn und Ende gemeinsam, gemischte Angaben und `endTime` ohne `endDate` werden abgelehnt. Die Genauigkeit (`exact`/`dateOnly`/`allDay`) leitet der Kern je Beginn und Ende ab und speichert sie nicht.
@@ -121,13 +121,13 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 - AD-15: Der Ablaufplan ist ein Wertobjekt des Events und wird nur über `SaveEvent` als ganze Liste ersetzt. Jeder Eintrag hat `description`, `date`, `startTime?` und `endTime?`. Einträge liegen in `[effectiveStart, effectiveEnd]`, über Mitternacht nach ENT-3, und ändern `effective*` nicht. Programmpunkt-IDs sind intern und nicht stabil (jedes Speichern ersetzt die Liste).
 
 **Archiv und Bereinigung**
-- AD-5: Es gibt eine Tabelle. Der Archivstatus ergibt sich nur aus AD-4. Das API-Feld `archived` ist abgeleitet. `archivedAt` ist nur eine Markierung für Statistik, die keine Abfrage auswertet. Sie bedeutet „zuletzt als archiviert markiert“: Jedes Speichern und jede ändernde Neuberechnung leert sie, `MarkArchived` setzt sie neu. Events mit „prüfen“ fehlen in beiden Listen.
+- AD-5: Es gibt eine Tabelle. Der Archivstatus ergibt sich nur aus AD-4. Die API gibt ihn nicht als Feld aus; er ergibt sich aus der Liste. `archivedAt` ist nur eine Markierung für Statistik, die keine Abfrage auswertet. Sie bedeutet „zuletzt als archiviert markiert“: Jedes Speichern und jede ändernde Neuberechnung leert sie, `MarkArchived` setzt sie neu. Events mit „prüfen“ fehlen in beiden Listen.
 - AD-13: Der Bereinigungsjob läuft im Programm, einmal beim Start und danach täglich. Über `MarkArchived` setzt er `archivedAt` für `effectiveEnd <= now` und leeres `archivedAt` und ist idempotent.
 
 **API-Vertrag**
 - AD-8: Spec-first. `api/v1/openapi.yaml` (OpenAPI 3.1, Rückfall 3.0.3) ist die einzige Quelle. Das Gerüst erzeugt `oapi-codegen` (`std-http-server` + `strict-server`). Es wird eingecheckt und nie von Hand geändert. v2 bekäme eine eigene Spec und ein eigenes Paket, dazu ein Abschaltdatum in `info` und einen `Sunset`-Header. Öffentlich ausgeliefert werden `/v1/openapi.yaml`, `/v1/import-v1.schema.json` und `/v1/docs` (Redoc), statisch außerhalb der Spec mit offenem CORS.
 - AD-9: Enum-Codes und `EventInput` sind nur in `openapi.yaml` (`components/schemas`) definiert. Das Import-Schema bindet sie per `$ref` ein. Die Kern-Konstanten spiegeln die Codes, und ein CI-Test prüft die Übereinstimmung, auch für Längengrenzen (ENT-24). `formatVersion` ist Pflicht, unbekannte Versionen werden abgelehnt.
-- AD-14: Die Schreibform `EventInput` hat die Felder `title`, `type`, `location` (mitgebrachter Ort, `name` Pflicht, Rest optional), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source` (Objekt, ENT-10), `note`, `timetable` und `importKey`. Die Leseform `Event` ist ein eigenes Schema mit denselben Feldnamen (ohne `importKey`, `location` vollständig), plus `startPrecision`, `endPrecision`, `effectiveStart`, `effectiveEnd` (lokaler Offset Europe/Berlin) und `archived`. Keine Form nach außen enthält interne Werte. `Canonicalize` bringt Eingaben in eine kanonische Form.
+- AD-14: Die Schreibform `EventInput` hat die Felder `title`, `type`, `location` (mitgebrachter Ort, `name` Pflicht, Rest optional), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `source` (Objekt, ENT-10), `note`, `timetable` und `importKey`. Die Leseform `Event` ist ein eigenes Schema mit denselben Feldnamen (ohne `importKey`, `location` vollständig), plus `startPrecision`, `endPrecision`, `effectiveStart` und `effectiveEnd` (lokaler Offset Europe/Berlin), ohne Archivstatus. Keine Form nach außen enthält interne Werte. `Canonicalize` bringt Eingaben in eine kanonische Form.
 - Ressourcen (aus dem Addendum): `GET /v1/events` (`from`, `to`, `type`), `GET /v1/event-types`, `GET /v1/archive/events`.
 
 **Import**
@@ -785,7 +785,7 @@ damit ich zeigen kann, was heute oder in einem bestimmten Zeitraum in Zirndorf l
 
 **Angenommen** die Spec ist um das Schema `Event` erweitert
 **Wenn** ein Abnehmer `GET /v1/events` aufruft
-**Dann** hat jedes Event der Liste die Leseform nach AD-14: `title`, `type`, `location` (vollständig: `name`, `address` als Objekt aus `street`, `postalCode` und `city`, `latitude`, `longitude`, `precision`, `note`), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `startPrecision`, `endPrecision`, `source` (Objekt aus `description` und `url`, ENT-10), `note`, `timetable` (Einträge aus `description`, `date`, `startTime`, `endTime`), `effectiveStart`, `effectiveEnd`, `archived`
+**Dann** hat jedes Event der Liste die Leseform nach AD-14: `title`, `type`, `location` (vollständig: `name`, `address` als Objekt aus `street`, `postalCode` und `city`, `latitude`, `longitude`, `precision`, `note`), `startDate`, `startTime`, `endDate`, `endTime`, `allDay`, `startPrecision`, `endPrecision`, `source` (Objekt aus `description` und `url`, ENT-10), `note`, `timetable` (Einträge aus `description`, `date`, `startTime`, `endTime`), `effectiveStart`, `effectiveEnd`, `archived` (seit Story 2.8 ohne `archived`)
 **Und** Uhrzeiten sind `HH:MM` oder `null`, Datumswerte `YYYY-MM-DD`, `effective*` ISO 8601 mit Offset
 **Und** der Ablaufplan ist chronologisch sortiert
 **Und** kein Event, kein Ort und kein Programmpunkt enthält eine Kennung, einen `importKey`, `archivedAt`, `title_key` oder `name_key`
@@ -861,7 +861,7 @@ damit ich zum Beispiel zurückliegende Feste anzeigen kann und kein Event durch 
 **Und** derselbe Vergleich über die API nutzt `GET /v1/events?from=1900-01-01` und `GET /v1/archive/events`
 
 **Außerdem gilt:**
-- Archivierte Events haben dieselbe Struktur wie aktive, mit `archived: true`.
+- Archivierte Events haben dieselbe Struktur wie aktive, mit `archived: true` (seit Story 2.8 ohne `archived`).
 - Die Liste ist nach `effectiveStart` absteigend sortiert, bei Gleichstand nach `id`.
 
 ### Story 2.5: Tägliche Bereinigung und vollständige Neuberechnung beim Start
@@ -936,7 +936,7 @@ damit der Event Store als Vorlage taugt.
 **Angenommen** die Spec
 **Wenn** ich sie durchsehe
 **Dann** haben alle Endpunkte, Parameter und Felder eine englische Beschreibung und Beispiele
-**Und** Zeitgenauigkeit und Ortsgenauigkeit sind mit Bedeutung und Beispiel erklärt, ebenso die Vorbei-Regel, `effective*`, `archived`, die Standardwerte von `from`/`to` je Endpunkt (ENT-4) und die Regel zu `allDay` (ENT-2)
+**Und** Zeitgenauigkeit und Ortsgenauigkeit sind mit Bedeutung und Beispiel erklärt, ebenso die Vorbei-Regel, `effective*`, `archived` (seit Story 2.8 entfallen), die Standardwerte von `from`/`to` je Endpunkt (ENT-4) und die Regel zu `allDay` (ENT-2)
 **Und** es gibt Beispiele für Fehlerantworten
 
 **Angenommen** eine Fixture mit dem Weihnachtsmarkt 2026 und eine feste `Clock`
@@ -951,7 +951,7 @@ damit der Event Store als Vorlage taugt.
 
 Als Karten-App,
 möchte ich keine Events bekommen, deren Zeitraum nach einer Regeländerung nicht neu berechnet werden konnte,
-damit ich keine Termine mit veraltetem Zeitraum oder falschem `archived` zeige.
+damit ich keine Termine mit veraltetem Zeitraum oder in der falschen Liste zeige.
 
 **Deckt ab:** FR-8, FR-12, AD-5, AD-7, AD-16, ENT-5
 
@@ -981,6 +981,39 @@ damit ich keine Termine mit veraltetem Zeitraum oder falschem `archived` zeige.
 - Die Auswahl trifft der Kern in den Abfragen über dieselbe Menge, die die Admin-Liste liest. Es gibt keine neue Spalte, keine SQL-Änderung, und der Handler filtert nichts (AD-2, AD-7).
 - Nahtstellen: `listMatchingEvents` (2.3, 2.4), der Partitionstest im Kern und der API-Vergleich in `cmd/eventstore` (2.4), die Menge „prüfen“ und ihr Leeren nach dem Commit (2.5b). Das AC aus 2.5 „Antworten vor und nach dem Job identisch“ gilt unverändert.
 - Kern-Tests mit fester `Clock` und Fake-Repos decken beide Listen ab, mit und ohne Filter.
+
+### Story 2.8: `archived` aus der Leseform entfernen
+
+Als Karten-App,
+möchte ich Events ohne ein Feld bekommen, das nur wiederholt, welche Liste ich abgefragt habe,
+damit ich keinen Wert zwischenspeichere, der mit der Zeit falsch wird.
+
+**Deckt ab:** FR-11, FR-12, NFR-2, AD-5, AD-7, AD-14
+
+**Hinweis:** Sprint Change Proposal 2026-10-06 Teil B. Einmalige Ausnahme von NFR-2, weil v1 noch keinen Abnehmer hat. Die Story startet nach dem Merge von Story 3.5.
+
+**Acceptance Criteria:**
+
+**Angenommen** die Spec
+**Wenn** ich das Schema `Event` lese
+**Dann** enthält es kein Feld `archived`, weder in `properties` noch in `required`
+**Und** die Beispiele von `GET /v1/events` und `GET /v1/archive/events` enthalten es nicht
+**Und** der Abschnitt „Time model“ und die Beschreibung von `/v1/archive/events` erklären, dass die Liste angibt, ob ein Event vorbei ist, und dass Abnehmer, die Events zwischenspeichern, `effectiveEnd` gegen die aktuelle Zeit prüfen
+
+**Angenommen** ein aktives und ein vergangenes Event
+**Wenn** ein Abnehmer `GET /v1/events` und `GET /v1/archive/events` aufruft
+**Dann** enthält kein Event der beiden Antworten ein Feld `archived`
+**Und** der Leseform-Test aus Story 2.3 prüft die Schlüsselmenge jeder Ebene ohne `archived`
+
+**Angenommen** eine feste `Clock` und ein gemischter Bestand
+**Wenn** beide Listen verglichen werden (Kern-Test und API-Vergleich aus Story 2.4)
+**Dann** ist jedes Event ohne „prüfen“ weiter in genau einer der beiden Listen
+
+**Außerdem gilt:**
+- `api.gen.go` wird mit `go generate ./...` neu erzeugt, nicht von Hand geändert (AD-8).
+- Der Kern bleibt unverändert: `ListedEvent.Archived` wählt weiter das Archiv aus, die Admin-Liste zeigt weiter „archiviert“. `archived_at` und `MarkArchived` bleiben (AD-5, AD-13).
+- Die Abnahmetests in `cmd/eventstore` folgen der Spec. Das README zeigt `archived` schon seit dem Planungs-PR nicht mehr.
+- Nahtstellen: Leseform-Test und Abbildung in `publicapi/v1` (2.3), Beschreibung des Archivs und API-Vergleich (2.4), „Time model“ in der Spec (2.6, 2.7), Abnahme der Testsammlung in `cmd/eventstore` (3.5).
 
 ## Epic 3: Andreas importiert Recherchen per JSON-Datei
 
