@@ -179,7 +179,9 @@ func TestPreviewImportOnlyHintsAtADuplicateOfAnEntryWithStoredKey(t *testing.T) 
 
 	assertClasses(t, preview, ImportClassUpdate)
 	got := preview.Entries[0]
-	want := []ImportHint{{Kind: ImportHintDuplicate, Candidate: ImportCandidate{EventID: concertID, Title: "Kirchweihmarkt", StartDate: kirchweihFriday}}}
+	want := []ImportHint{{Kind: ImportHintDuplicate, Candidate: ImportCandidate{
+		EventID: concertID, Title: "Kirchweihmarkt", StartDate: kirchweihFriday, Fingerprint: EventFingerprint(duplicate),
+	}}}
 	if got.TargetID != marketID || got.Candidates != nil || !slices.Equal(got.Hints, want) {
 		t.Errorf("entry = %+v, want target %s with hints %v and no candidates", got, marketID, want)
 	}
@@ -196,7 +198,7 @@ func TestPreviewImportSuspectsADuplicateOfAStoredEvent(t *testing.T) {
 	preview := previewWithEvents(t, marshalImport(t, importFile(sameKey, otherDate)), newFakeEventRepo(stored), hall())
 
 	assertClasses(t, preview, ImportClassDuplicateSuspect, ImportClassNew)
-	want := []ImportCandidate{{EventID: marketID, Title: "Kirchweihmarkt", StartDate: kirchweihFriday}}
+	want := []ImportCandidate{{EventID: marketID, Title: "Kirchweihmarkt", StartDate: kirchweihFriday, Fingerprint: EventFingerprint(stored)}}
 	if got := preview.Entries[0]; got.TargetID != "" || !slices.Equal(got.Candidates, want) {
 		t.Errorf("entry = %+v, want candidates %v without target", got, want)
 	}
@@ -272,7 +274,7 @@ func TestPreviewImportKeepsAStoredKeyBeforeAnEqualEntryOfTheFile(t *testing.T) {
 		t.Errorf("hints of entry 1 = %v, want %v", got, wantHints)
 	}
 	wantCandidates := []ImportCandidate{
-		{EventID: marketID, Title: "Kirchweihmarkt", StartDate: kirchweihFriday},
+		{EventID: marketID, Title: "Kirchweihmarkt", StartDate: kirchweihFriday, Fingerprint: EventFingerprint(stored)},
 		{Position: 1, Title: "Kirchweihmarkt", StartDate: kirchweihFriday},
 	}
 	if got := preview.Entries[1].Candidates; !slices.Equal(got, wantCandidates) {
@@ -392,5 +394,37 @@ func TestPreviewImportPassesEventRepositoryFailuresOn(t *testing.T) {
 				t.Errorf("err = %v, want %v", err, errDatabaseDown)
 			}
 		})
+	}
+}
+
+func TestPreviewImportGivesTheFingerprintOfEveryStoredEventAnEntryCouldWrite(t *testing.T) {
+	target := storedMarket(t, marketID, marketKey)
+	target.Timetable = []TimetableEntry{{ID: "1", Description: "Bieranstich", Date: kirchweihFriday}}
+	candidate := storedEvent(t, concertID, "Kirchweihmarkt", EventTimes{StartDate: LocalDate{2026, time.October, 23}})
+	candidate.Timetable = []TimetableEntry{{ID: "2", Description: "Abbau", Date: candidate.Times.StartDate}}
+	keyed := keyedMarketEntry()
+	keyed["note"] = "geändert"
+	suspect := marketEntry()
+	suspect["startDate"] = "2026-10-23"
+	newEntry := concertEntry()
+
+	preview := previewWithEvents(t, marshalImport(t, importFile(keyed, suspect, newEntry)), newFakeEventRepo(target, candidate), hall())
+
+	assertClasses(t, preview, ImportClassUpdate, ImportClassDuplicateSuspect, ImportClassNew)
+	want := []map[string]string{
+		{marketID: EventFingerprint(target)},
+		{concertID: EventFingerprint(candidate)},
+		{},
+	}
+	for index, entry := range preview.Entries {
+		if got := entry.StoredFingerprints(); !reflect.DeepEqual(got, want[index]) {
+			t.Errorf("fingerprints of entry %d = %v, want %v", index+1, got, want[index])
+		}
+	}
+	if got := preview.Entries[0].TargetFingerprint; got != EventFingerprint(target) {
+		t.Errorf("target fingerprint = %q, want the one of the stored target with its timetable", got)
+	}
+	if got := preview.Entries[1].Candidates[0].Fingerprint; got != EventFingerprint(candidate) {
+		t.Errorf("candidate fingerprint = %q, want the one of the stored candidate with its timetable", got)
 	}
 }

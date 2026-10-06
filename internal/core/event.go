@@ -1,7 +1,10 @@
 package core
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/url"
 	"slices"
 	"strings"
@@ -154,8 +157,9 @@ type Event struct {
 	// changes Period (AD-15).
 	Timetable []TimetableEntry
 	// ImportKey is the key of the event in the import source, empty when
-	// it has none. Only the import commit sets it; SaveEvent never writes
-	// it, and the public read form never shows it.
+	// it has none. Only the import commit sets it and only RemoveImportKey
+	// removes it; SaveEvent never writes it, and the public read form never
+	// shows it.
 	ImportKey string
 }
 
@@ -249,6 +253,20 @@ func EventInputOf(event Event) EventInput {
 		Note:       event.Note,
 		Timetable:  timetable,
 	}
+}
+
+// EventFingerprint returns a SHA-256 hash, as hex digits, of what a person
+// or an import entered for a stored event: its canonical input, location ID
+// and sorted timetable included, and its import key. Derived values, the
+// archive mark and the IDs of timetable entries do not count, so the
+// fingerprint changes exactly when a write changed what the event says.
+func EventFingerprint(event Event) string {
+	in := EventInputOf(event)
+	in.ImportKey = event.ImportKey
+	// The Go syntax of the canonical input quotes every text and spells out
+	// every field, so two inputs share it only when they are equal.
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%#v", in.Canonicalize())))
+	return hex.EncodeToString(sum[:])
 }
 
 func dateText(date LocalDate) string {

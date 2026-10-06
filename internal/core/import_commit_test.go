@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 )
@@ -24,7 +25,7 @@ func decisionsOf(preview ImportPreview) []ImportDecision {
 	for _, entry := range preview.Entries {
 		decisions = append(decisions, ImportDecision{
 			Position: entry.Position, Class: entry.Class, TargetID: entry.TargetID, NewLocation: entry.NewLocation,
-			CandidateIDs: entry.StoredCandidateIDs(),
+			CandidateIDs: entry.StoredCandidateIDs(), Fingerprints: entry.StoredFingerprints(),
 		})
 	}
 	return decisions
@@ -502,5 +503,118 @@ func TestCommitImportReportsANewLocationNameTakenOnWriteAsConflict(t *testing.T)
 
 	if !errors.Is(err, ErrConflict) || len(events.created) != 0 {
 		t.Errorf("err = %v, created %d events, want ErrConflict and nothing written", err, len(events.created))
+	}
+}
+
+func TestCommitImportReportsAnEntryWhoseTargetChangedSinceThePreviewAsStale(t *testing.T) {
+	tests := map[string]func(*Event){
+		"start time": func(e *Event) { e.Times.StartTime = &LocalTime{Hour: 10} },
+		"note":       func(e *Event) { e.Note = "im Admin geändert" },
+		"timetable": func(e *Event) {
+			e.Timetable = []TimetableEntry{{ID: "1", Description: "Bieranstich", Date: kirchweihFriday}}
+		},
+		"location": func(e *Event) { e.LocationID = parkID },
+	}
+	for name, change := range tests {
+		t.Run(name, func(t *testing.T) {
+			events := newFakeEventRepo(storedMarket(t, marketID, marketKey))
+			service, _ := newCommitService(events, newFakeLocationRepo(hall(), park()))
+			entry := keyedMarketEntry()
+			entry["title"] = "Kirchweihmarkt 2026"
+			data := marshalImport(t, importFile(entry))
+			decisions := previewAndDecide(t, service, data)
+			edited := events.events[marketID]
+			change(&edited)
+			events.events[marketID] = edited
+
+			summary := committedImport(t, service, data, decisions)
+
+			assertOutcomes(t, summary, ImportOutcomeStale)
+			if len(events.updated) != 0 || !reflect.DeepEqual(events.events[marketID], edited) {
+				t.Errorf("market = %+v, want the edit kept", events.events[marketID])
+			}
+		})
+	}
+}
+
+func TestCommitImportReportsAnEntryWithoutTheFingerprintOfItsTargetAsStale(t *testing.T) {
+	tests := map[string]map[string]string{
+		"missing":   nil,
+		"falsified": {marketID: EventFingerprint(Event{})},
+	}
+	for name, fingerprints := range tests {
+		t.Run(name, func(t *testing.T) {
+			events := newFakeEventRepo(storedMarket(t, marketID, marketKey))
+			service, _ := newCommitService(events, newFakeLocationRepo(hall()))
+			entry := keyedMarketEntry()
+			entry["note"] = "geändert"
+			data := marshalImport(t, importFile(entry))
+			decisions := previewAndDecide(t, service, data)
+			decisions[0].Fingerprints = fingerprints
+
+			summary := committedImport(t, service, data, decisions)
+
+			assertOutcomes(t, summary, ImportOutcomeStale)
+			if len(events.updated) != 0 {
+				t.Error("an entry without the fingerprint of its target was written")
+			}
+		})
+	}
+}
+
+// storedTwinMarkets returns the stored market and a twin at marketID and
+// concertID, both candidates of a market entry without import key.
+func storedTwinMarkets(t *testing.T) *fakeEventRepo {
+	t.Helper()
+	twin := storedMarket(t, concertID, "")
+	twin.Note = "Zwilling"
+	return newFakeEventRepo(storedMarket(t, marketID, ""), twin)
+}
+
+func TestCommitImportReportsAnOverwriteOfAnEventChangedSinceThePreviewAsStale(t *testing.T) {
+	events := storedTwinMarkets(t)
+	service, _ := newCommitService(events, newFakeLocationRepo(hall()))
+	data := suspectFile(t)
+	decisions := previewAndDecide(t, service, data)
+	decisions[0].Choice, decisions[0].OverwriteID = ImportChoiceOverwrite, marketID
+	edited := events.events[marketID]
+	edited.Note = "im Admin geändert"
+	events.events[marketID] = edited
+
+	summary := committedImport(t, service, data, decisions)
+
+	assertOutcomes(t, summary, ImportOutcomeStale)
+	if len(events.updated) != 0 || events.events[marketID].Note != "im Admin geändert" {
+		t.Errorf("market = %+v, want the edit kept", events.events[marketID])
+	}
+}
+
+func TestCommitImportKeepsADecisionWhenACandidateItDoesNotWriteChanged(t *testing.T) {
+	tests := map[ImportChoice]ImportOutcome{
+		ImportChoiceOverwrite: ImportOutcomeUpdated,
+		ImportChoiceCreate:    ImportOutcomeCreated,
+		ImportChoiceSkip:      ImportOutcomeSkipped,
+	}
+	for choice, want := range tests {
+		t.Run(string(choice), func(t *testing.T) {
+			events := storedTwinMarkets(t)
+			service, _ := newCommitService(events, newFakeLocationRepo(hall()))
+			data := suspectFile(t)
+			decisions := previewAndDecide(t, service, data)
+			decisions[0].Choice = choice
+			if choice == ImportChoiceOverwrite {
+				decisions[0].OverwriteID = marketID
+			}
+			twin := events.events[concertID]
+			twin.Note = "im Admin geändert"
+			events.events[concertID] = twin
+
+			summary := committedImport(t, service, data, decisions)
+
+			assertOutcomes(t, summary, want)
+			if events.events[concertID].Note != "im Admin geändert" {
+				t.Error("the changed candidate was written")
+			}
+		})
 	}
 }

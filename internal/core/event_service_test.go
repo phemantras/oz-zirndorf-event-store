@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -1078,4 +1079,54 @@ func TestRecomputeDerivedPassesTransactionFailureOnWithoutMarking(t *testing.T) 
 		t.Errorf("RecomputeDerived = %v, %v, want only %v", failures, err, errDatabaseDown)
 	}
 	assertNeedsReview(t, service, map[string]bool{marketID: false})
+}
+
+func TestRemoveImportKeyClearsOnlyTheImportKeyInOneTransaction(t *testing.T) {
+	market := storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday})
+	market.ImportKey = "kirchweihmarkt-2026"
+	market.Timetable = []TimetableEntry{{ID: "1", Description: "Bieranstich", Date: kirchweihFriday}}
+	events, locations := newFakeEventRepo(market), newFakeLocationRepo(hall())
+	tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+
+	err := NewEventService(tx, events, locations).RemoveImportKey(context.Background(), strings.ToUpper(marketID))
+	if err != nil {
+		t.Fatalf("RemoveImportKey: %v", err)
+	}
+	want := market
+	want.ImportKey = ""
+	if tx.runs != 1 || !slices.Equal(events.importKeysSet, []string{marketID}) || !reflect.DeepEqual(events.events[marketID], want) {
+		t.Errorf("transactions = %d, import keys set = %v, market = %+v, want only its import key removed in one transaction",
+			tx.runs, events.importKeysSet, events.events[marketID])
+	}
+}
+
+func TestRemoveImportKeyReportsAnUnknownEventAsNotFound(t *testing.T) {
+	events := newFakeEventRepo()
+
+	err := newTestEventService(events, hall()).RemoveImportKey(context.Background(), marketID)
+
+	if !errors.Is(err, ErrNotFound) || len(events.importKeysSet) != 0 {
+		t.Errorf("err = %v, import keys set = %v, want ErrNotFound and nothing written", err, events.importKeysSet)
+	}
+}
+
+func TestRemoveImportKeyPassesFailuresOn(t *testing.T) {
+	tests := map[string]func(*fakeTx, *fakeEventRepo){
+		"begin":          func(tx *fakeTx, _ *fakeEventRepo) { tx.beginErr = errDatabaseDown },
+		"get":            func(_ *fakeTx, e *fakeEventRepo) { e.getErr = errDatabaseDown },
+		"set import key": func(_ *fakeTx, e *fakeEventRepo) { e.importKeyErr = errDatabaseDown },
+	}
+	for name, inject := range tests {
+		t.Run(name, func(t *testing.T) {
+			events, locations := newFakeEventRepo(storedMarket(t, marketID, marketKey)), newFakeLocationRepo(hall())
+			tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+			inject(tx, events)
+
+			err := NewEventService(tx, events, locations).RemoveImportKey(context.Background(), marketID)
+
+			if !errors.Is(err, errDatabaseDown) {
+				t.Errorf("err = %v, want %v", err, errDatabaseDown)
+			}
+		})
+	}
 }

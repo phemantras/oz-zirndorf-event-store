@@ -878,8 +878,12 @@ components:
           type: [string, 'null']
           maxLength: 200
           description: |
-            Key of the event in the import source; importing the same key
-            again updates the event instead of creating another one.
+            Key of the event in the import source. A key identifies exactly
+            one event, not a recurring series: importing the same key again
+            updates that event instead of creating another one, even when it
+            is archived. Every date of a series therefore needs a key of its
+            own, such as one per year. The admin shows the key and can
+            remove it; the event is then imported like one without key.
           example: weihnachtsmarkt-2026-advent-1
     EventTypeEntry:
       type: object

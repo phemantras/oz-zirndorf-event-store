@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -150,5 +151,64 @@ func TestEventRepoSetsTheImportKey(t *testing.T) {
 		if err := fixture.repo.SetImportKey(ctx, id, "frei"); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("SetImportKey(%q) err = %v, want ErrNotFound", id, err)
 		}
+	}
+}
+
+// TestEventRepoRemovesTheImportKey sets an empty import key, as
+// RemoveImportKey does: the column is NULL and the key free for another
+// event.
+func TestEventRepoRemovesTheImportKey(t *testing.T) {
+	fixture := newEventFixture(t)
+	ctx := context.Background()
+	keyed := createEvent(t, fixture.repo, minimalEvent(t, fixture.hall.ID))
+	other := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
+	if err := fixture.repo.SetImportKey(ctx, keyed.ID, marketImportKey); err != nil {
+		t.Fatalf("SetImportKey: %v", err)
+	}
+
+	if err := fixture.repo.SetImportKey(ctx, keyed.ID, ""); err != nil {
+		t.Fatalf("SetImportKey empty: %v", err)
+	}
+
+	if got := importKeyOf(t, fixture.pool, keyed.ID); got != nil {
+		t.Errorf("stored import key = %q, want NULL", *got)
+	}
+	if got, err := fixture.repo.Get(ctx, keyed.ID); err != nil || got.ImportKey != "" {
+		t.Errorf("Get = %q, %v, want no import key", got.ImportKey, err)
+	}
+	if err := fixture.repo.SetImportKey(ctx, other.ID, marketImportKey); err != nil {
+		t.Errorf("SetImportKey of the freed key on another event: %v", err)
+	}
+}
+
+// TestRemoveImportKeyRunsAgainstDatabase removes the import key through
+// the core use case and keeps every other field.
+func TestRemoveImportKeyRunsAgainstDatabase(t *testing.T) {
+	fixture := newEventFixture(t)
+	service := core.NewEventService(postgres.NewTxRunner(fixture.pool), fixture.repo, fixture.locations)
+	ctx := context.Background()
+	keyed := createEvent(t, fixture.repo, fullEvent(t, fixture.hall.ID))
+	if err := fixture.repo.SetImportKey(ctx, keyed.ID, marketImportKey); err != nil {
+		t.Fatalf("SetImportKey: %v", err)
+	}
+	before, err := service.GetEvent(ctx, keyed.ID)
+	if err != nil {
+		t.Fatalf("GetEvent: %v", err)
+	}
+
+	if err := service.RemoveImportKey(ctx, keyed.ID); err != nil {
+		t.Fatalf("RemoveImportKey: %v", err)
+	}
+
+	after, err := service.GetEvent(ctx, keyed.ID)
+	if err != nil {
+		t.Fatalf("GetEvent after: %v", err)
+	}
+	before.ImportKey = ""
+	if !reflect.DeepEqual(after, before) {
+		t.Errorf("event after removal = %+v, want %+v", after, before)
+	}
+	if err := service.RemoveImportKey(ctx, unknownEventID); !errors.Is(err, core.ErrNotFound) {
+		t.Errorf("RemoveImportKey(unknown) err = %v, want ErrNotFound", err)
 	}
 }

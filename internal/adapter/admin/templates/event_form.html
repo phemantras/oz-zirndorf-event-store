@@ -80,6 +80,13 @@
     <button type="button" hx-on:click="document.querySelectorAll('.duplicate-warning').forEach(e => e.remove())">Abbrechen</button>
   </p>{{end}}
 </form>
+{{with .ImportKey}}<div class="import-key">
+  <p>{{.Label}}: <code>{{.Key}}</code></p>
+  <p class="hint">{{.Hint}}</p>
+  <form method="post" action="{{.Action}}" hx-post="{{.Action}}" hx-confirm="{{.Confirm}}" hx-target="body">
+    <button type="submit">{{.Button}}</button>
+  </form>
+</div>{{end}}
 {{template "deleteForm" .Delete}}
 <form id="new-location-form" hx-post="/admin/events/new-location" hx-target="#new-location" hx-swap="outerHTML" hx-sync="this:drop" novalidate></form>
 {{end}}

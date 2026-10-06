@@ -17,6 +17,7 @@ type EventUseCases interface {
 	GetEvent(ctx context.Context, id string) (core.Event, error)
 	ListEvents(ctx context.Context, clock core.Clock) ([]core.EventListEntry, error)
 	DeleteEvent(ctx context.Context, id string) error
+	RemoveImportKey(ctx context.Context, id string) error
 }
 
 // Routes of the event pages.
@@ -27,6 +28,12 @@ const (
 	eventPathPattern = eventsPath + "/{" + eventIDParam + "}"
 	// eventDeletePathPattern deletes the event; only POST, never GET.
 	eventDeletePathPattern = eventPathPattern + deletePathSuffix
+	// importKeyRemovePathSuffix turns the path of an event into the path
+	// that removes its import key.
+	importKeyRemovePathSuffix = "/import-key/remove"
+	// eventImportKeyRemovePathPattern removes the import key of the event;
+	// only POST, never GET.
+	eventImportKeyRemovePathPattern = eventPathPattern + importKeyRemovePathSuffix
 	// maxEventFormBytes bounds the event form body. It leaves room for a
 	// form of mostly ASCII text that uses every limit of ENT-24,
 	// URL-encoded, among them 100 timetable entries of 500 characters
@@ -67,6 +74,20 @@ const (
 	// msgConfirmDeleteEvent is the question before deleting, with the title.
 	msgConfirmDeleteEvent = "Event „%s“ wirklich löschen? Der Ablaufplan wird mit gelöscht."
 )
+
+// German texts of the import key of an event.
+const (
+	msgImportKeyLabel  = "Import-Schlüssel"
+	msgImportKeyHint   = "Ein erneuter Import mit diesem Schlüssel aktualisiert dieses Event, auch im Archiv. Ohne Schlüssel behandelt der Import es wie jedes andere Event."
+	msgImportKeyButton = "Import-Schlüssel entfernen"
+	// msgConfirmRemoveImportKey is the question before removing, with the
+	// key.
+	msgConfirmRemoveImportKey = "Import-Schlüssel „%s“ wirklich entfernen? Ein späterer Import mit diesem Schlüssel aktualisiert dieses Event dann nicht mehr."
+)
+
+// logMsgEventImportKeyRemoved is logged with the requested id after the
+// import key of an event was removed, so the removal can be traced.
+const logMsgEventImportKeyRemoved = "admin event import key removed"
 
 // logMsgEventsFailed is logged when an event page fails for a reason the
 // admin cannot show as a field message.
@@ -144,8 +165,21 @@ type eventFormPage struct {
 	TimetableError string
 	// DuplicateWarning is set when the input may duplicate stored events.
 	DuplicateWarning *duplicateWarning
+	// ImportKey is set for an existing event with import key only.
+	ImportKey *importKeyForm
 	// Delete is set for an existing event only.
 	Delete *deleteForm
+}
+
+// importKeyForm shows the import key of an event read-only, with its own
+// form after the edit form to remove it after a confirmation question.
+type importKeyForm struct {
+	Label   string
+	Key     string
+	Hint    string
+	Action  string
+	Confirm string
+	Button  string
 }
 
 // locationChoice is the data of the location select on the event form.
@@ -186,7 +220,9 @@ func (h *handler) showEvent(w http.ResponseWriter, r *http.Request) {
 		h.failEventRequest(w, err)
 		return
 	}
-	h.renderEventForm(w, r, http.StatusOK, eventForm{id: event.ID, storedTitle: event.Title, values: core.EventInputOf(event)})
+	h.renderEventForm(w, r, http.StatusOK, eventForm{
+		id: event.ID, storedTitle: event.Title, importKey: event.ImportKey, values: core.EventInputOf(event),
+	})
 }
 
 func (h *handler) createEvent(w http.ResponseWriter, r *http.Request) {
@@ -256,12 +292,32 @@ func (h *handler) deleteEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// eventForm is what an event form shows: the event's id and stored title
-// (empty for a new one), the values, the messages per field and per
-// timetable entry and the events the values may duplicate.
+// removeImportKey hands the removal of an event's import key to the core
+// and sends the browser back to the event: an event that is no longer there
+// is a German 404 page, never a server error.
+func (h *handler) removeImportKey(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue(eventIDParam)
+	err := h.events.RemoveImportKey(r.Context(), id)
+	switch {
+	case err == nil:
+		h.logger.Info(logMsgEventImportKeyRemoved, logKeyID, id)
+		redirectTo(w, r, eventURL(id), http.StatusNoContent)
+	case errors.Is(err, core.ErrNotFound):
+		h.render(w, notFoundTemplate, http.StatusNotFound, notFoundPage{
+			Message: msgEventGone, BackURL: eventsPath, BackLabel: backToEventList,
+		})
+	default:
+		h.failEventRequest(w, err)
+	}
+}
+
+// eventForm is what an event form shows: the event's id, stored title and
+// stored import key (empty for a new one), the values, the messages per
+// field and per timetable entry and the events the values may duplicate.
 type eventForm struct {
 	id              string
 	storedTitle     string
+	importKey       string
 	values          core.EventInput
 	errors          map[string]string
 	timetableErrors map[int]map[string]string
@@ -270,7 +326,8 @@ type eventForm struct {
 
 // renderEventFormAgain renders the form after a refused save. The delete
 // question of an existing event names its stored title, never the unsaved
-// one, so the stored event is loaded again.
+// one, and the import key is never part of the form, so the stored event
+// is loaded again.
 func (h *handler) renderEventFormAgain(w http.ResponseWriter, r *http.Request, status int, form eventForm) {
 	if form.id != "" {
 		stored, err := h.events.GetEvent(r.Context(), form.id)
@@ -282,7 +339,7 @@ func (h *handler) renderEventFormAgain(w http.ResponseWriter, r *http.Request, s
 			h.failEventRequest(w, fmt.Errorf("load event refused for saving: %w", err))
 			return
 		}
-		form.storedTitle = stored.Title
+		form.storedTitle, form.importKey = stored.Title, stored.ImportKey
 	}
 	h.renderEventForm(w, r, status, form)
 }
@@ -319,6 +376,7 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 			Action:  eventURL(form.id) + deletePathSuffix,
 			Confirm: fmt.Sprintf(msgConfirmDeleteEvent, form.storedTitle),
 		}
+		page.ImportKey = importKeyFormOf(form.id, form.importKey)
 	}
 	for _, eventType := range core.ListEventTypes() {
 		page.Types = append(page.Types, selectOption{
@@ -328,6 +386,22 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 		})
 	}
 	h.render(w, eventFormTemplate, status, page)
+}
+
+// importKeyFormOf returns the import key area of the event with id, nil
+// when it has no import key.
+func importKeyFormOf(id, importKey string) *importKeyForm {
+	if importKey == "" {
+		return nil
+	}
+	return &importKeyForm{
+		Label:   msgImportKeyLabel,
+		Key:     importKey,
+		Hint:    msgImportKeyHint,
+		Action:  eventURL(id) + importKeyRemovePathSuffix,
+		Confirm: fmt.Sprintf(msgConfirmRemoveImportKey, importKey),
+		Button:  msgImportKeyButton,
+	}
 }
 
 // locationChoiceOf returns the location select with selectedID selected and

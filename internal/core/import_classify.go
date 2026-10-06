@@ -54,6 +54,9 @@ type ImportCandidate struct {
 	Position  int
 	Title     string
 	StartDate LocalDate
+	// Fingerprint is the EventFingerprint of the stored event, empty for an
+	// entry of the file.
+	Fingerprint string
 }
 
 // ImportHintKind says what an import hint points out.
@@ -192,6 +195,7 @@ func (c *importClassifier) classifyAgainstStore(ctx context.Context, entry *Impo
 	if target, found := c.eventsByImportKey[normalizeText(entry.Input.ImportKey)]; found {
 		imported.event.ID = target.ID
 		entry.TargetID = target.ID
+		entry.TargetFingerprint = EventFingerprint(target)
 		entry.Changes = changesOf(target, c.locationNames[target.LocationID], imported)
 		entry.Class = ImportClassUnchanged
 		if entry.Changes != nil {
@@ -206,7 +210,12 @@ func (c *importClassifier) classifyAgainstStore(ctx context.Context, entry *Impo
 		return err
 	}
 	for _, candidate := range candidates {
-		addDuplicate(entry, ImportCandidate{EventID: candidate.ID, Title: candidate.Title, StartDate: candidate.Times.StartDate})
+		// The candidates come without timetable; the stored event read
+		// before has it.
+		addDuplicate(entry, ImportCandidate{
+			EventID: candidate.ID, Title: candidate.Title, StartDate: candidate.Times.StartDate,
+			Fingerprint: EventFingerprint(c.eventsByID[candidate.ID]),
+		})
 	}
 	return nil
 }

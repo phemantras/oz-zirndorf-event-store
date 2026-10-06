@@ -149,6 +149,7 @@ func (h *handler) routes() http.Handler {
 	protected.HandleFunc(http.MethodGet+" "+eventPathPattern, h.showEvent)
 	protected.HandleFunc(http.MethodPost+" "+eventPathPattern, h.updateEvent)
 	protected.HandleFunc(http.MethodPost+" "+eventDeletePathPattern, h.deleteEvent)
+	protected.HandleFunc(http.MethodPost+" "+eventImportKeyRemovePathPattern, h.removeImportKey)
 	protected.HandleFunc(http.MethodGet+" "+inlineLocationPath, h.openInlineLocation)
 	protected.HandleFunc(http.MethodGet+" "+inlineLocationCancelPath, h.cancelInlineLocation)
 	protected.HandleFunc(http.MethodPost+" "+inlineLocationPath, h.createInlineLocation)
