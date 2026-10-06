@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 10-06-2026 15:41
+last_updated: 10-06-2026 16:00
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -61,12 +61,12 @@ development_status:
   2-8-archived-aus-der-leseform-entfernen: backlog
   epic-2-retrospective: done
 
-  epic-3: in-progress
+  epic-3: done
   3-1-import-format-v1-und-prüfung-der-datei: done
   3-2-import-vorschau-mit-klassifizierung: done
   3-3-duplikate-entscheiden-und-import-übernehmen: done
   3-4-testsammlung-ins-format-v1-überführen: done
-  3-5-testsammlung-importieren-und-abnahme: review
+  3-5-testsammlung-importieren-und-abnahme: done
   epic-3-retrospective: optional
 action_items:
   - id: "epic-1-retro-item-1-a1-fix-pr-epic-1-nahtstellen-errconflict"
