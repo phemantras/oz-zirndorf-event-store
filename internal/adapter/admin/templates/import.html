@@ -3,7 +3,8 @@
 <p><a href="{{.BackURL}}">Übersicht</a></p>
 <h1>Import prüfen</h1>
 <p>Die Datei muss dem <a href="{{.SchemaURL}}">Import-Format v1</a> entsprechen und darf höchstens 2 MiB groß sein.</p>
-<p class="hint">{{.NothingSaved}}</p>
+{{with .NothingSaved}}<p class="hint">{{.}}</p>
+{{end -}}
 <form method="post" action="{{.Action}}" enctype="multipart/form-data">
   <label for="import-file">JSON-Datei</label>
   <input id="import-file" name="{{.FileField}}" type="file" accept=".json,application/json" aria-describedby="import-file-hint" required>
@@ -15,6 +16,19 @@
 {{with .Summary}}
 <h2>{{.Heading}}</h2>
 <ul class="import-counts">{{range .Counts}}<li>{{.Label}}: {{.Count}}</li>{{end}}<li>{{.LocationsLabel}}: {{.CreatedLocations}}</li></ul>
+{{if .Rows}}
+<p class="hint">{{.NotTakenHint}}</p>
+<table>
+  <thead>
+    <tr><th>Position</th><th>Titel</th><th>Ergebnis</th></tr>
+  </thead>
+  <tbody>
+  {{range .Rows}}
+    <tr><td>{{.Position}}</td><td>{{.Title}}</td><td>{{.Outcome}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}
 <p><a href="{{.EventsURL}}">Zur Event-Liste</a></p>
 {{end}}
 {{with .Result}}
@@ -38,7 +52,7 @@
       {{- if .Changes}}<p>Änderungen:</p><ul>{{range .Changes}}<li>{{.Label}}: <span class="change-value">{{.Old}}</span> → <span class="change-value">{{.New}}</span></li>{{end}}</ul>{{end}}
       {{- if .Candidates}}<p>Mögliche Duplikate:</p><ul>{{range .Candidates}}<li><a href="{{.URL}}">{{.Text}}</a></li>{{end}}</ul>{{end}}
       {{- if .Hints}}<p>Hinweise:</p><ul>{{range .Hints}}<li>{{.Text}}{{with .Link}} <a href="{{.URL}}">{{.Text}}</a>{{end}}</li>{{end}}</ul>{{end}}
-      {{- if .Choices}}<p>{{.ChoiceLegend}}</p><ul>{{range .Choices}}<li><label><input type="radio" name="{{.Name}}" value="{{.Value}}"> {{.Label}}</label></li>{{end}}</ul>{{end -}}
+      {{- if .Choices}}<fieldset><legend>{{.ChoiceLegend}}</legend><ul>{{range .Choices}}<li><label><input type="radio" name="{{.Name}}" value="{{.Value}}"> {{.Label}}</label></li>{{end}}</ul></fieldset>{{end -}}
     </td></tr>
   {{end}}
   </tbody>

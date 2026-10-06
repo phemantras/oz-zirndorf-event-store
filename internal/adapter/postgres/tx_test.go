@@ -13,9 +13,13 @@ import (
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
-// waitingForAdvisoryLock counts the sessions that wait for an advisory
-// lock, as a transaction behind the write lock does.
-const waitingForAdvisoryLock = "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted"
+// waitingForWriteLock counts the sessions that wait for the write lock,
+// whose key $1 pg_locks splits into classid (high 32 bits) and objid (low
+// 32 bits); objsubid 1 marks a lock taken with one bigint key. Waiters on
+// other advisory locks, such as the one of goose, do not count.
+const waitingForWriteLock = `SELECT count(*) FROM pg_locks
+	WHERE locktype = 'advisory' AND NOT granted AND objsubid = 1
+	  AND (classid::bigint << 32) | objid::bigint = $1`
 
 // writeLockHolder is a transaction of TxRunner that holds the write lock
 // until release is called.
@@ -60,14 +64,14 @@ func (h writeLockHolder) finish(t *testing.T) {
 	}
 }
 
-// awaitLockWaiter returns once a session waits for an advisory lock and
+// awaitLockWaiter returns once a session waits for the write lock and
 // fails the test when none does in time.
 func awaitLockWaiter(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	deadline := time.Now().Add(lockWaitTimeout)
 	for time.Now().Before(deadline) {
 		var waiting int
-		if err := pool.QueryRow(context.Background(), waitingForAdvisoryLock).Scan(&waiting); err != nil {
+		if err := pool.QueryRow(context.Background(), waitingForWriteLock, postgres.WriteLockID).Scan(&waiting); err != nil {
 			t.Fatalf("count lock waiters: %v", err)
 		}
 		if waiting > 0 {

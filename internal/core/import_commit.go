@@ -39,6 +39,9 @@ type ImportDecision struct {
 	Choice ImportChoice
 	// OverwriteID is the stored event that ImportChoiceOverwrite replaces.
 	OverwriteID string
+	// CandidateIDs are the stored events the preview showed as candidates
+	// of a duplicate suspect.
+	CandidateIDs []string
 }
 
 // ImportOutcome is what committing an import did with an entry.
@@ -57,8 +60,9 @@ const (
 	// another import key.
 	ImportOutcomeError ImportOutcome = "error"
 	// ImportOutcomeStale is an entry whose class, target or new location
-	// differs from the preview, or whose chosen event to overwrite is no
-	// stored candidate any more.
+	// differs from the preview, whose chosen event to overwrite is no
+	// stored candidate any more, or that has a stored candidate the
+	// preview did not show.
 	ImportOutcomeStale ImportOutcome = "stale"
 )
 
@@ -231,16 +235,24 @@ func planEntry(entry ImportEntry, decision ImportDecision, given bool, storedEve
 }
 
 // isStale reports whether the entry differs from what the preview showed:
-// another class, target or new location, or a chosen event to overwrite
-// that is no stored candidate of the entry any more.
+// another class, target or new location, a chosen event to overwrite that
+// is no stored candidate of the entry any more, or a stored candidate the
+// preview did not show, such as the event a first commit of the same form
+// created.
 func isStale(entry ImportEntry, decision ImportDecision) bool {
 	if decision.Class != entry.Class || decision.TargetID != entry.TargetID || decision.NewLocation != entry.NewLocation {
 		return true
 	}
-	return entry.Class == ImportClassDuplicateSuspect && decision.Choice == ImportChoiceOverwrite &&
-		!slices.ContainsFunc(entry.Candidates, func(candidate ImportCandidate) bool {
-			return candidate.EventID != "" && candidate.EventID == decision.OverwriteID
-		})
+	if entry.Class != ImportClassDuplicateSuspect {
+		return false
+	}
+	storedCandidates := entry.StoredCandidateIDs()
+	if decision.Choice == ImportChoiceOverwrite && !slices.Contains(storedCandidates, decision.OverwriteID) {
+		return true
+	}
+	return slices.ContainsFunc(storedCandidates, func(id string) bool {
+		return !slices.Contains(decision.CandidateIDs, id)
+	})
 }
 
 // hasOtherImportKey reports whether target has an import key and the entry

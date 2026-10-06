@@ -24,6 +24,7 @@ func decisionsOf(preview ImportPreview) []ImportDecision {
 	for _, entry := range preview.Entries {
 		decisions = append(decisions, ImportDecision{
 			Position: entry.Position, Class: entry.Class, TargetID: entry.TargetID, NewLocation: entry.NewLocation,
+			CandidateIDs: entry.StoredCandidateIDs(),
 		})
 	}
 	return decisions
@@ -276,6 +277,9 @@ func TestCommitImportReportsEntriesThatChangedSinceThePreviewAsStale(t *testing.
 			d.Class, d.TargetID = ImportClassDuplicateSuspect, ""
 			d.Choice, d.OverwriteID = ImportChoiceOverwrite, concertID
 		}},
+		"new stored candidate": {[]Event{storedMarket(t, marketID, "")}, func(d *ImportDecision) {
+			d.Choice, d.CandidateIDs = ImportChoiceSkip, nil
+		}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -345,6 +349,37 @@ func TestCommitImportTwiceCreatesNoDuplicate(t *testing.T) {
 	if len(events.created) != 2 || summary.CreatedLocations != 0 {
 		t.Errorf("created %d events, %d locations in the second commit, want only the two of the first", len(events.created), summary.CreatedLocations)
 	}
+}
+
+func TestCommitImportTwiceWithChoiceCreateCreatesNoDuplicate(t *testing.T) {
+	events := newFakeEventRepo(storedMarket(t, marketID, ""))
+	service, _ := newCommitService(events, newFakeLocationRepo(hall()))
+	data := suspectFile(t)
+	decisions := previewAndDecide(t, service, data)
+	decisions[0].Choice = ImportChoiceCreate
+	committedImport(t, service, data, decisions)
+
+	summary := committedImport(t, service, data, decisions)
+
+	assertOutcomes(t, summary, ImportOutcomeStale)
+	if len(events.created) != 1 {
+		t.Errorf("created %d events over both commits, want 1", len(events.created))
+	}
+}
+
+func TestCommitImportKeepsAnEntryWhoseStoredCandidateIsGone(t *testing.T) {
+	events := newFakeEventRepo(storedMarket(t, marketID, ""))
+	service, _ := newCommitService(events, newFakeLocationRepo(hall()))
+	twin := marketEntry()
+	twin["note"] = "zweimal"
+	data := suspectFile(t, marketEntry(), twin)
+	decisions := previewAndDecide(t, service, data)
+	decisions[0].Choice, decisions[1].Choice = ImportChoiceSkip, ImportChoiceCreate
+	delete(events.events, marketID)
+
+	summary := committedImport(t, service, data, decisions)
+
+	assertOutcomes(t, summary, ImportOutcomeSkipped, ImportOutcomeCreated)
 }
 
 func TestCommitImportCountsEveryEntryOnce(t *testing.T) {
@@ -442,6 +477,17 @@ func TestCommitImportRejectsAnUnreadableFile(t *testing.T) {
 	var fileErr *ImportFileError
 	if !errors.As(err, &fileErr) || fileErr.Problem != ImportProblemInvalidJSON || tx.runs != 0 {
 		t.Errorf("err = %v, runs = %d, want an invalid file before any transaction", err, tx.runs)
+	}
+}
+
+func TestCommitImportRejectsAFileWithTooManyEntries(t *testing.T) {
+	service, tx := newCommitService(newFakeEventRepo(), newFakeLocationRepo(hall()))
+
+	_, err := service.CommitImport(context.Background(), importFileWithEntries(MaxImportEntries+1), nil)
+
+	var fileErr *ImportFileError
+	if !errors.As(err, &fileErr) || fileErr.Problem != ImportProblemTooManyEntries || tx.runs != 0 {
+		t.Errorf("err = %v, runs = %d, want too many entries before any transaction", err, tx.runs)
 	}
 }
 

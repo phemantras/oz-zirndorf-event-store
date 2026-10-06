@@ -20,19 +20,33 @@ func (f failingImports) CommitImport(context.Context, []byte, []core.ImportDecis
 // formField is one field of a multipart form, in the order it is sent.
 type formField struct{ name, value string }
 
-// decisionFields returns the fields the commit form sends for the entry at
-// position.
-func decisionFields(position int, class core.ImportClass, targetID string, newLocation bool, choice string) []formField {
+// entryDecision is what the commit form sends for one entry.
+type entryDecision struct {
+	position    int
+	class       core.ImportClass
+	targetID    string
+	newLocation bool
+	choice      string
+	// candidates are the IDs of the stored candidates the preview showed.
+	candidates []string
+}
+
+// decisionFields returns the fields the commit form sends for decision.
+func decisionFields(decision entryDecision) []formField {
+	position := decision.position
 	fields := []formField{
 		{importPositionField, strconv.Itoa(position)},
-		{importDecisionField(importClassFieldPrefix, position), string(class)},
-		{importDecisionField(importTargetFieldPrefix, position), targetID},
+		{importDecisionField(importClassFieldPrefix, position), string(decision.class)},
+		{importDecisionField(importTargetFieldPrefix, position), decision.targetID},
 	}
-	if newLocation {
+	if decision.newLocation {
 		fields = append(fields, formField{importDecisionField(importNewLocationFieldPrefix, position), importNewLocationTrue})
 	}
-	if choice != "" {
-		fields = append(fields, formField{importDecisionField(importChoiceFieldPrefix, position), choice})
+	if decision.candidates != nil {
+		fields = append(fields, formField{importDecisionField(importCandidatesFieldPrefix, position), strings.Join(decision.candidates, importCandidateSeparator)})
+	}
+	if decision.choice != "" {
+		fields = append(fields, formField{importDecisionField(importChoiceFieldPrefix, position), decision.choice})
 	}
 	return fields
 }
@@ -88,10 +102,11 @@ func TestImportPreviewOffersToCommitTheFileWithEveryEntry(t *testing.T) {
 		`name="class-2" value="duplicateSuspect"`, `name="target-2" value=""`,
 		`name="class-3" value="new"`, `name="newLocation-3" value="true"`, `name="newLocation-4" value="true"`,
 		`name="choice-2" value="skip"`, `name="choice-2" value="create"`, `name="choice-2" value="overwrite:`+market.ID+`"`,
+		`name="candidates-2" value="`+market.ID+`"`, "<fieldset><legend>"+msgImportChoiceLegend+"</legend>",
 		msgImportChoiceSkip, msgImportChoiceCreate, msgImportChoiceOverwrite+" Kirchweihmarkt (16.10.2026)",
 		msgImportCommitHint, ">"+msgImportCommitButton+"</button>",
 	)
-	assertBodyLacks(t, rec, "checked", `name="newLocation-1"`, `name="choice-1"`, `name="choice-3"`)
+	assertBodyLacks(t, rec, "checked", `name="newLocation-1"`, `name="choice-1"`, `name="choice-3"`, `name="candidates-1"`, `name="candidates-3"`)
 }
 
 func TestImportOffersNoOverwriteForADuplicateOnlyOfTheFile(t *testing.T) {
@@ -102,7 +117,7 @@ func TestImportOffersNoOverwriteForADuplicateOnlyOfTheFile(t *testing.T) {
 
 	rec := ts.postImport(t, importFileField, `{"formatVersion": 1, "events": [`+entry+`, `+entry+`]}`)
 
-	assertBodyContains(t, rec, `name="choice-1" value="skip"`, `name="choice-2" value="create"`)
+	assertBodyContains(t, rec, `name="choice-1" value="skip"`, `name="choice-2" value="create"`, `name="candidates-1" value=""`)
 	assertBodyLacks(t, rec, `value="overwrite:`, msgImportChoiceOverwrite)
 }
 
@@ -111,19 +126,20 @@ func TestImportCommitStoresTheDecidedEntriesAndShowsTheSummary(t *testing.T) {
 	market := ts.seedKeyedMarket(t)
 
 	rec := ts.postCommit(t, classifiedImportFile,
-		decisionFields(1, core.ImportClassUpdate, market.ID, false, ""),
-		decisionFields(2, core.ImportClassDuplicateSuspect, "", false, string(core.ImportChoiceCreate)),
-		decisionFields(3, core.ImportClassNew, "", true, ""),
-		decisionFields(4, core.ImportClassNew, "", true, ""),
+		decisionFields(entryDecision{position: 1, class: core.ImportClassUpdate, targetID: market.ID}),
+		decisionFields(entryDecision{position: 2, class: core.ImportClassDuplicateSuspect, choice: string(core.ImportChoiceCreate), candidates: []string{market.ID}}),
+		decisionFields(entryDecision{position: 3, class: core.ImportClassNew, newLocation: true}),
+		decisionFields(entryDecision{position: 4, class: core.ImportClassNew, newLocation: true}),
 	)
 
 	assertStatusCode(t, rec, http.StatusOK)
 	assertBodyContains(t, rec,
-		"<h2>"+msgImportCommitted+"</h2>",
+		"<h2>"+msgImportSummaryHeading+"</h2>",
 		"<li>neu angelegt: 3</li>", "<li>aktualisiert: 1</li>", "<li>unverändert: 0</li>", "<li>übersprungen: 0</li>",
 		"<li>ohne Entscheidung: 0</li>", "<li>fehlerhaft: 0</li>", "<li>veraltet: 0</li>", "<li>neu angelegte Orte: 1</li>",
 		`href="`+eventsPath+`"`,
 	)
+	assertBodyLacks(t, rec, msgImportNotTakenHint)
 	if len(ts.events.events) != 4 || len(ts.locations.locations) != 2 || ts.events.events[market.ID].Type != core.EventTypeFestival {
 		t.Errorf("events = %d, locations = %d, want 4 and 2 with the market updated", len(ts.events.events), len(ts.locations.locations))
 	}
@@ -136,7 +152,10 @@ func TestImportCommitOverwritesTheChosenEvent(t *testing.T) {
 	          "startDate": "2026-10-16", "source": {"description": "Plakat"}}]}`
 
 	rec := ts.postCommit(t, file,
-		decisionFields(1, core.ImportClassDuplicateSuspect, "", false, string(core.ImportChoiceOverwrite)+importChoiceValueSeparator+market.ID))
+		decisionFields(entryDecision{
+			position: 1, class: core.ImportClassDuplicateSuspect, candidates: []string{market.ID},
+			choice: string(core.ImportChoiceOverwrite) + importChoiceValueSeparator + market.ID,
+		}))
 
 	assertStatusCode(t, rec, http.StatusOK)
 	assertBodyContains(t, rec, "<li>aktualisiert: 1</li>")
@@ -150,10 +169,10 @@ func TestImportCommitLeavesUndecidedAndChangedEntriesAlone(t *testing.T) {
 	market := ts.seedKeyedMarket(t)
 
 	rec := ts.postCommit(t, classifiedImportFile,
-		decisionFields(1, core.ImportClassNew, "", false, ""),
-		decisionFields(2, core.ImportClassDuplicateSuspect, "", false, "vielleicht"),
+		decisionFields(entryDecision{position: 1, class: core.ImportClassNew}),
+		decisionFields(entryDecision{position: 2, class: core.ImportClassDuplicateSuspect, choice: "vielleicht", candidates: []string{market.ID}}),
 		[]formField{{importPositionField, "drei"}},
-		decisionFields(4, core.ImportClassNew, "", true, ""),
+		decisionFields(entryDecision{position: 4, class: core.ImportClassNew, newLocation: true}),
 	)
 
 	assertStatusCode(t, rec, http.StatusOK)
@@ -163,14 +182,68 @@ func TestImportCommitLeavesUndecidedAndChangedEntriesAlone(t *testing.T) {
 	}
 }
 
+func TestImportCommitListsTheEntriesItDidNotTake(t *testing.T) {
+	ts := newTestServer(t)
+	market := ts.seedKeyedMarket(t)
+
+	rec := ts.postCommit(t, classifiedImportFile,
+		decisionFields(entryDecision{position: 1, class: core.ImportClassNew}),
+		decisionFields(entryDecision{position: 2, class: core.ImportClassDuplicateSuspect, candidates: []string{market.ID}}),
+		decisionFields(entryDecision{position: 3, class: core.ImportClassNew, newLocation: true}),
+		decisionFields(entryDecision{position: 4, class: core.ImportClassNew, newLocation: true}),
+	)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec,
+		"<h2>Ergebnis des Imports</h2>",
+		"<tr><td>1</td><td>Kirchweihmarkt</td><td>veraltet</td></tr>",
+		"<tr><td>2</td><td>Kirchweihmarkt</td><td>ohne Entscheidung</td></tr>",
+		`<p class="hint">`+msgImportNotTakenHint+"</p>",
+	)
+	assertBodyLacks(t, rec, msgImportNothingSaved, "<td>Konzert an der Veste</td>", "<td>neu angelegt</td>")
+}
+
+// The cap on entries keeps the commit form within the parts a multipart
+// form may have; a file of the most entries, each sending every field, is
+// still read.
+func TestImportCommitReadsTheFormOfTheMostEntries(t *testing.T) {
+	ts := newTestServer(t)
+	content := `{"formatVersion":1,"events":[` + strings.TrimSuffix(strings.Repeat("{},", core.MaxImportEntries), ",") + `]}`
+	var decisions [][]formField
+	for position := 1; position <= core.MaxImportEntries; position++ {
+		decisions = append(decisions, decisionFields(entryDecision{
+			position: position, class: core.ImportClassDuplicateSuspect, targetID: "ziel", newLocation: true,
+			candidates: []string{"erster", "zweiter"}, choice: string(core.ImportChoiceSkip),
+		}))
+	}
+
+	rec := ts.postCommit(t, content, decisions...)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec, "<h2>"+msgImportSummaryHeading+"</h2>")
+}
+
+func TestImportCommitStaleWhenTheFormShowedNoStoredCandidate(t *testing.T) {
+	ts := newTestServer(t)
+	ts.seedKeyedMarket(t)
+	file := `{"formatVersion": 1, "events": [{"title": "Kirchweihmarkt", "type": "market", "location": {"name": "Paul-Metz-Halle"},
+	          "startDate": "2026-10-16", "source": {"description": "Plakat"}}]}`
+
+	rec := ts.postCommit(t, file,
+		decisionFields(entryDecision{position: 1, class: core.ImportClassDuplicateSuspect, choice: string(core.ImportChoiceCreate)}))
+
+	assertBodyContains(t, rec, "<li>veraltet: 1</li>", "<li>neu angelegt: 0</li>")
+}
+
 func TestImportCommitFailureSavesNothingAndSaysSo(t *testing.T) {
 	ts := newTestServer(t)
 	ts.handler.imports = failingImports{err: errStorageDown}
 
-	rec := ts.postCommit(t, validImportFile, decisionFields(1, core.ImportClassNew, "", false, ""))
+	rec := ts.postCommit(t, validImportFile, decisionFields(entryDecision{position: 1, class: core.ImportClassNew}))
 
 	assertStatusCode(t, rec, http.StatusInternalServerError)
 	assertBodyContains(t, rec, msgImportCommitFailed, `type="file"`)
+	assertBodyLacks(t, rec, msgImportNothingSaved)
 	if !strings.Contains(ts.logs.String(), logMsgImportCommitFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 		t.Errorf("log %q does not record the failure", ts.logs.String())
 	}

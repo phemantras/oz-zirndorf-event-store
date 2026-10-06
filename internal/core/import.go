@@ -11,11 +11,14 @@ import (
 )
 
 // The import file format v1 (api/v1/import-v1.schema.json): an object with
-// formatVersion 1 and a list of at least one event in the write form
-// EventInput of the OpenAPI spec.
+// formatVersion 1 and a list of at least one and at most MaxImportEntries
+// events in the write form EventInput of the OpenAPI spec.
 const (
 	// MaxImportFileBytes is the largest import file accepted, 2 MiB.
 	MaxImportFileBytes = 2 << 20
+	// MaxImportEntries is the most events an import file may hold, so the
+	// decision form of the admin stays within the parts a form may have.
+	MaxImportEntries = 150
 	// ImportFormatVersion is the only format version this core reads.
 	ImportFormatVersion = 1
 )
@@ -72,6 +75,9 @@ const (
 	ImportProblemMissingEvents ImportFileProblem = "missingEvents"
 	ImportProblemNoEntries     ImportFileProblem = "noEntries"
 	ImportProblemTooLarge      ImportFileProblem = "tooLarge"
+	// ImportProblemTooManyEntries means events holds more than
+	// MaxImportEntries entries.
+	ImportProblemTooManyEntries ImportFileProblem = "tooManyEntries"
 )
 
 // ImportFileError reports that an import file was rejected as a whole. It
@@ -121,6 +127,18 @@ type ImportEntry struct {
 // IsValid reports whether the entry has no problem.
 func (e ImportEntry) IsValid() bool {
 	return len(e.Problems) == 0
+}
+
+// StoredCandidateIDs returns the IDs of the stored events among the
+// candidates, in their order.
+func (e ImportEntry) StoredCandidateIDs() []string {
+	var ids []string
+	for _, candidate := range e.Candidates {
+		if candidate.EventID != "" {
+			ids = append(ids, candidate.EventID)
+		}
+	}
+	return ids
 }
 
 // ImportPreview is the result of checking an import file, one entry per
@@ -239,6 +257,9 @@ func readImportFile(data []byte) ([]json.RawMessage, error) {
 	}
 	if len(entries) == 0 {
 		return nil, &ImportFileError{Problem: ImportProblemNoEntries}
+	}
+	if len(entries) > MaxImportEntries {
+		return nil, &ImportFileError{Problem: ImportProblemTooManyEntries}
 	}
 	return entries, nil
 }

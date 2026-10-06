@@ -12,9 +12,10 @@ import (
 )
 
 // EventRepo is the storage port for events. Only EventService and
-// ImportService call Create, Update, Delete, UpdateDerived and SetImportKey; adapters never get the
-// repository to write past the core (AD-6). Events come with their
-// timetable in no particular order; the core sorts it.
+// ImportService call Create, Update, Delete, UpdateDerived and
+// SetImportKey; adapters never get the repository to write past the core
+// (AD-6). Events come with their timetable in no particular order; the
+// core sorts it.
 type EventRepo interface {
 	// List returns all events in no particular order.
 	List(ctx context.Context) ([]Event, error)

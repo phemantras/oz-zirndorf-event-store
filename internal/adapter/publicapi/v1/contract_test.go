@@ -446,9 +446,14 @@ func TestImportSchemaIsValidJSONAndRefersOnlyToSchemasOfTheSpec(t *testing.T) {
 			t.Errorf("import schema has the key %q", forbidden)
 		}
 	}
-	formatVersion := schema.(map[string]any)["properties"].(map[string]any)["formatVersion"].(map[string]any)["const"]
+	properties := schema.(map[string]any)["properties"].(map[string]any)
+	formatVersion := properties["formatVersion"].(map[string]any)["const"]
 	if formatVersion != float64(core.ImportFormatVersion) {
 		t.Errorf("formatVersion const = %v, core %d", formatVersion, core.ImportFormatVersion)
+	}
+	maxEntries := properties["events"].(map[string]any)[maxItemsKey]
+	if maxEntries != float64(core.MaxImportEntries) {
+		t.Errorf("events maxItems = %v, core %d", maxEntries, core.MaxImportEntries)
 	}
 }
 

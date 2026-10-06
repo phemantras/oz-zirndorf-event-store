@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -48,7 +49,11 @@ const (
 	importClassFieldPrefix       = "class"
 	importTargetFieldPrefix      = "target"
 	importNewLocationFieldPrefix = "newLocation"
+	importCandidatesFieldPrefix  = "candidates"
 	importChoiceFieldPrefix      = "choice"
+	// importCandidateSeparator separates the IDs of the stored candidates
+	// of a duplicate suspect.
+	importCandidateSeparator = " "
 	// importNewLocationTrue marks an entry that brought a new location.
 	importNewLocationTrue = "true"
 	// importChoiceValueSeparator joins the overwrite choice and the ID of
@@ -62,7 +67,7 @@ const (
 // German texts of the import page.
 const (
 	msgImportPersonalData = "Bitte vor dem Import prüfen, dass Titel, Notizen und Quellen keine Privatpersonen, Kontaktpersonen oder Telefonnummern enthalten."
-	msgImportNothingSaved = "Die Datei wird nur geprüft; es wird nichts gespeichert."
+	msgImportNothingSaved = "Beim Prüfen wird nichts gespeichert."
 	msgImportNoFile       = "Bitte eine JSON-Datei auswählen."
 	msgImportTooLarge     = "Die Datei ist größer als 2 MiB."
 	// msgImportUnreadable covers a rejection reason without a specific
@@ -96,12 +101,15 @@ const (
 const (
 	msgImportCommitHint   = "Gespeichert wird erst mit „Import übernehmen“. Ein Duplikatverdacht ohne Entscheidung wird nicht übernommen."
 	msgImportCommitButton = "Import übernehmen"
-	msgImportChoiceLegend = "Entscheidung:"
+	msgImportChoiceLegend = "Entscheidung"
 	msgImportChoiceSkip   = "Überspringen"
 	msgImportChoiceCreate = "Als neues Event anlegen"
 	// msgImportChoiceOverwrite precedes the stored event to overwrite.
-	msgImportChoiceOverwrite  = "Überschreiben:"
-	msgImportCommitted        = "Import übernommen"
+	msgImportChoiceOverwrite = "Überschreiben:"
+	msgImportSummaryHeading  = "Ergebnis des Imports"
+	// msgImportNotTakenHint explains the list of entries a commit did not
+	// take.
+	msgImportNotTakenHint     = "Diese Einträge wurden nicht übernommen. Die Datei erneut prüfen, um sie zu übernehmen."
 	msgImportCommitFailed     = "Der Import ist fehlgeschlagen; es wurde nichts übernommen."
 	msgImportCreatedLocations = "neu angelegte Orte"
 	// importChoiceOverwriteFormat names the stored event to overwrite.
@@ -136,7 +144,11 @@ var importFileMessages = map[core.ImportFileProblem]string{
 	core.ImportProblemMissingEvents:        "Die Datei enthält keine Event-Liste (events).",
 	core.ImportProblemNoEntries:            "Die Event-Liste der Datei ist leer.",
 	core.ImportProblemTooLarge:             msgImportTooLarge,
+	core.ImportProblemTooManyEntries:       fmt.Sprintf(msgImportTooManyEntriesFormat, core.MaxImportEntries),
 }
+
+// msgImportTooManyEntriesFormat names the most events a file may hold.
+const msgImportTooManyEntriesFormat = "Die Datei enthält mehr als %d Events."
 
 // importLocationPrefix starts the import path of every field of the
 // location an entry brings along.
@@ -224,15 +236,29 @@ type importPage struct {
 	Content string
 }
 
-// importSummaryView is what a commit did: the count per outcome and how
-// many locations it created.
+// importSummaryView is what a commit did: the count per outcome, how
+// many locations it created and the entries it did not take for a reason
+// a person should look at.
 type importSummaryView struct {
 	Heading          string
 	Counts           []importCount
 	LocationsLabel   string
 	CreatedLocations int
 	EventsURL        string
+	// NotTakenHint explains Rows, the entries the commit did not take.
+	NotTakenHint string
+	Rows         []importOutcomeRow
 }
+
+// importOutcomeRow is an entry with the German name of its outcome.
+type importOutcomeRow struct {
+	Position int
+	Title    string
+	Outcome  string
+}
+
+// importOutcomesToList are the outcomes the summary lists entry by entry.
+var importOutcomesToList = []core.ImportOutcome{core.ImportOutcomeStale, core.ImportOutcomeUndecided, core.ImportOutcomeError}
 
 // importResult is the checked file: the count per class, one row per
 // entry and the locations the import would create.
@@ -313,7 +339,7 @@ type importNewLocationRow struct {
 const importSchemaURL = "/v1/import-v1.schema.json"
 
 func (h *handler) showImport(w http.ResponseWriter, _ *http.Request) {
-	h.render(w, importTemplate, http.StatusOK, newImportPage())
+	h.render(w, importTemplate, http.StatusOK, newImportCheckPage())
 }
 
 // checkImport reads the uploaded file, has the core check it and shows the
@@ -321,21 +347,21 @@ func (h *handler) showImport(w http.ResponseWriter, _ *http.Request) {
 // too large); nothing is ever stored.
 func (h *handler) checkImport(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxImportRequestBytes)
+	page := newImportCheckPage()
 	data, rejection := readImportUpload(r)
 	if rejection != nil {
-		h.renderUploadRejection(w, rejection)
+		h.renderUploadRejection(w, page, rejection)
 		return
 	}
 	preview, err := h.imports.PreviewImport(r.Context(), data)
 	var fileErr *core.ImportFileError
 	switch {
 	case err == nil:
-		page := newImportPage()
 		page.Result = importResultOf(preview)
 		page.Content = string(data)
 		h.render(w, importTemplate, http.StatusOK, page)
 	case errors.As(err, &fileErr):
-		h.renderImportRejected(w, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
+		h.renderImportRejected(w, page, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
 	default:
 		h.logger.Error(logMsgImportFailed, "error", err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
@@ -348,8 +374,9 @@ func (h *handler) checkImport(w http.ResponseWriter, r *http.Request) {
 // nothing and says so (500).
 func (h *handler) commitImport(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxImportCommitBytes)
+	page := newImportPage()
 	if rejection := parseImportForm(r, maxImportCommitBytes); rejection != nil {
-		h.renderUploadRejection(w, rejection)
+		h.renderUploadRejection(w, page, rejection)
 		return
 	}
 	form := url.Values(r.MultipartForm.Value)
@@ -357,14 +384,13 @@ func (h *handler) commitImport(w http.ResponseWriter, r *http.Request) {
 	var fileErr *core.ImportFileError
 	switch {
 	case err == nil:
-		page := newImportPage()
 		page.Summary = importSummaryViewOf(summary)
 		h.render(w, importTemplate, http.StatusOK, page)
 	case errors.As(err, &fileErr):
-		h.renderImportRejected(w, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
+		h.renderImportRejected(w, page, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
 	default:
 		h.logger.Error(logMsgImportCommitFailed, "error", err)
-		h.renderImportRejected(w, http.StatusInternalServerError, msgImportCommitFailed)
+		h.renderImportRejected(w, page, http.StatusInternalServerError, msgImportCommitFailed)
 	}
 }
 
@@ -386,6 +412,8 @@ func importDecisionsOf(form url.Values) []core.ImportDecision {
 			NewLocation: form.Get(importDecisionField(importNewLocationFieldPrefix, position)) == importNewLocationTrue,
 			Choice:      core.ImportChoice(choice),
 			OverwriteID: overwriteID,
+			// strings.Fields splits at the importCandidateSeparator.
+			CandidateIDs: strings.Fields(form.Get(importDecisionField(importCandidatesFieldPrefix, position))),
 		})
 	}
 	return decisions
@@ -397,16 +425,23 @@ func importDecisionField(prefix string, position int) string {
 	return fmt.Sprintf(importDecisionFieldFormat, prefix, position)
 }
 
-// importSummaryViewOf shows the count of every outcome in display order.
+// importSummaryViewOf shows the count of every outcome in display order
+// and lists the entries that are stale, undecided or erroneous.
 func importSummaryViewOf(summary core.ImportSummary) *importSummaryView {
 	view := &importSummaryView{
-		Heading:          msgImportCommitted,
+		Heading:          msgImportSummaryHeading,
+		NotTakenHint:     msgImportNotTakenHint,
 		LocationsLabel:   msgImportCreatedLocations,
 		CreatedLocations: summary.CreatedLocations,
 		EventsURL:        eventsPath,
 	}
 	for _, outcome := range core.ImportOutcomes() {
 		view.Counts = append(view.Counts, importCount{Label: importOutcomeLabels[outcome], Count: summary.CountOf(outcome)})
+	}
+	for _, result := range summary.Results {
+		if slices.Contains(importOutcomesToList, result.Outcome) {
+			view.Rows = append(view.Rows, importOutcomeRow{Position: result.Position, Title: result.Title, Outcome: importOutcomeLabels[result.Outcome]})
+		}
 	}
 	return view
 }
@@ -458,28 +493,36 @@ func readUploadedFile(file io.ReadCloser) ([]byte, *uploadRejection) {
 	return data, nil
 }
 
-// renderUploadRejection shows the message of rejection on the page, or
-// only its status when it has none.
-func (h *handler) renderUploadRejection(w http.ResponseWriter, rejection *uploadRejection) {
+// renderUploadRejection shows the message of rejection on page, or only
+// its status when it has none.
+func (h *handler) renderUploadRejection(w http.ResponseWriter, page importPage, rejection *uploadRejection) {
 	if rejection.message == "" {
 		http.Error(w, http.StatusText(rejection.status), rejection.status)
 		return
 	}
-	h.renderImportRejected(w, rejection.status, rejection.message)
+	h.renderImportRejected(w, page, rejection.status, rejection.message)
 }
 
-func (h *handler) renderImportRejected(w http.ResponseWriter, status int, message string) {
-	page := newImportPage()
+func (h *handler) renderImportRejected(w http.ResponseWriter, page importPage, status int, message string) {
 	page.FileErrors = []string{message}
 	h.render(w, importTemplate, status, page)
 }
 
+// newImportCheckPage returns the import page for checking a file, which
+// says that checking stores nothing.
+func newImportCheckPage() importPage {
+	page := newImportPage()
+	page.NothingSaved = msgImportNothingSaved
+	return page
+}
+
+// newImportPage returns the import page without the hint that nothing is
+// stored, as a commit shows it.
 func newImportPage() importPage {
 	return importPage{
 		Action:       importPath,
 		FileField:    importFileField,
 		PrivacyHint:  msgImportPersonalData,
-		NothingSaved: msgImportNothingSaved,
 		BackURL:      homePath,
 		SchemaURL:    importSchemaURL,
 		CommitAction: importCommitPath,
@@ -546,8 +589,8 @@ func importRowOf(entry core.ImportEntry) importRow {
 }
 
 // importHiddenFieldsOf returns the fields that send back what the preview
-// showed of an entry: its position, class, target and, if so, that it
-// brings a new location.
+// showed of an entry: its position, class, target, if so that it brings a
+// new location, and for a duplicate suspect its stored candidates.
 func importHiddenFieldsOf(entry core.ImportEntry) []importFormField {
 	fields := []importFormField{
 		{Name: importPositionField, Value: strconv.Itoa(entry.Position)},
@@ -556,6 +599,12 @@ func importHiddenFieldsOf(entry core.ImportEntry) []importFormField {
 	}
 	if entry.NewLocation {
 		fields = append(fields, importFormField{Name: importDecisionField(importNewLocationFieldPrefix, entry.Position), Value: importNewLocationTrue})
+	}
+	if entry.Class == core.ImportClassDuplicateSuspect {
+		fields = append(fields, importFormField{
+			Name:  importDecisionField(importCandidatesFieldPrefix, entry.Position),
+			Value: strings.Join(entry.StoredCandidateIDs(), importCandidateSeparator),
+		})
 	}
 	return fields
 }

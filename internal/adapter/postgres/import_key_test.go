@@ -146,7 +146,7 @@ func TestEventRepoSetsTheImportKey(t *testing.T) {
 	if err := fixture.repo.SetImportKey(ctx, other.ID, marketImportKey); !errors.Is(err, core.ErrConflict) {
 		t.Errorf("taken import key: err = %v, want ErrConflict", err)
 	}
-	for _, id := range []string{unknownLocationID, "keine-uuid"} {
+	for _, id := range []string{unknownEventID, "keine-uuid"} {
 		if err := fixture.repo.SetImportKey(ctx, id, "frei"); !errors.Is(err, core.ErrNotFound) {
 			t.Errorf("SetImportKey(%q) err = %v, want ErrNotFound", id, err)
 		}
