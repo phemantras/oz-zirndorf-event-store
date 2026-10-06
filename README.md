@@ -72,25 +72,54 @@ Ein Event aus `GET /v1/events`:
 {
   "data": [
     {
-      "title": "Zirndorfer Weihnachtsmarkt, 1. Adventswochenende",
-      "type": "market",
-      "startDate": "2026-11-27",
-      "startTime": "17:00",
-      "endDate": "2026-11-29",
-      "endTime": null,
       "allDay": false,
-      "startPrecision": "exact",
-      "endPrecision": "dateOnly",
-      "effectiveStart": "2026-11-27T17:00:00+01:00",
-      "effectiveEnd": "2026-11-30T00:00:00+01:00",
+      "effectiveEnd": "2026-11-29T20:00:00+01:00",
+      "effectiveStart": "2026-11-27T15:00:00+01:00",
+      "endDate": "2026-11-29",
+      "endPrecision": "exact",
+      "endTime": "20:00",
       "location": {
-        "name": "Marktplatz Zirndorf",
-        "address": { "street": "Marktplatz", "postalCode": "90513", "city": "Zirndorf" },
-        "latitude": 49.4427,
-        "longitude": 10.9545,
-        "precision": "street"
+        "address": {
+          "city": "Zirndorf",
+          "postalCode": "90513",
+          "street": "Grillenbergerstraße 12"
+        },
+        "latitude": 49.443426,
+        "longitude": 10.963124,
+        "name": "Zimmermannspark",
+        "note": null,
+        "precision": "area"
       },
-      "source": { "description": "Amtsblatt der Stadt Zirndorf, November 2026", "url": "https://www.zirndorf.de/amtsblatt" }
+      "note": "1. und 2. Adventswochenende",
+      "source": {
+        "description": "Zirndorf Marketing",
+        "url": "https://www.zirndorf-marketing.de/zirndorfer-veranstaltungshoehepunkte-2026"
+      },
+      "startDate": "2026-11-27",
+      "startPrecision": "exact",
+      "startTime": "15:00",
+      "timetable": [
+        {
+          "date": "2026-11-27",
+          "description": "Eröffnung Christkind, Stadtjugendkapelle",
+          "endTime": "21:00",
+          "startTime": "15:00"
+        },
+        {
+          "date": "2026-11-28",
+          "description": "Marktbetrieb",
+          "endTime": "21:00",
+          "startTime": "15:00"
+        },
+        {
+          "date": "2026-11-29",
+          "description": "Marktbetrieb",
+          "endTime": "20:00",
+          "startTime": "14:00"
+        }
+      ],
+      "title": "Weihnachtsmarkt 1. Wochenende",
+      "type": "market"
     }
   ]
 }
