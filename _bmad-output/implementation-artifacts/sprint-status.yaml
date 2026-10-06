@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 10-06-2026 21:57
+last_updated: 10-06-2026 23:30
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -173,7 +173,7 @@ action_items:
       als invalidFormat melden, mehrdeutigen Ortsnamen als Fehler melden, Überschreiben
       bei anderem importKey nicht anbieten und Grund im ImportResult zeigen"
     owner: "Andreas / Dev-Agent"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
   - id: "epic-3-retro-item-15-c2-test-pr-import-absicherung-sourcefiel"
     epic: 3
