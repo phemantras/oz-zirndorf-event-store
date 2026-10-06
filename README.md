@@ -66,7 +66,7 @@ curl -s localhost:8080/v1/openapi.yaml
 # Lesbare Doku im Browser: http://localhost:8080/v1/docs
 ```
 
-Ein Event aus `GET /v1/events` (gekürzt):
+Ein Event aus `GET /v1/events`:
 
 ```json
 {
@@ -97,7 +97,7 @@ Ein Event aus `GET /v1/events` (gekürzt):
 }
 ```
 
-*Die Beispieldaten sind erfunden. Ein Event mit Lücken wie der Weihnachtsmarkt steht als ein Event je zusammenhängendem Block in der API (hier je Adventswochenende), damit er an den Werktagen dazwischen nicht als laufend gilt. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml` mit den Schemas `Event` (Leseform) und `EventInput` (Schreibform für den Import). Die API gibt keine Kennungen aus; ein Ort ist an seinem eindeutigen Namen erkennbar.*
+*Das Beispiel stammt aus dem öffentlichen Bestand in Produktion. Ein Event mit Lücken wie der Weihnachtsmarkt steht als ein Event je zusammenhängendem Block in der API (hier je Adventswochenende), damit er an den Werktagen dazwischen nicht als laufend gilt. Verbindlich ist die OpenAPI-Spec `api/v1/openapi.yaml` mit den Schemas `Event` (Leseform) und `EventInput` (Schreibform für den Import). Die API gibt keine Kennungen aus; ein Ort ist an seinem eindeutigen Namen erkennbar.*
 
 ## Architektur
 
