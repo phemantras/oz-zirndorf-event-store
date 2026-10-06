@@ -112,17 +112,10 @@ type Address struct {
 // Event An event as the public API lists it (read form). It has the field
 // names of EventInput without `importKey`, a complete location, plus
 // the derived fields `startPrecision`, `endPrecision`,
-// `effectiveStart`, `effectiveEnd` and `archived`. It has no
-// identifiers.
+// `effectiveStart` and `effectiveEnd`. It has no identifiers.
 type Event struct {
 	// AllDay Whether the event lasts whole days; then both times are `null`.
 	AllDay bool `json:"allDay"`
-
-	// Archived Whether the event is over, that is its `effectiveEnd` is not
-	// after now. It is `false` for every event in `/v1/events` and
-	// `true` for every event in `/v1/archive/events`, computed at the
-	// moment of the request, independent of any background job.
-	Archived bool `json:"archived"`
 
 	// EffectiveEnd Computed end of the half-open effective period, with the offset
 	// of Europe/Berlin: the end date at the end time; 00:00 of the day

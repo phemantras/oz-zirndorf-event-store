@@ -150,7 +150,7 @@ func TestListArchivedEventsFailureIsAnInternalServerErrorAndLogged(t *testing.T)
 	}
 }
 
-func TestListArchivedEventsDeliversTheReadFormMarkedArchived(t *testing.T) {
+func TestListArchivedEventsDeliversTheReadForm(t *testing.T) {
 	events, _ := coreEventsWithPast(t)
 	rec := serveArchive(t, events, "")
 
@@ -160,10 +160,7 @@ func TestListArchivedEventsDeliversTheReadFormMarkedArchived(t *testing.T) {
 	}
 	for _, event := range listed {
 		assertKeys(t, "event", event, "title", "type", "location", "startDate", "startTime", "endDate", "endTime", "allDay",
-			"startPrecision", "endPrecision", "source", "note", "timetable", "effectiveStart", "effectiveEnd", "archived")
-		if event["archived"] != true {
-			t.Errorf("%v archived = %v, want true", event["title"], event["archived"])
-		}
+			"startPrecision", "endPrecision", "source", "note", "timetable", "effectiveStart", "effectiveEnd")
 	}
 	var body any = map[string]any{"data": anySlice(listed)}
 	for _, key := range keysAtEveryLevel(body) {
