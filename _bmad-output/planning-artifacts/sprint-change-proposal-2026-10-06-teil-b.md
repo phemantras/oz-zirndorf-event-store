@@ -42,7 +42,7 @@ Das Feld liefert dem Abnehmer also keine Information, die er nicht schon hat, un
 - `api/v1/openapi.yaml`: Feld `archived` aus `Event` (`properties`, `required`), aus den Beispielen und aus den Texten („Time model“, `/v1/archive/events`); `api.gen.go` neu erzeugen.
 - `internal/adapter/publicapi/v1/events.go`: Abbildung von `Archived` entfällt; Leseform-Test anpassen.
 - `cmd/eventstore`: Abnahme- und Vergleichstests ohne `archived`.
-- `README.md`: Endpunkt-Tabelle und Beispielantwort.
+- `README.md`: Endpunkt-Tabelle und Beispielantwort sind schon mit diesem Proposal angepasst (Nachtrag bei der Freigabe), ebenso der falsche Hinweis „Die Beispieldaten sind erfunden“ (gleiche Änderung wie Commit 584214c auf dem Branch von Story 3.5).
 - Keine Änderung an Kern, Datenbankschema oder Migrationen. `ListedEvent.Archived` wählt im Kern weiter das Archiv aus, die Admin-Liste zeigt weiter „archiviert“, `archived_at` und `MarkArchived` bleiben.
 
 ## 3. Empfohlener Weg
@@ -162,7 +162,7 @@ Wie bei Story 2.7 bleibt der Wortlaut erhalten und bekommt einen Verweis:
 > **Außerdem gilt:**
 > - `api.gen.go` wird mit `go generate ./...` neu erzeugt, nicht von Hand geändert (AD-8).
 > - Der Kern bleibt unverändert: `ListedEvent.Archived` wählt weiter das Archiv aus, die Admin-Liste zeigt weiter „archiviert“. `archived_at` und `MarkArchived` bleiben (AD-5, AD-13).
-> - README (Endpunkt-Tabelle und Beispielantwort) und die Abnahmetests in `cmd/eventstore` folgen der Spec.
+> - Die Abnahmetests in `cmd/eventstore` folgen der Spec. Das README zeigt `archived` schon seit dem Planungs-PR nicht mehr.
 > - Nahtstellen: Leseform-Test und Abbildung in `publicapi/v1` (2.3), Beschreibung des Archivs und API-Vergleich (2.4), „Time model“ in der Spec (2.6, 2.7), Abnahme der Testsammlung in `cmd/eventstore` (3.5).
 
 ### Sprint-Status (`implementation-artifacts/sprint-status.yaml`)

@@ -1012,7 +1012,7 @@ damit ich keinen Wert zwischenspeichere, der mit der Zeit falsch wird.
 **Außerdem gilt:**
 - `api.gen.go` wird mit `go generate ./...` neu erzeugt, nicht von Hand geändert (AD-8).
 - Der Kern bleibt unverändert: `ListedEvent.Archived` wählt weiter das Archiv aus, die Admin-Liste zeigt weiter „archiviert“. `archived_at` und `MarkArchived` bleiben (AD-5, AD-13).
-- README (Endpunkt-Tabelle und Beispielantwort) und die Abnahmetests in `cmd/eventstore` folgen der Spec.
+- Die Abnahmetests in `cmd/eventstore` folgen der Spec. Das README zeigt `archived` schon seit dem Planungs-PR nicht mehr.
 - Nahtstellen: Leseform-Test und Abbildung in `publicapi/v1` (2.3), Beschreibung des Archivs und API-Vergleich (2.4), „Time model“ in der Spec (2.6, 2.7), Abnahme der Testsammlung in `cmd/eventstore` (3.5).
 
 ## Epic 3: Andreas importiert Recherchen per JSON-Datei

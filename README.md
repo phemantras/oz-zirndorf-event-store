@@ -35,7 +35,7 @@ Die API ist öffentlich, ohne Anmeldung nutzbar und **nur lesend**. Die Ressourc
 | Ressource | Zweck |
 | --- | --- |
 | `GET /v1/events` | Aktive Events. Ohne Filter: alles, was heute noch stattfindet. Filter: `from`, `to`, `type`. Events am selben Ort tragen denselben Ortsnamen und dieselben Koordinaten und lassen sich so auf der Karte gruppieren. |
-| `GET /v1/archive/events` | Vergangene Events (`effectiveEnd` erreicht), gleiche Filter, gleiche Form mit `archived: true`, absteigend nach `effectiveStart`. Ohne Filter: alle vergangenen Events. |
+| `GET /v1/archive/events` | Vergangene Events (`effectiveEnd` erreicht), gleiche Filter, gleiche Form, absteigend nach `effectiveStart`. Ohne Filter: alle vergangenen Events. |
 | `GET /v1/event-types` | Liste der Event-Typen |
 
 Event-Typen: `festival`, `market`, `culture`, `politics`, `club`, `sports`, `other`.
@@ -83,7 +83,6 @@ Ein Event aus `GET /v1/events`:
       "endPrecision": "dateOnly",
       "effectiveStart": "2026-11-27T17:00:00+01:00",
       "effectiveEnd": "2026-11-30T00:00:00+01:00",
-      "archived": false,
       "location": {
         "name": "Marktplatz Zirndorf",
         "address": { "street": "Marktplatz", "postalCode": "90513", "city": "Zirndorf" },
