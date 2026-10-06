@@ -41,9 +41,22 @@ const (
 	// message.
 	msgImportUnreadable = "Die Datei kann nicht gelesen werden."
 	// msgImportWrongType is the message for a value of the wrong JSON type.
-	msgImportWrongType  = "Dieser Wert hat den falschen Typ (zum Beispiel Zahl statt Text) oder ist kein Objekt."
-	statusImportValid   = "gültig"
-	statusImportInvalid = "fehlerhaft"
+	msgImportWrongType = "Dieser Wert hat den falschen Typ (zum Beispiel Zahl statt Text) oder ist kein Objekt."
+	// msgImportDuplicateHint introduces the link to what an entry may
+	// duplicate.
+	msgImportDuplicateHint = "Mögliches Duplikat:"
+	// msgImportEmptyValue shows an empty old or new value of a change.
+	msgImportEmptyValue = "(leer)"
+	msgImportYes        = "ja"
+	msgImportNo         = "nein"
+	// importCandidateFormat names a stored event by title and start date,
+	// importEntryCandidateFormat an entry of the file by its position too.
+	importCandidateFormat      = "%s (%s)"
+	importEntryCandidateFormat = "Position %d: " + importCandidateFormat
+	// importEntryAnchorFormat links the row of an entry on the page.
+	importEntryAnchorFormat = "#import-entry-%d"
+	// importPositionSeparator joins the positions of a new location.
+	importPositionSeparator = ", "
 	// importReasonFormat joins the German field name and the message.
 	importReasonFormat = "%s: %s"
 	// importEntryLabelFormat names a timetable entry by its position.
@@ -111,7 +124,24 @@ var timetableFieldLabels = map[string]string{
 // importOnlyMessages are the German messages for problems only the import
 // reports.
 var importOnlyMessages = map[core.FieldError]string{
-	{Field: core.EventFieldLocation, Problem: core.ProblemMissing}: "Bitte zu jedem Event einen Ort mit Namen angeben.",
+	{Field: core.EventFieldLocation, Problem: core.ProblemMissing}:          "Bitte zu jedem Event einen Ort mit Namen angeben.",
+	{Field: core.EventFieldImportKey, Problem: core.ProblemDuplicateInFile}: "Diesen Import-Schlüssel tragen mehrere Einträge der Datei.",
+}
+
+// importClassLabels are the German names of the import classes.
+var importClassLabels = map[core.ImportClass]string{
+	core.ImportClassNew:              "neu",
+	core.ImportClassUpdate:           "Aktualisierung",
+	core.ImportClassUnchanged:        "unverändert",
+	core.ImportClassDuplicateSuspect: "Duplikatverdacht",
+	core.ImportClassError:            "fehlerhaft",
+}
+
+// importLocationHintFormats are the German texts of the location hints,
+// which quote the German name of the differing field.
+var importLocationHintFormats = map[core.ImportHintKind]string{
+	core.ImportHintLocationDiffers:    "Angabe „%s“ weicht vom vorhandenen Ort ab; der Ort bleibt unverändert.",
+	core.ImportHintNewLocationDiffers: "Angabe „%s“ weicht von der ersten Angabe dieses neuen Orts ab; es gilt die erste.",
 }
 
 // importPage is the data of the import page: the upload form, and after an
@@ -127,19 +157,60 @@ type importPage struct {
 	SchemaURL    string
 }
 
-// importResult is the checked file: the counts and one row per entry.
+// importResult is the checked file: the count per class, one row per
+// entry and the locations the import would create.
 type importResult struct {
-	ValidCount int
-	ErrorCount int
-	Rows       []importRow
+	Counts       []importCount
+	Rows         []importRow
+	NewLocations []importNewLocationRow
+}
+
+// importCount is the number of entries of one class.
+type importCount struct {
+	Label string
+	Count int
 }
 
 type importRow struct {
 	Position int
 	Title    string
-	Status   string
+	// Status is the German name of the class.
+	Status string
 	// Reasons name each rejected field as "<German field name>: <message>".
 	Reasons []string
+	// TargetURL is the edit page of the event an update or unchanged entry
+	// refers to.
+	TargetURL  string
+	Changes    []importChangeRow
+	Candidates []importLink
+	Hints      []importHintRow
+}
+
+// importLink is a link with its text.
+type importLink struct {
+	Text string
+	URL  string
+}
+
+// importChangeRow is a changed field with its old and new value in German.
+type importChangeRow struct {
+	Label string
+	Old   string
+	New   string
+}
+
+// importHintRow is the German text of a hint and the link it names, if
+// any.
+type importHintRow struct {
+	Text string
+	Link *importLink
+}
+
+// importNewLocationRow is a location the import would create and the
+// positions of the entries bringing it.
+type importNewLocationRow struct {
+	Name      string
+	Positions string
 }
 
 // importSchemaURL is where the public API serves the import format.
@@ -248,18 +319,88 @@ func importFileMessage(problem core.ImportFileProblem) string {
 }
 
 func importResultOf(preview core.ImportPreview) *importResult {
-	result := &importResult{ValidCount: preview.ValidCount(), ErrorCount: preview.ErrorCount()}
+	result := &importResult{}
+	for _, class := range core.ImportClasses() {
+		result.Counts = append(result.Counts, importCount{Label: importClassLabels[class], Count: preview.CountOf(class)})
+	}
 	for _, entry := range preview.Entries {
-		row := importRow{Position: entry.Position, Title: entry.Title, Status: statusImportValid}
-		if !entry.IsValid() {
-			row.Status = statusImportInvalid
+		result.Rows = append(result.Rows, importRowOf(entry))
+	}
+	for _, location := range preview.NewLocations {
+		positions := make([]string, 0, len(location.Positions))
+		for _, position := range location.Positions {
+			positions = append(positions, strconv.Itoa(position))
 		}
-		for _, problem := range entry.Problems {
-			row.Reasons = append(row.Reasons, fmt.Sprintf(importReasonFormat, importFieldLabel(problem.Field), importProblemMessage(problem)))
-		}
-		result.Rows = append(result.Rows, row)
+		result.NewLocations = append(result.NewLocations, importNewLocationRow{
+			Name: location.Name, Positions: strings.Join(positions, importPositionSeparator),
+		})
 	}
 	return result
+}
+
+// importRowOf shows an entry with its class and what explains it.
+func importRowOf(entry core.ImportEntry) importRow {
+	row := importRow{Position: entry.Position, Title: entry.Title, Status: importClassLabels[entry.Class]}
+	for _, problem := range entry.Problems {
+		row.Reasons = append(row.Reasons, fmt.Sprintf(importReasonFormat, importFieldLabel(problem.Field), importProblemMessage(problem)))
+	}
+	if entry.TargetID != "" {
+		row.TargetURL = eventURL(entry.TargetID)
+	}
+	for _, change := range entry.Changes {
+		row.Changes = append(row.Changes, importChangeRow{
+			Label: importFieldLabel(change.Field),
+			Old:   importChangeValue(change.Field, change.Old),
+			New:   importChangeValue(change.Field, change.New),
+		})
+	}
+	for _, candidate := range entry.Candidates {
+		row.Candidates = append(row.Candidates, importCandidateLink(candidate))
+	}
+	for _, hint := range entry.Hints {
+		row.Hints = append(row.Hints, importHintRowOf(hint))
+	}
+	return row
+}
+
+// importChangeValue shows a value of a changed field in German: an event
+// type by its label, all-day as ja or nein, an empty value as (leer).
+func importChangeValue(field, value string) string {
+	switch {
+	case value == "":
+		return msgImportEmptyValue
+	case field == core.EventFieldAllDay && value == strconv.FormatBool(true):
+		return msgImportYes
+	case field == core.EventFieldAllDay:
+		return msgImportNo
+	}
+	if label, ok := eventTypeLabels[core.EventType(value)]; ok && field == core.EventFieldType {
+		return label
+	}
+	return value
+}
+
+// importCandidateLink links a stored event to its edit page and an entry
+// of the file to its row.
+func importCandidateLink(candidate core.ImportCandidate) importLink {
+	date := formatMoment(candidate.StartDate, nil, false)
+	if candidate.EventID != "" {
+		return importLink{Text: fmt.Sprintf(importCandidateFormat, candidate.Title, date), URL: eventURL(candidate.EventID)}
+	}
+	return importLink{
+		Text: fmt.Sprintf(importEntryCandidateFormat, candidate.Position, candidate.Title, date),
+		URL:  fmt.Sprintf(importEntryAnchorFormat, candidate.Position),
+	}
+}
+
+// importHintRowOf shows a hint in German: a duplicate with its link, a
+// location hint with the German name of its field.
+func importHintRowOf(hint core.ImportHint) importHintRow {
+	if hint.Kind == core.ImportHintDuplicate {
+		link := importCandidateLink(hint.Candidate)
+		return importHintRow{Text: msgImportDuplicateHint, Link: &link}
+	}
+	return importHintRow{Text: fmt.Sprintf(importLocationHintFormats[hint.Kind], importFieldLabel(hint.Field))}
 }
 
 // importFieldLabel returns the German name of a field path; a timetable

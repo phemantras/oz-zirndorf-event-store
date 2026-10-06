@@ -153,6 +153,10 @@ type Event struct {
 	// Timetable is sorted chronologically and lies within Period; it never
 	// changes Period (AD-15).
 	Timetable []TimetableEntry
+	// ImportKey is the key of the event in the import source, empty when
+	// it has none. Only the import commit sets it; SaveEvent never writes
+	// it, and the public read form never shows it.
+	ImportKey string
 }
 
 // EventInput is an event as entered by a person or an import. Dates arrive

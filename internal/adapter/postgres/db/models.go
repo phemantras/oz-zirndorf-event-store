@@ -25,6 +25,7 @@ type Event struct {
 	EffectiveEnd      pgtype.Timestamptz
 	TitleKey          string
 	ArchivedAt        pgtype.Timestamptz
+	ImportKey         pgtype.Text
 }
 
 type Location struct {

@@ -319,9 +319,10 @@ func eventFromRow(row db.GetEventRow) core.Event {
 			EndTime:   localTimeOf(row.EndTime),
 			AllDay:    row.AllDay,
 		},
-		Source: core.EventSource{Description: row.SourceDescription, URL: row.SourceUrl.String},
-		Note:   row.Note.String,
-		Period: core.Period{Start: row.EffectiveStart.Time, End: row.EffectiveEnd.Time},
+		Source:    core.EventSource{Description: row.SourceDescription, URL: row.SourceUrl.String},
+		Note:      row.Note.String,
+		Period:    core.Period{Start: row.EffectiveStart.Time, End: row.EffectiveEnd.Time},
+		ImportKey: row.ImportKey.String,
 	}
 }
 

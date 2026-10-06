@@ -41,3 +41,43 @@ func TestOnlyMarkingAndUpdatingUseTheArchiveMark(t *testing.T) {
 		t.Errorf("queries using %s = %v, want %v", archiveMarkColumn, using, want)
 	}
 }
+
+// importKeyColumn is the column only the import commit sets (Story 3.3).
+const importKeyColumn = "import_key"
+
+// adminEventWrites are the queries behind creating and updating an event
+// in the admin.
+var adminEventWrites = []string{"CreateEvent", "UpdateEvent"}
+
+// returningClause starts the part of a writing query that only reads.
+const returningClause = "RETURNING"
+
+// TestAdminEventWritesLeaveTheImportKeyAlone reads the queries without a
+// database: CreateEvent and UpdateEvent may return import_key but never
+// write it, so saving in the admin keeps it.
+func TestAdminEventWritesLeaveTheImportKeyAlone(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("queries", "events.sql"))
+	if err != nil {
+		t.Fatalf("read event queries: %v", err)
+	}
+	found := map[string]bool{}
+	for _, query := range strings.Split(string(content), queryNamePrefix)[1:] {
+		name, _, _ := strings.Cut(query, " ")
+		if !slices.Contains(adminEventWrites, name) {
+			continue
+		}
+		found[name] = true
+		writing, reading, _ := strings.Cut(query, returningClause)
+		if strings.Contains(writing, importKeyColumn) {
+			t.Errorf("query %s writes %s", name, importKeyColumn)
+		}
+		if !strings.Contains(reading, importKeyColumn) {
+			t.Errorf("query %s does not return %s", name, importKeyColumn)
+		}
+	}
+	for _, name := range adminEventWrites {
+		if !found[name] {
+			t.Errorf("query %s not found", name)
+		}
+	}
+}

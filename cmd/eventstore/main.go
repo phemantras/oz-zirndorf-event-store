@@ -85,7 +85,8 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	locationRepo := postgres.NewLocationRepo(pool)
 	tx := postgres.NewTxRunner(pool)
 	locations := core.NewLocationService(tx, locationRepo)
-	events := core.NewEventService(tx, postgres.NewEventRepo(pool), locationRepo)
+	eventRepo := postgres.NewEventRepo(pool)
+	events := core.NewEventService(tx, eventRepo, locationRepo)
 	if err := recomputeDerived(ctx, locations, events, logger); err != nil {
 		return err
 	}
@@ -99,7 +100,7 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	}
 	// The admin shares both services with the recomputation, so it sees
 	// their review marks.
-	cases := useCases{locations: locations, events: events, imports: core.NewImportService(locationRepo)}
+	cases := useCases{locations: locations, events: events, imports: core.NewImportService(locationRepo, eventRepo)}
 	return serve(ctx, newServer(pool, logger, newRouteHandlers(cfg, logger, cases)), listener, logger)
 }
 

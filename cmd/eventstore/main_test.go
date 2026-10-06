@@ -546,8 +546,8 @@ func assertListsServedWithSession(t *testing.T, baseURL string) {
 		}
 	}
 	body, contentType := importUploadBody(t, importFileWithNewLocation)
-	if status, page := session.upload(t, adminImportPath, contentType, body); status != http.StatusOK || !strings.Contains(page, wantOneValidEntry) {
-		t.Errorf("POST %s with session: status = %d, want %d with %q", adminImportPath, status, http.StatusOK, wantOneValidEntry)
+	if status, page := session.upload(t, adminImportPath, contentType, body); status != http.StatusOK || !strings.Contains(page, wantOneNewEntry) {
+		t.Errorf("POST %s with session: status = %d, want %d with %q", adminImportPath, status, http.StatusOK, wantOneNewEntry)
 	}
 }
 
@@ -767,11 +767,11 @@ func (emptyEvents) ListArchivedEvents(context.Context, core.Clock, core.EventFil
 }
 
 // emptyImports stands in for the import use cases where no database is
-// available: every file holds one valid entry.
+// available: every file holds one new entry.
 type emptyImports struct{}
 
 func (emptyImports) PreviewImport(context.Context, []byte) (core.ImportPreview, error) {
-	return core.ImportPreview{Entries: []core.ImportEntry{{Position: 1, Title: importedTitle}}}, nil
+	return core.ImportPreview{Entries: []core.ImportEntry{{Position: 1, Title: importedTitle, Class: core.ImportClassNew}}}, nil
 }
 
 // importedTitle is the title of the entry emptyImports finds in any file.
@@ -896,5 +896,5 @@ const importFileWithNewLocation = `{"formatVersion":1,"events":[{
 		"latitude":49.4501,"longitude":10.9376,"precision":"building"},
 	"source":{"description":"Plakat"}}]}`
 
-// wantOneValidEntry is how the import page counts importFileWithNewLocation.
-const wantOneValidEntry = "1 gültig"
+// wantOneNewEntry is how the import page counts importFileWithNewLocation.
+const wantOneNewEntry = "neu: 1"
