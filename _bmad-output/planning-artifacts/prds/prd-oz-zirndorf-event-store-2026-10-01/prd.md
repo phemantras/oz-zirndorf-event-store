@@ -166,7 +166,7 @@ Die öffentliche API liefert Events ausschließlich als Liste (FR-8, FR-9, FR-12
 
 **Konsequenzen (testbar):**
 - Es gibt keinen Abruf eines einzelnen Events und keine eigene Liste der Orte. Orte erscheinen nur eingebettet im Event.
-- Ob ein Event archiviert ist, erkennt der Abnehmer an `archived`. Maßgeblich ist die Vorbei-Regel, nicht der Zeitpunkt der täglichen Bereinigung.
+- Ob ein Event archiviert ist, ergibt sich aus der Liste, in der es steht: reguläre Abfrage (FR-8) oder Archiv-Zugriff (FR-12). Ein eigenes Feld dafür gibt es nicht; wer Events zwischenspeichert, prüft `effectiveEnd`. Maßgeblich ist die Vorbei-Regel, nicht der Zeitpunkt der täglichen Bereinigung.
 
 **Out of Scope (gesamte Lese-API):**
 - Schreibzugriff jeder Art über die öffentliche API.
@@ -252,7 +252,7 @@ Der Admin entscheidet für jeden Duplikatverdacht: überspringen, als neues Even
 ## 5. Querschnittliche NFRs
 
 - **NFR-1 CORS offen:** Die öffentliche API ist per CORS von jeder Herkunft aus aufrufbar. Die Admin-Funktionen sind es nicht.
-- **NFR-2 Versionierung:** Die öffentliche API ist versioniert (Umsetzung: KON-1, KON-2). Inkompatible Änderungen, z. B. an der Event-Typen-Liste oder an Feldnamen, gibt es nur in einer neuen Version. Rückwärtskompatible Ergänzungen (neue optionale Felder) dürfen in der bestehenden Version erfolgen.
+- **NFR-2 Versionierung:** Die öffentliche API ist versioniert (Umsetzung: KON-1, KON-2). Inkompatible Änderungen, z. B. an der Event-Typen-Liste oder an Feldnamen, gibt es nur in einer neuen Version. Rückwärtskompatible Ergänzungen (neue optionale Felder) dürfen in der bestehenden Version erfolgen. Einmalige Ausnahme: Das Feld `archived` wurde aus v1 entfernt, bevor die API einen Abnehmer hatte (Sprint Change Proposal 2026-10-06 Teil B, Story 2.8).
 - **NFR-3 Vorlage-taugliche Dokumentation:** Die öffentliche API ist vollständig mit OpenAPI beschrieben, einschließlich Filter, Feldbedeutungen (insbesondere Zeit- und Ortsgenauigkeit), Fehlerformat und der Konventionen aus §6. Die Dokumentation ist öffentlich abrufbar.
 - **NFR-4 Keine personenbezogenen Daten:** Events und Orte enthalten keine Daten zu natürlichen Personen, also keine Kontaktpersonen, Telefonnummern oder Namen von Privatpersonen. Personenbezogen ist nur das Admin-Konto.
 - **NFR-5 Betrieb auf Hobby-Niveau:** Für Antwortzeit und Verfügbarkeit gibt es keine Zielwerte. Es gilt Best Effort.
