@@ -790,3 +790,26 @@ func TestOversizedLocationFormIsRejected(t *testing.T) {
 		t.Error("an oversized form was stored")
 	}
 }
+
+func TestLocationTextsOverTheirLimitsShowTheLimitAndKeepInput(t *testing.T) {
+	ts := newTestServer(t)
+	form := hallForm()
+	form.Set(core.LocationFieldName, strings.Repeat("n", core.MaxLocationNameLength+1))
+	form.Set(core.LocationFieldCity, strings.Repeat("c", core.MaxCityLength+1))
+	form.Set(core.LocationFieldNote, strings.Repeat("ü", core.MaxLocationNoteLength+1))
+
+	rec := ts.post(locationsPath, form)
+
+	assertStatusCode(t, rec, http.StatusUnprocessableEntity)
+	assertBodyContains(t, rec, "Höchstens 200 Zeichen.", "Höchstens 100 Zeichen.", "Höchstens 2000 Zeichen.",
+		form.Get(core.LocationFieldName), form.Get(core.LocationFieldNote))
+	if len(ts.locations.locations) != 0 {
+		t.Error("a location over the limits was stored")
+	}
+}
+
+func TestLocationFormLimitIs64KiB(t *testing.T) {
+	if maxLocationFormBytes != 64*1024 {
+		t.Errorf("maxLocationFormBytes = %d, want 64 KiB", maxLocationFormBytes)
+	}
+}

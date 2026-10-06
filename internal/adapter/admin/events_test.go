@@ -652,3 +652,33 @@ func TestLocationDeletedWhileSavingShowsTheLocationMessage(t *testing.T) {
 		})
 	}
 }
+
+func TestEventTextsOverTheirLimitsShowTheLimitAndKeepInput(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	form := marketForm(hall.ID)
+	form.Set(core.EventFieldTitle, strings.Repeat("T", core.MaxTitleLength+1))
+	form.Set(core.EventFieldSourceDescription, strings.Repeat("Q", core.MaxSourceDescriptionLength+1))
+	form.Set(core.EventFieldSourceURL, "https://zirndorf.de/"+strings.Repeat("u", core.MaxSourceURLLength))
+	form.Set(core.EventFieldNote, strings.Repeat("N", core.MaxNoteLength+1))
+
+	rec := ts.post(eventsPath, form)
+
+	assertStatusCode(t, rec, http.StatusUnprocessableEntity)
+	assertBodyContains(t, rec, "Höchstens 200 Zeichen.", "Höchstens 500 Zeichen.", "Höchstens 2000 Zeichen.",
+		form.Get(core.EventFieldTitle), form.Get(core.EventFieldNote), form.Get(core.EventFieldSourceURL),
+		form.Get(core.EventFieldSourceDescription))
+	// source.url and note share the message; both must show it.
+	if got := strings.Count(html.UnescapeString(rec.Body.String()), "Höchstens 2000 Zeichen."); got != 2 {
+		t.Errorf("message for 2000 characters shown %d times, want 2 (source URL and note)", got)
+	}
+	if len(ts.events.events) != 0 {
+		t.Error("an event over the limits was stored")
+	}
+}
+
+func TestEventFormLimitIs256KiB(t *testing.T) {
+	if maxEventFormBytes != 256*1024 {
+		t.Errorf("maxEventFormBytes = %d, want 256 KiB", maxEventFormBytes)
+	}
+}

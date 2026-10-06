@@ -35,9 +35,10 @@ const (
 	// locationFormID names the edit form, whose unsaved input the delete
 	// form sends along.
 	locationFormID = "location-form"
-	// maxLocationFormBytes bounds the location form body; a real form with
-	// a long note stays far below.
-	maxLocationFormBytes = 16 << 10
+	// maxLocationFormBytes bounds the location form body. It leaves room
+	// for a form that uses every limit of ENT-24, URL-encoded, such as a
+	// note of 2000 characters.
+	maxLocationFormBytes = 64 << 10
 )
 
 // Admin input accepts a decimal comma; the core only knows the point.

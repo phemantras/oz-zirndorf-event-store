@@ -86,3 +86,15 @@ func TestLocationInUseErrorIsErrConflictAndCarriesEventCount(t *testing.T) {
 		t.Errorf("message %q does not name the event count", err.Error())
 	}
 }
+
+func TestValidationErrorNamesTheExceededLimit(t *testing.T) {
+	err := &ValidationError{Fields: []FieldError{
+		{Field: EventFieldTitle, Problem: ProblemTooLong, Limit: MaxTitleLength},
+		{Field: EventFieldNote, Problem: ProblemMissing},
+	}}
+
+	want := "validation failed: title tooLong 200, note missing"
+	if got := err.Error(); got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}

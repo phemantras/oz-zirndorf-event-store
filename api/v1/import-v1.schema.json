@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OZ Zirndorf Event Store import file, format version 1",
+  "description": "An import file of the OZ Zirndorf Event Store admin. It holds at most 2 MiB of JSON: the format version and the events to import, each in the write form EventInput of the public API v1 (openapi.yaml). Files contain no identifiers: every event brings its location along by name. Fields this format does not know are ignored.",
+  "type": "object",
+  "required": ["formatVersion", "events"],
+  "properties": {
+    "formatVersion": {
+      "description": "Version of the import format; only 1 exists.",
+      "type": "integer",
+      "const": 1
+    },
+    "events": {
+      "description": "The events to import, at least one.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "openapi.yaml#/components/schemas/EventInput"
+      }
+    }
+  }
+}

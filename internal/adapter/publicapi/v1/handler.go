@@ -16,6 +16,10 @@ const (
 	// specPath serves the contract itself, outside the spec's paths.
 	specPath        = basePath + "/openapi.yaml"
 	specContentType = "application/yaml"
+	// importSchemaPath serves the JSON Schema of the import file format v1
+	// next to the spec, whose EventInput it includes by a relative $ref.
+	importSchemaPath        = basePath + "/import-v1.schema.json"
+	importSchemaContentType = "application/schema+json"
 	// docsPath serves the spec as readable HTML documentation (NFR-3); the
 	// page loads the Redoc script from docsScriptPath.
 	docsPath       = basePath + "/docs"
@@ -57,7 +61,8 @@ type Config struct {
 
 // NewHandler returns the public API v1 below /v1/: the operations of
 // api/v1/openapi.yaml, the spec itself at /v1/openapi.yaml and as readable
-// documentation at /v1/docs, open CORS on
+// documentation at /v1/docs, the import schema at
+// /v1/import-v1.schema.json, open CORS on
 // every answer, 405 for write methods and 404 for unknown paths.
 func NewHandler(cfg Config) http.Handler {
 	return newHandler(cfg, server{events: cfg.Events, clock: cfg.Clock})
@@ -76,14 +81,21 @@ func newHandler(cfg Config, strictServer StrictServerInterface) http.Handler {
 		BaseRouter:       mux,
 		ErrorHandlerFunc: respond.invalidParameter,
 	})
-	mux.HandleFunc(http.MethodGet+" "+specPath, func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set(headerContentType, specContentType)
-		respond.writeBody(w, apispec.OpenAPISpec)
-	})
+	mux.HandleFunc(http.MethodGet+" "+specPath, respond.serveEmbedded(apispec.OpenAPISpec, specContentType))
+	mux.HandleFunc(http.MethodGet+" "+importSchemaPath, respond.serveEmbedded(apispec.ImportSchemaV1, importSchemaContentType))
 	mux.HandleFunc(http.MethodGet+" "+docsPath, respond.serveStaticFile(docsPageFile, htmlContentType))
 	mux.HandleFunc(http.MethodGet+" "+docsScriptPath, respond.serveStaticFile(docsScriptFile, javaScriptContentType))
 	mux.HandleFunc(basePath+"/", respond.notFound)
 	return readOnlyCORS(mux, respond)
+}
+
+// serveEmbedded returns a handler that serves body with the given
+// Content-Type.
+func (rp responder) serveEmbedded(body []byte, contentType string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(headerContentType, contentType)
+		rp.writeBody(w, body)
+	}
 }
 
 // serveStaticFile returns a handler that serves the embedded file name

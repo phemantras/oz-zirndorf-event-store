@@ -1,0 +1,30 @@
+{{define "title"}}Import prüfen{{end}}
+{{define "content"}}
+<p><a href="{{.BackURL}}">Übersicht</a></p>
+<h1>Import prüfen</h1>
+<p>Die Datei muss dem <a href="{{.SchemaURL}}">Import-Format v1</a> entsprechen und darf höchstens 2 MiB groß sein.</p>
+<p class="hint">{{.NothingSaved}}</p>
+<form method="post" action="{{.Action}}" enctype="multipart/form-data">
+  <label for="import-file">JSON-Datei</label>
+  <input id="import-file" name="{{.FileField}}" type="file" accept=".json,application/json" aria-describedby="import-file-hint" required>
+  <p class="hint" id="import-file-hint">{{.PrivacyHint}}</p>
+  <button type="submit">Datei prüfen</button>
+</form>
+{{range .FileErrors}}<p class="error" role="alert">{{.}}</p>
+{{end}}
+{{with .Result}}
+<h2>Ergebnis</h2>
+<p>{{.ValidCount}} gültig, {{.ErrorCount}} fehlerhaft</p>
+<p class="hint">{{$.PrivacyHint}}</p>
+<table>
+  <thead>
+    <tr><th>Position</th><th>Titel</th><th>Status</th><th>Gründe</th></tr>
+  </thead>
+  <tbody>
+  {{range .Rows}}
+    <tr><td>{{.Position}}</td><td>{{.Title}}</td><td>{{.Status}}</td><td>{{if .Reasons}}<ul>{{range .Reasons}}<li>{{.}}</li>{{end}}</ul>{{end}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}
+{{end}}

@@ -1,0 +1,30 @@
+package fixture
+
+type Outer struct {
+	Name    string  `json:"name"`
+	Inner   *Inner  `json:"inner,omitempty"`
+	List    []Inner `json:"list"`
+	Plain   int     `json:"plain"`
+	Skipped string
+}
+
+type Inner struct {
+	Street *string `json:"street"`
+}
+
+type Params struct {
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+}
+
+type Name string
+
+// Only string constants with the prefix count.
+const (
+	FieldName   = "name"
+	FieldStreet = "street"
+	Other       = "other"
+)
+
+const FieldCount = 3
+
+var FieldVariable = "variable"

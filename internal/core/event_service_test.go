@@ -277,7 +277,7 @@ func TestSaveEventReportsUnknownLocationTogetherWithOtherProblems(t *testing.T) 
 	if !errors.As(err, &validation) {
 		t.Fatalf("err = %v, want *ValidationError", err)
 	}
-	want := []FieldError{{EventFieldTitle, ProblemMissing}, {EventFieldLocationID, ProblemNotFound}}
+	want := []FieldError{{Field: EventFieldTitle, Problem: ProblemMissing}, {Field: EventFieldLocationID, Problem: ProblemNotFound}}
 	if !slices.Equal(validation.Fields, want) {
 		t.Errorf("problems = %v, want %v", validation.Fields, want)
 	}
@@ -295,7 +295,7 @@ func TestSaveEventDoesNotLookUpAMissingLocation(t *testing.T) {
 	_, err := newEventServiceOn(newFakeEventRepo(), locations).SaveEvent(context.Background(), "", in, RejectDuplicates)
 
 	var validation *ValidationError
-	if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{EventFieldLocationID, ProblemMissing}}) {
+	if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{Field: EventFieldLocationID, Problem: ProblemMissing}}) {
 		t.Errorf("err = %v, want only locationId missing", err)
 	}
 }
@@ -348,7 +348,7 @@ func TestSaveEventReportsALocationDeletedBeforeTheWriteAsNotFound(t *testing.T) 
 			_, err := newTestEventService(events, hall()).SaveEvent(context.Background(), id, validEventInput(), AllowDuplicates)
 
 			var validation *ValidationError
-			if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{EventFieldLocationID, ProblemNotFound}}) {
+			if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{Field: EventFieldLocationID, Problem: ProblemNotFound}}) {
 				t.Errorf("err = %v, want only locationId notFound", err)
 			}
 		})
@@ -831,7 +831,7 @@ func TestSaveEventRejectsEntryOutsideAShortenedEventWithoutWriting(t *testing.T)
 	_, err = service.SaveEvent(ctx, created.ID, in, RejectDuplicates)
 
 	var validation *ValidationError
-	want := []FieldError{{TimetableField(0, TimetableFieldEndTime), ProblemOutsideEvent}, {TimetableField(2, TimetableFieldDate), ProblemOutsideEvent}}
+	want := []FieldError{{Field: TimetableField(0, TimetableFieldEndTime), Problem: ProblemOutsideEvent}, {Field: TimetableField(2, TimetableFieldDate), Problem: ProblemOutsideEvent}}
 	if !errors.As(err, &validation) || !slices.Equal(validation.Fields, want) {
 		t.Errorf("err = %v, want %v", err, want)
 	}

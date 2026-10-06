@@ -39,6 +39,7 @@ type testServer struct {
 	events          *memoryEventRepo
 	eventService    *core.EventService
 	locationService *core.LocationService
+	importService   *core.ImportService
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -57,6 +58,7 @@ func newTestServer(t *testing.T) *testServer {
 	tx := memoryTx{repos: core.Repos{Events: ts.events, Locations: ts.locations}}
 	ts.eventService = core.NewEventService(tx, ts.events, ts.locations)
 	ts.locationService = core.NewLocationService(tx, ts.locations)
+	ts.importService = core.NewImportService(ts.locations)
 	ts.handler = newHandler(Config{
 		User:          testUser,
 		PasswordHash:  hash,
@@ -66,6 +68,7 @@ func newTestServer(t *testing.T) *testServer {
 		Locations:     ts.locationService,
 		Events:        ts.eventService,
 		Clock:         ts.clock,
+		Imports:       ts.importService,
 	})
 	compare := ts.handler.comparePassword
 	ts.handler.comparePassword = func(hash, password []byte) error {

@@ -105,83 +105,83 @@ func TestNewLocationReportsEveryInvalidField(t *testing.T) {
 				*in = LocationInput{Name: "   ", Street: "\u00a0", PostalCode: "", City: " ", Latitude: "", Longitude: " ", Precision: ""}
 			},
 			want: []FieldError{
-				{LocationFieldName, ProblemMissing},
-				{LocationFieldStreet, ProblemMissing},
-				{LocationFieldPostalCode, ProblemMissing},
-				{LocationFieldCity, ProblemMissing},
-				{LocationFieldLatitude, ProblemMissing},
-				{LocationFieldLongitude, ProblemMissing},
-				{LocationFieldPrecision, ProblemMissing},
+				{Field: LocationFieldName, Problem: ProblemMissing},
+				{Field: LocationFieldStreet, Problem: ProblemMissing},
+				{Field: LocationFieldPostalCode, Problem: ProblemMissing},
+				{Field: LocationFieldCity, Problem: ProblemMissing},
+				{Field: LocationFieldLatitude, Problem: ProblemMissing},
+				{Field: LocationFieldLongitude, Problem: ProblemMissing},
+				{Field: LocationFieldPrecision, Problem: ProblemMissing},
 			},
 		},
 		"postal code with four digits": {
 			change: func(in *LocationInput) { in.PostalCode = "9051" },
-			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: LocationFieldPostalCode, Problem: ProblemInvalidFormat}},
 		},
 		"postal code with six digits": {
 			change: func(in *LocationInput) { in.PostalCode = "905130" },
-			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: LocationFieldPostalCode, Problem: ProblemInvalidFormat}},
 		},
 		"postal code with a letter": {
 			change: func(in *LocationInput) { in.PostalCode = "90513a" },
-			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: LocationFieldPostalCode, Problem: ProblemInvalidFormat}},
 		},
 		"postal code with country prefix": {
 			change: func(in *LocationInput) { in.PostalCode = "D-90513" },
-			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: LocationFieldPostalCode, Problem: ProblemInvalidFormat}},
 		},
 		"postal code with full-width digits": {
 			change: func(in *LocationInput) { in.PostalCode = "\uff19\uff10\uff15\uff11\uff13" },
-			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: LocationFieldPostalCode, Problem: ProblemInvalidFormat}},
 		},
 		"postal code with inner space": {
 			change: func(in *LocationInput) { in.PostalCode = "905 13" },
-			want:   []FieldError{{LocationFieldPostalCode, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: LocationFieldPostalCode, Problem: ProblemInvalidFormat}},
 		},
 		"latitude above range, longitude not a number": {
 			change: func(in *LocationInput) { in.Latitude, in.Longitude = "91", "abc" },
 			want: []FieldError{
-				{LocationFieldLatitude, ProblemOutOfRange},
-				{LocationFieldLongitude, ProblemNotANumber},
+				{Field: LocationFieldLatitude, Problem: ProblemOutOfRange},
+				{Field: LocationFieldLongitude, Problem: ProblemNotANumber},
 			},
 		},
 		"latitude below range, longitude above range": {
 			change: func(in *LocationInput) { in.Latitude, in.Longitude = "-90.0001", "180.0001" },
 			want: []FieldError{
-				{LocationFieldLatitude, ProblemOutOfRange},
-				{LocationFieldLongitude, ProblemOutOfRange},
+				{Field: LocationFieldLatitude, Problem: ProblemOutOfRange},
+				{Field: LocationFieldLongitude, Problem: ProblemOutOfRange},
 			},
 		},
 		"longitude below range": {
 			change: func(in *LocationInput) { in.Longitude = "-181" },
-			want:   []FieldError{{LocationFieldLongitude, ProblemOutOfRange}},
+			want:   []FieldError{{Field: LocationFieldLongitude, Problem: ProblemOutOfRange}},
 		},
 		"NaN and Inf are not numbers": {
 			change: func(in *LocationInput) { in.Latitude, in.Longitude = "NaN", "Inf" },
 			want: []FieldError{
-				{LocationFieldLatitude, ProblemNotANumber},
-				{LocationFieldLongitude, ProblemNotANumber},
+				{Field: LocationFieldLatitude, Problem: ProblemNotANumber},
+				{Field: LocationFieldLongitude, Problem: ProblemNotANumber},
 			},
 		},
 		"negative infinity is not a number": {
 			change: func(in *LocationInput) { in.Latitude = "-Infinity" },
-			want:   []FieldError{{LocationFieldLatitude, ProblemNotANumber}},
+			want:   []FieldError{{Field: LocationFieldLatitude, Problem: ProblemNotANumber}},
 		},
 		"overflowing number is out of range": {
 			change: func(in *LocationInput) { in.Latitude = "1e400" },
-			want:   []FieldError{{LocationFieldLatitude, ProblemOutOfRange}},
+			want:   []FieldError{{Field: LocationFieldLatitude, Problem: ProblemOutOfRange}},
 		},
 		"decimal comma is not a number in the core": {
 			change: func(in *LocationInput) { in.Latitude = "49,4424" },
-			want:   []FieldError{{LocationFieldLatitude, ProblemNotANumber}},
+			want:   []FieldError{{Field: LocationFieldLatitude, Problem: ProblemNotANumber}},
 		},
 		"unknown precision": {
 			change: func(in *LocationInput) { in.Precision = "city" },
-			want:   []FieldError{{LocationFieldPrecision, ProblemUnknownCode}},
+			want:   []FieldError{{Field: LocationFieldPrecision, Problem: ProblemUnknownCode}},
 		},
 		"precision codes are case sensitive": {
 			change: func(in *LocationInput) { in.Precision = "Building" },
-			want:   []FieldError{{LocationFieldPrecision, ProblemUnknownCode}},
+			want:   []FieldError{{Field: LocationFieldPrecision, Problem: ProblemUnknownCode}},
 		},
 	}
 	for name, tt := range tests {
@@ -243,5 +243,57 @@ func TestSortLocationsMatchesAcceptanceExample(t *testing.T) {
 		if locations[i].Name != name {
 			t.Errorf("position %d = %q, want %q", i, locations[i].Name, name)
 		}
+	}
+}
+
+func TestNewLocationChecksTheLimitsOfENT24(t *testing.T) {
+	tests := map[string]struct {
+		change func(*LocationInput)
+		want   []FieldError
+	}{
+		"name": {
+			change: func(in *LocationInput) { in.Name = overLimit(MaxLocationNameLength) },
+			want:   []FieldError{{Field: LocationFieldName, Problem: ProblemTooLong, Limit: MaxLocationNameLength}},
+		},
+		"street": {
+			change: func(in *LocationInput) { in.Street = overLimit(MaxStreetLength) },
+			want:   []FieldError{{Field: LocationFieldStreet, Problem: ProblemTooLong, Limit: MaxStreetLength}},
+		},
+		"city": {
+			change: func(in *LocationInput) { in.City = overLimit(MaxCityLength) },
+			want:   []FieldError{{Field: LocationFieldCity, Problem: ProblemTooLong, Limit: MaxCityLength}},
+		},
+		"note": {
+			change: func(in *LocationInput) { in.Note = overLimit(MaxLocationNoteLength) },
+			want:   []FieldError{{Field: LocationFieldNote, Problem: ProblemTooLong, Limit: MaxLocationNoteLength}},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			in := validLocationInput()
+			tt.change(&in)
+
+			_, err := newLocation(in)
+
+			var validation *ValidationError
+			if !errors.As(err, &validation) {
+				t.Fatalf("err = %v, want *ValidationError", err)
+			}
+			if !slices.Equal(validation.Fields, tt.want) {
+				t.Errorf("fields = %v, want %v", validation.Fields, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewLocationAcceptsTextsExactlyAtTheirLimits(t *testing.T) {
+	in := validLocationInput()
+	in.Name = overLimit(MaxLocationNameLength - 1)
+	in.Street = overLimit(MaxStreetLength - 1)
+	in.City = overLimit(MaxCityLength - 1)
+	in.Note = overLimit(MaxLocationNoteLength - 1)
+
+	if _, err := newLocation(in); err != nil {
+		t.Errorf("newLocation = %v, want no error", err)
 	}
 }

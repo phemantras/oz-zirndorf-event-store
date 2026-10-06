@@ -75,6 +75,20 @@ const (
 	EventFieldSourceDescription = "source.description"
 	EventFieldSourceURL         = "source.url"
 	EventFieldNote              = "note"
+	// EventFieldLocation is the location an import brings along by name,
+	// its fields named by LocationField within it.
+	EventFieldLocation = "location"
+	// EventFieldImportKey is the key of the event in the import source.
+	EventFieldImportKey = "importKey"
+	// EventFieldSource is the object that holds source.description and
+	// source.url.
+	EventFieldSource = "source"
+)
+
+// Field names within the object source.
+const (
+	sourceFieldDescription = "description"
+	sourceFieldURL         = "url"
 )
 
 // Link schemes a source URL may use.
@@ -143,20 +157,26 @@ type Event struct {
 
 // EventInput is an event as entered by a person or an import. Dates arrive
 // as YYYY-MM-DD and times as HH:MM; an empty time means unknown, never
-// 00:00.
+// 00:00. The admin refers to a stored location by LocationID; an import
+// brings its location along as Location instead and never knows IDs.
 type EventInput struct {
 	Title      string
 	Type       string
 	LocationID string
-	StartDate  string
-	StartTime  string
-	EndDate    string
-	EndTime    string
-	AllDay     bool
-	Source     EventSource
-	Note       string
+	// Location is the location an import brings along, nil in the admin.
+	Location  *LocationInput
+	StartDate string
+	StartTime string
+	EndDate   string
+	EndTime   string
+	AllDay    bool
+	Source    EventSource
+	Note      string
 	// Timetable replaces the whole stored timetable on save (AD-15).
 	Timetable []TimetableEntryInput
+	// ImportKey is the optional key of the event in the import source;
+	// the admin never sets it.
+	ImportKey string
 }
 
 // Canonicalize returns the input with every text normalized by
@@ -175,10 +195,16 @@ func (in EventInput) normalized() EventInput {
 	for _, entry := range in.Timetable {
 		timetable = append(timetable, entry.normalized())
 	}
+	var location *LocationInput
+	if in.Location != nil {
+		normalizedLocation := in.Location.normalized()
+		location = &normalizedLocation
+	}
 	return EventInput{
 		Title:      normalizeText(in.Title),
 		Type:       normalizeText(in.Type),
 		LocationID: normalizeText(in.LocationID),
+		Location:   location,
 		StartDate:  normalizeText(in.StartDate),
 		StartTime:  normalizeText(in.StartTime),
 		EndDate:    normalizeText(in.EndDate),
@@ -190,6 +216,7 @@ func (in EventInput) normalized() EventInput {
 		},
 		Note:      normalizeText(in.Note),
 		Timetable: timetable,
+		ImportKey: normalizeText(in.ImportKey),
 	}
 }
 
@@ -236,8 +263,10 @@ func timeText(timeOfDay *LocalTime) string {
 
 // newEvent canonicalizes and validates input and returns the event without
 // ID, with its effective period and its timetable sorted. It returns every
-// rejected field, timetable entries by the index they were entered with;
-// whether the location exists is checked by the caller.
+// rejected field, timetable entries by the index they were entered with.
+// A location ID is required only when no location is brought along;
+// whether the location exists, and the fields of a brought location, are
+// checked by the caller.
 func newEvent(in EventInput) (Event, []FieldError) {
 	in = in.normalized()
 	var problems []FieldError
@@ -255,11 +284,12 @@ func newEvent(in EventInput) (Event, []FieldError) {
 	if event.Title == "" {
 		report(EventFieldTitle, ProblemMissing)
 	}
+	problems = append(problems, checkLength(EventFieldTitle, event.Title, MaxTitleLength)...)
 	var problem FieldProblem
 	if event.Type, problem = parseEventType(in.Type); problem != "" {
 		report(EventFieldType, problem)
 	}
-	if event.LocationID == "" {
+	if in.Location == nil && event.LocationID == "" {
 		report(EventFieldLocationID, ProblemMissing)
 	}
 	var timeProblems []FieldError
@@ -268,9 +298,13 @@ func newEvent(in EventInput) (Event, []FieldError) {
 	if event.Source.Description == "" {
 		report(EventFieldSourceDescription, ProblemMissing)
 	}
+	problems = append(problems, checkLength(EventFieldSourceDescription, event.Source.Description, MaxSourceDescriptionLength)...)
 	if event.Source.URL != "" && !isHTTPLink(event.Source.URL) {
 		report(EventFieldSourceURL, ProblemInvalidFormat)
 	}
+	problems = append(problems, checkLength(EventFieldSourceURL, event.Source.URL, MaxSourceURLLength)...)
+	problems = append(problems, checkLength(EventFieldNote, event.Note, MaxNoteLength)...)
+	problems = append(problems, checkLength(EventFieldImportKey, in.ImportKey, MaxImportKeyLength)...)
 	// Only a valid period bounds the timetable; otherwise the entries are
 	// checked for their own form only.
 	var bounds *Period

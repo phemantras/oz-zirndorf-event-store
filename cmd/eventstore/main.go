@@ -99,7 +99,7 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	}
 	// The admin shares both services with the recomputation, so it sees
 	// their review marks.
-	cases := useCases{locations: locations, events: events}
+	cases := useCases{locations: locations, events: events, imports: core.NewImportService(locationRepo)}
 	return serve(ctx, newServer(pool, logger, newRouteHandlers(cfg, logger, cases)), listener, logger)
 }
 
@@ -115,6 +115,7 @@ func startCleanup(ctx context.Context, job cleanup.Job, interval time.Duration) 
 type useCases struct {
 	locations admin.LocationUseCases
 	events    eventUseCases
+	imports   admin.ImportUseCases
 }
 
 // eventUseCases are the event use cases of the admin and the event query of
@@ -144,6 +145,7 @@ func newAdminHandler(cfg config, logger *slog.Logger, cases useCases) http.Handl
 		Locations:     cases.locations,
 		Events:        cases.events,
 		Clock:         systemClock{},
+		Imports:       cases.imports,
 	})
 }
 
