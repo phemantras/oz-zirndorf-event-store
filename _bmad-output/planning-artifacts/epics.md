@@ -111,7 +111,7 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 **Struktur und Abhängigkeiten**
 - AD-1: Hexagonal light, genau eine Replika. `internal/core` importiert nur die Standardbibliothek, einzige Ausnahme ist `golang.org/x/text/unicode/norm` (NFC). Adapter importieren nur `core`, nie einander. Nur `cmd/eventstore` kennt alle. Der Kern definiert die Ports `EventRepo`, `LocationRepo`, `TxRunner` und `Clock`.
 - AD-2: Fachlogik nur im Kern. SQL macht nur CRUD und einfache Vergleiche, ohne Views, Trigger, Funktionen, `lower()`/`trim()` oder `now()`. Die aktuelle Zeit kommt als Parameter aus `Clock`. Abgeleitete Werte (`effective*`, `name_key`) berechnet der Kern und speichert sie.
-- AD-6: Schreiben nur über die Kern-Anwendungsfälle `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation`, `CommitImport`, `RecomputeDerived` und `MarkArchived`. Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern und eine Hülle mit `TxRunner`; `CommitImport` ruft nur die Kerne in einer Transaktion auf. `SaveEvent` aus dem Admin ändert `importKey` nie. Admin und Import nutzen denselben Eingabetyp `core.EventInput`. Der Löschschutz für Orte liegt im Kern und zusätzlich im Fremdschlüssel `ON DELETE RESTRICT`.
+- AD-6: Schreiben nur über die Kern-Anwendungsfälle `SaveEvent`, `DeleteEvent`, `SaveLocation`, `DeleteLocation`, `CommitImport`, `RemoveImportKey`, `RecomputeDerived` und `MarkArchived`. Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern und eine Hülle mit `TxRunner`; `CommitImport` ruft nur die Kerne in einer Transaktion auf. `SaveEvent` aus dem Admin ändert `importKey` nie; `CommitImport` setzt ihn, `RemoveImportKey` entfernt ihn. Admin und Import nutzen denselben Eingabetyp `core.EventInput`. Der Löschschutz für Orte liegt im Kern und zusätzlich im Fremdschlüssel `ON DELETE RESTRICT`.
 - AD-7: Lesen über die Kern-Abfragen `ListActiveEvents`, `ListArchivedEvents` und `ListEventTypes`, nur Listen. `GetEvent` und `ListLocations` nur für den Admin. Sortierung: aktive Events nach `effectiveStart` aufsteigend, Archiv absteigend, bei Gleichstand nach der internen `id`. Orte nach Namen im Kern (ENT-8). Den Archivstatus gibt die Public API nicht aus.
 
 **Zeitmodell**
@@ -131,7 +131,7 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 - Ressourcen (aus dem Addendum): `GET /v1/events` (`from`, `to`, `type`), `GET /v1/event-types`, `GET /v1/archive/events`.
 
 **Import**
-- AD-10: Der Import ist zustandslos. (1) Beim Upload wird jeder Eintrag geparst, validiert und gegen den gesamten Bestand klassifiziert, archivierte Events eingeschlossen. Die Klassen sind `new`, `update`, `unchanged`, `duplicateSuspect`, `error` und pro Ort `newLocation` (ENT-11). (2) Innerhalb der Datei macht ein doppelter `importKey` oder ein gemeinsames Ziel-Event beide Einträge zu `error`, gleiche Einträge werden untereinander zu `duplicateSuspect`, und ein neuer Ort wird nur einmal angelegt. (3) Der Zwischenstand liegt nur im Browser-Formular. (4) Beim Speichern wird der vollständige Satz samt Entscheidungen, ursprünglicher Klasse und Ziel-ID gesendet und neu klassifiziert. Bei einer Abweichung wird der Eintrag als `stale` gemeldet. (5) `error`, `stale` und Verdachtsfälle ohne Entscheidung werden vor der Transaktion aussortiert, der Rest wird in einer Transaktion über `TxRunner` geschrieben, immer mit `allowDuplicates` (ENT-12). (6) Die Zusammenfassung nach ENT-11. Upload-Grenzen nach ENT-13.
+- AD-10: Der Import ist zustandslos. (1) Beim Upload wird jeder Eintrag geparst, validiert und gegen den gesamten Bestand klassifiziert, archivierte Events eingeschlossen. Die Klassen sind `new`, `update`, `unchanged`, `duplicateSuspect`, `error` und pro Ort `newLocation` (ENT-11). (2) Innerhalb der Datei macht ein doppelter `importKey` oder ein gemeinsames Ziel-Event beide Einträge zu `error`, gleiche Einträge werden untereinander zu `duplicateSuspect`, und ein neuer Ort wird nur einmal angelegt. (3) Der Zwischenstand liegt nur im Browser-Formular. (4) Beim Speichern wird der vollständige Satz samt Entscheidungen, ursprünglicher Klasse, Ziel-ID und den Fingerabdrücken der Bestands-Events, die geschrieben werden könnten, gesendet und neu klassifiziert. Bei einer Abweichung, auch bei einem seit dem Upload geänderten Ziel, wird der Eintrag als `stale` gemeldet. (5) `error`, `stale` und Verdachtsfälle ohne Entscheidung werden vor der Transaktion aussortiert, der Rest wird in einer Transaktion über `TxRunner` geschrieben, immer mit `allowDuplicates` (ENT-12). (6) Die Zusammenfassung nach ENT-11. Upload-Grenzen nach ENT-13.
 - AD-11: IDs sind UUIDv7 per `DEFAULT uuidv7()` (PostgreSQL 18), rein intern; sie erscheinen weder in der API noch im Import-Schema. `importKey` ist eindeutig, wenn er gesetzt ist. Der Kern normalisiert alle Texte an einer Stelle auf NFC. `NormalizeKey` (trim, Leerraum zusammenfassen, lowercase) liefert den eindeutigen Ortsschlüssel `name_key` und den Titelschlüssel `title_key`. `FindDuplicateCandidates` vergleicht `title_key`, `startDate` und `locationId` über alle Events. `SaveEvent` erhält eine Policy `rejectDuplicates` oder `allowDuplicates`. Das Admin-Formular warnt zuerst und speichert erst nach Bestätigung mit `allowDuplicates`.
 
 **Sicherheit und Admin**
@@ -178,7 +178,7 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 - ENT-13 (→ AD-10) Import-Upload: Höchstens 2 MB je Datei. Eine Datei ohne Einträge wird mit einer Meldung abgelehnt.
 - ENT-14 (→ AD-8, Stack) API-Dokumentation: `/v1/docs` rendert die Spec mit Redoc 2.5.4 (`redoc.standalone.js`), ausgeliefert aus `adapter/publicapi/v1/static`. Das ist die einzige HTML-Seite unter `/v1/…`.
 - ENT-15 (→ AD-6) Transaktionen: Jeder Schreib-Anwendungsfall hat einen transaktionsgebundenen Kern, der die Repositories einer laufenden Transaktion erhält, und eine Hülle, die ihn über `TxRunner` ausführt. `CommitImport` ruft nur die Kerne auf, alles in einer Transaktion. `TxRunner` serialisiert alle Schreib-Transaktionen über eine transaktionsgebundene Advisory-Sperre (AD-6).
-- ENT-16 (→ AD-6) Import-Schlüssel: `SaveEvent` aus dem Admin ändert `importKey` nie. Nur `CommitImport` setzt ihn.
+- ENT-16 (→ AD-6) Import-Schlüssel: `SaveEvent` aus dem Admin ändert `importKey` nie. Nur `CommitImport` setzt ihn. Der Admin zeigt ihn nur lesend an und kann ihn über `RemoveImportKey` entfernen. Ein Schlüssel identifiziert genau ein Event, keine wiederkehrende Reihe.
 - ENT-17 (→ AD-6, AD-13, AD-16) Weitere Schreib-Anwendungsfälle: `RecomputeDerived` (beim Start, alle abgeleiteten Werte: `effective*`, `title_key`, `name_key`) und `MarkArchived` (Bereinigungsjob). Startreihenfolge: Migrationen, `RecomputeDerived`, `MarkArchived`, HTTP-Server.
 - ENT-18 (→ AD-14) Datenformen: Der mitgebrachte Ort heißt `location` wie in der Leseform; `locationId` und `importLocation` gibt es nicht (Sprint Change Proposal 2026-10-04). `Event` und `EventInput` sind eigene Schemas mit denselben Feldnamen. `effective*` tragen den lokalen Offset von Europe/Berlin (`+01:00`/`+02:00`). `Canonicalize` (getrimmt, `""` als `null`, Ablaufplan sortiert) wird vor dem Speichern angewendet und beim Vergleich für `unchanged` genutzt.
 - ENT-19 (→ AD-10) Import-Konflikte: Zwei Einträge mit demselben Ziel-Event sind beide `error`. Ein Eintrag, dessen Ziel-Event einen anderen `importKey` hat, ist schon beim Upload `error`.
@@ -1245,3 +1245,49 @@ damit der Bestand gefüllt ist und SM-1 und SM-2 belegt sind.
 **Außerdem gilt:**
 - Beide Importläufe sind als Integrationstest gegen PostgreSQL 18 in der CI abgedeckt; die feste `Clock` hält den Test unabhängig vom Datum.
 - Die SM-1-Prüfung in Produktion ist ein manueller Abschlussschritt. Die Testsammlung ist dort seit 2026-10-06 importiert; ein weiterer Import in Produktion ist nicht nötig.
+
+### Story 3.6: Import vor verlorenen Änderungen schützen und Import-Schlüssel pflegen
+
+Als Admin,
+möchte ich, dass ein Import keine Änderung überschreibt, die ich nach der Vorschau gemacht habe, und dass ich den Import-Schlüssel eines Events sehe und entfernen kann,
+damit kein Import still meine Arbeit verwirft oder dauerhaft am falschen Event hängt.
+
+**Deckt ab:** FR-16, FR-18, AD-6, AD-10, ENT-16
+
+**Hinweis:** Sprint Change Proposal 2026-10-06 Teil C (Retro Epic 3, R8–R10).
+
+**Acceptance Criteria:**
+
+**Angenommen** ein Eintrag ist in der Vorschau `update` auf Event X
+**Wenn** X vor dem Commit im Admin geändert wird (z. B. Beginn-Uhrzeit oder Notiz)
+**Dann** ist der Eintrag beim Commit `stale`, und X behält die Änderung
+
+**Angenommen** ein Duplikatverdacht mit der Wahl „überschreiben“ von Y
+**Wenn** Y vor dem Commit geändert wird
+**Dann** ist der Eintrag `stale`
+**Und** wird stattdessen ein anderer Kandidat geändert, den die Wahl nicht schreibt, bleibt die Entscheidung gültig
+
+**Angenommen** das Ziel ist seit der Vorschau unverändert
+**Wenn** übernommen wird
+**Dann** verhält sich der Commit wie in Story 3.3, und der zweite Import der Testsammlung bleibt vollständig `unchanged` (Story 3.5)
+
+**Angenommen** ein Event mit `importKey`
+**Wenn** ich es im Admin bearbeite
+**Dann** sehe ich den Import-Schlüssel nur lesend
+**Und** ein Event ohne Schlüssel zeigt keine solche Zeile
+
+**Angenommen** ein Event mit `importKey`
+**Wenn** ich „Import-Schlüssel entfernen“ wähle und bestätige
+**Dann** entfernt der Kern-Anwendungsfall `RemoveImportKey` den Schlüssel über `TxRunner`, die übrigen Felder bleiben unverändert
+**Und** ein späterer Import mit diesem Schlüssel klassifiziert den Eintrag nicht mehr als `update` dieses Events
+**Und** für ein unbekanntes Event liefert der Kern `ErrNotFound`, der Admin zeigt die übliche Meldung
+
+**Angenommen** die Spec
+**Wenn** ich die Beschreibung von `importKey` in `EventInput` lese
+**Dann** steht dort, dass ein Schlüssel genau ein Event identifiziert, ein erneuter Import es auch im Archiv aktualisiert und jeder Termin einer Reihe einen eigenen Schlüssel braucht
+
+**Außerdem gilt:**
+- Kein Zwischenstand auf dem Server; der Fingerabdruck reist im Formular (AD-10).
+- `api.gen.go` wird mit `go generate ./...` neu erzeugt, nicht von Hand geändert.
+- Keine Migration; `RemoveImportKey` schreibt über einen Repository-Port, der nur vom Kern aufgerufen wird (AD-6).
+- Nahtstellen: `isStale` und das Entscheidungsformular (3.3), Klassifizierung und `unchanged`-Vergleich (3.2), Abnahme der Testsammlung (3.5), Bearbeitungsseite und Löschrückfrage eines Events (1.7, 1.11), `SaveEvent` lässt `importKey` stehen (3.2).
