@@ -65,8 +65,8 @@ development_status:
   3-1-import-format-v1-und-prüfung-der-datei: done
   3-2-import-vorschau-mit-klassifizierung: done
   3-3-duplikate-entscheiden-und-import-übernehmen: done
-  3-4-testsammlung-ins-format-v1-überführen: review
-  3-5-testsammlung-importieren-und-abnahme: backlog
+  3-4-testsammlung-ins-format-v1-überführen: done
+  3-5-testsammlung-importieren-und-abnahme: review
   epic-3-retrospective: optional
 action_items:
   - id: "epic-1-retro-item-1-a1-fix-pr-epic-1-nahtstellen-errconflict"

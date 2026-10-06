@@ -2,7 +2,7 @@
 title: "PRD: OZ Zirndorf Event Store"
 status: final
 created: 2026-10-01
-updated: 2026-10-05
+updated: 2026-10-06
 ---
 
 # PRD: OZ Zirndorf Event Store
@@ -247,7 +247,7 @@ Der Admin entscheidet für jeden Duplikatverdacht: überspringen, als neues Even
 **Konsequenzen (testbar):**
 - Ohne Entscheidung des Admins wird kein Duplikatverdacht übernommen.
 - Nach dem Import erhält der Admin eine Zusammenfassung mit der Anzahl neuer, aktualisierter, übersprungener und fehlerhafter Einträge.
-- Die Testsammlung (42 Events) lässt sich vollständig importieren. Ein zweiter Import derselben Datei erzeugt keine neuen Events.
+- Die Testsammlung (39 Events) lässt sich vollständig importieren. Ein zweiter Import derselben Datei erzeugt keine neuen Events.
 
 ## 5. Querschnittliche NFRs
 
@@ -310,7 +310,7 @@ Diese Konventionen sind das Muster, das andere OZ-Backends übernehmen können. 
 
 **Primär**
 - **SM-1 Weihnachtsmarkt:** Das wichtigste Kriterium. Der Zirndorfer Weihnachtsmarkt ist im Bestand, und eine Zeitraumabfrage über die Adventszeit liefert ihn mit Zeitraum, Ort, Zeit- und Ortsgenauigkeit und Quelle. Das ist ohne Frontend prüfbar. Das eigentliche Ziel ist erreicht, wenn die OZ-Karten-App ihn anzeigt. Validiert FR-8 bis FR-10.
-- **SM-2 Import-Tauglichkeit:** Die Testsammlung mit 42 Events, umgestellt auf das Import-Format v1, wird vollständig importiert. Ein zweiter Import derselben Datei erzeugt 0 zusätzliche Events. Validiert FR-16 bis FR-18.
+- **SM-2 Import-Tauglichkeit:** Die Testsammlung mit 39 Events, umgestellt auf das Import-Format v1, wird vollständig importiert. Ein zweiter Import derselben Datei erzeugt 0 zusätzliche Events. Validiert FR-16 bis FR-18. (Die frühere Angabe 42 war ein Zählfehler; siehe Story 3.4 und Sprint Change Proposal 2026-10-06.)
 
 **Sekundär**
 - **SM-3 Ehrliche Angaben:** 100 % der ausgelieferten Events tragen Zeitgenauigkeit für Beginn und Ende, Ortsgenauigkeit und Quelle. Validiert FR-2, FR-3, FR-6, FR-10.
