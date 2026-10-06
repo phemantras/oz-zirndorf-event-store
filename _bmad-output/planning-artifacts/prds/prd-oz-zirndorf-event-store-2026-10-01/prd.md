@@ -229,6 +229,8 @@ Die Import-Datei hat eine Formatversion und ist dokumentiert.
 - Das Format kann alle Angaben aus FR-1 bis FR-6 abbilden, einschließlich des optionalen Import-Schlüssels pro Event.
 - Jedes Event in der Import-Datei bringt seinen Ort mit, mindestens mit Namen. Ein mitgebrachter Ort mit demselben Namen wie ein vorhandener wird dem vorhandenen zugeordnet. Die Import-Datei enthält keine internen Kennungen.
 - Ein mitgebrachter Ort, dessen Name noch nicht existiert, wird als neuer Ort angelegt. Dafür muss er Adresse und Koordinaten enthalten, sonst ist der Eintrag fehlerhaft. Die Import-Vorschau (FR-17) zeigt neu anzulegende Orte gesondert an.
+- Ein Import-Schlüssel identifiziert genau ein Event, keine wiederkehrende Reihe. Ein erneuter Import mit demselben Schlüssel aktualisiert dieses Event, auch wenn es im Archiv liegt; für jeden Termin einer Reihe braucht die Quelle einen eigenen Schlüssel.
+- Der Admin sieht den Import-Schlüssel eines Events und kann ihn entfernen. Danach wird das Event bei einem Import wie jedes Event ohne Schlüssel behandelt.
 
 #### FR-17: Import-Vorschau
 
@@ -246,6 +248,7 @@ Der Admin entscheidet für jeden Duplikatverdacht: überspringen, als neues Even
 
 **Konsequenzen (testbar):**
 - Ohne Entscheidung des Admins wird kein Duplikatverdacht übernommen.
+- Wurde ein Event, das ein Eintrag aktualisieren oder überschreiben soll, seit der Vorschau geändert, wird der Eintrag nicht übernommen und als veraltet gemeldet.
 - Nach dem Import erhält der Admin eine Zusammenfassung mit der Anzahl neuer, aktualisierter, übersprungener und fehlerhafter Einträge.
 - Die Testsammlung (39 Events) lässt sich vollständig importieren. Ein zweiter Import derselben Datei erzeugt keine neuen Events.
 

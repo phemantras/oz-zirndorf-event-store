@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 10-06-2026 21:19
+last_updated: 10-06-2026 21:25
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -61,12 +61,14 @@ development_status:
   2-8-archived-aus-der-leseform-entfernen: done
   epic-2-retrospective: done
 
-  epic-3: done
+  epic-3: in-progress
   3-1-import-format-v1-und-prüfung-der-datei: done
   3-2-import-vorschau-mit-klassifizierung: done
   3-3-duplikate-entscheiden-und-import-übernehmen: done
   3-4-testsammlung-ins-format-v1-überführen: done
   3-5-testsammlung-importieren-und-abnahme: done
+  3-6-import-vor-verlorenen-änderungen-schützen-und-import-schlüssel-pflegen: 
+    backlog
   epic-3-retrospective: done
 action_items:
   - id: "epic-1-retro-item-1-a1-fix-pr-epic-1-nahtstellen-errconflict"
@@ -141,7 +143,7 @@ action_items:
       beim Planen lesen, Epic-Status nach letzter Story auf done, Review-Hinweis Sprint-Status-Sync,
       Epic-Kontext nicht im Build neu kompilieren"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
   - id: "epic-2-retro-item-11-b4-bmad-correct-course-vor-epic-3-oapi-c"
     epic: 2
@@ -194,5 +196,5 @@ action_items:
       Ziel-Event und importKey im Admin anzeigen/entfernen; R10 (importKey = ein Event,
       keine Reihe) im Import-Format dokumentieren"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"

@@ -1,9 +1,15 @@
 # A7 (Retro Epic 1, Befund P2): Nahtstellen zu früheren Stories planen und prüfen.
+# B3 (Retro Epic 2, P2/P3/P5; Retro Epic 3, S4/S5): Deferred-Ziele lesen,
+# Epic-Status abschließen, Sprint-Status kein Review-Befund, Epic-Kontext nicht neu kompilieren.
 
 [workflow]
 
 persistent_facts = [
   """Seams (Nahtstellen) rule — applies in step-02 planning. When the change extends a use case, handler, form, or template introduced by an earlier story (e.g. a new field, a new error case, a new branch in an existing save/delete flow), the spec MUST contain a section `## Nahtstellen`, placed directly after `## Code Map` and outside `<frozen-after-approval>`. Find the seams by investigation, not by guessing: callers, error paths, form re-render after validation or conflict errors, delete and confirmation flows, list/detail views, and import paths that share the extended code. One bullet per seam: `FILE` or function -- earlier story -- which existing behavior must keep working or must change -- the test or AC that covers it. Every seam needs a task or AC in `## Tasks & Acceptance`. When the change extends nothing from an earlier story, omit the section entirely; do not write "None".""",
+  """Deferred work rule — applies in step-02 planning. Before freezing the spec, read every entry in `{project-root}/_bmad-output/implementation-artifacts/deferred-work.md` whose `status` is `open` and whose `target` names this story (e.g. "Story 3.2") or its epic (e.g. "Epic 3"). For each such entry, either take it into the spec (a task or AC that covers it) or re-target it explicitly: set a new `target` and append to it why this story did not take it (e.g. "Story 2.6 hat den Eintrag nicht aufgenommen, weil …"). Never leave a matching entry untouched. Every new entry you add to deferred-work.md carries `status` and `target`.""",
+  """Epic completion rule — applies when the workflow syncs sprint-status.yaml at the end. After setting the story to `done`, check whether every story key of the same epic in `development_status` is `done`; if so, set `epic-<N>` to `done` in the same edit.""",
+  """Sprint status in review — applies in review triage. sprint-status.yaml and the spec's `status` are synced at the end of the workflow. A finding that they disagree with each other, or that `last_updated` looks out of order, is not a finding: reject it as `false` without further investigation.""",
+  """Epic context rule — overrides step-01's cache check. If `{project-root}/_bmad-output/implementation-artifacts/epic-<N>-context.md` exists, is non-empty and starts with `# Epic <N> Context:`, treat it as valid even when files in the planning artifacts are newer: never recompile, regenerate or rewrite it during a build, and never commit changes to it. When planning artifacts changed after it (for example a sprint change proposal), read the changed sections of `epics.md` and the proposal directly as additional context instead. Compile it only when the file is missing or invalid.""",
 ]
 
 [[workflow.review_layers]]
