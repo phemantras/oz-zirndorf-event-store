@@ -2,7 +2,7 @@
 title: 'Story 3.3: Duplikate entscheiden und Import übernehmen'
 type: 'feature'
 created: '2026-10-06'
-status: 'in-progress'
+status: 'in-review'
 baseline_commit: 'a09afeb3d3fdbbf85f84a411a826978842399808'
 route: 'dispatch'
 review_loop_iteration: 0
