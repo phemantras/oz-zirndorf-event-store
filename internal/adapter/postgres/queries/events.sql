@@ -3,7 +3,7 @@
 
 -- name: ListEvents :many
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events;
 
 -- name: ListEventsOverlapping :many
@@ -11,14 +11,14 @@ FROM events;
 -- lo leaves the period open at the start, a NULL hi open-ended. The core
 -- passes lo and hi as parameters.
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events
 WHERE (sqlc.narg(lo)::timestamptz IS NULL OR effective_end > sqlc.narg(lo))
   AND (sqlc.narg(hi)::timestamptz IS NULL OR effective_start < sqlc.narg(hi));
 
 -- name: GetEvent :one
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events
 WHERE id = $1;
 
@@ -27,7 +27,7 @@ INSERT INTO events (title, title_key, type, location_id, start_date, start_time,
                     source_description, source_url, note, effective_start, effective_end)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-          source_description, source_url, note, effective_start, effective_end, title_key;
+          source_description, source_url, note, effective_start, effective_end, title_key, import_key;
 
 -- name: UpdateEvent :one
 UPDATE events
@@ -37,11 +37,11 @@ SET title = $2, title_key = $3, type = $4, location_id = $5, start_date = $6, st
     archived_at = NULL
 WHERE id = $1
 RETURNING id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-          source_description, source_url, note, effective_start, effective_end, title_key;
+          source_description, source_url, note, effective_start, effective_end, title_key, import_key;
 
 -- name: FindEventsByDuplicateKey :many
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events
 WHERE title_key = $1 AND start_date = $2 AND location_id = $3;
 

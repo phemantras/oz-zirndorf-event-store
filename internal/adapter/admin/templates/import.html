@@ -14,17 +14,38 @@
 {{end}}
 {{with .Result}}
 <h2>Ergebnis</h2>
-<p>{{.ValidCount}} gültig, {{.ErrorCount}} fehlerhaft</p>
+<ul class="import-counts">{{range .Counts}}<li>{{.Label}}: {{.Count}}</li>{{end}}</ul>
+<p class="hint">{{$.NothingSaved}}</p>
 <p class="hint">{{$.PrivacyHint}}</p>
 <table>
   <thead>
-    <tr><th>Position</th><th>Titel</th><th>Status</th><th>Gründe</th></tr>
+    <tr><th>Position</th><th>Titel</th><th>Klasse</th><th>Details</th></tr>
   </thead>
   <tbody>
   {{range .Rows}}
-    <tr><td>{{.Position}}</td><td>{{.Title}}</td><td>{{.Status}}</td><td>{{if .Reasons}}<ul>{{range .Reasons}}<li>{{.}}</li>{{end}}</ul>{{end}}</td></tr>
+    <tr id="import-entry-{{.Position}}"><td>{{.Position}}</td><td>{{.Title}}</td><td>{{.Status}}</td><td>
+      {{- if .Reasons}}<ul>{{range .Reasons}}<li>{{.}}</li>{{end}}</ul>{{end}}
+      {{- with .TargetURL}}<p>Ziel: <a href="{{.}}">vorhandenes Event</a></p>{{end}}
+      {{- if .Changes}}<p>Änderungen:</p><ul>{{range .Changes}}<li>{{.Label}}: <span class="change-value">{{.Old}}</span> → <span class="change-value">{{.New}}</span></li>{{end}}</ul>{{end}}
+      {{- if .Candidates}}<p>Mögliche Duplikate:</p><ul>{{range .Candidates}}<li><a href="{{.URL}}">{{.Text}}</a></li>{{end}}</ul>{{end}}
+      {{- if .Hints}}<p>Hinweise:</p><ul>{{range .Hints}}<li>{{.Text}}{{with .Link}} <a href="{{.URL}}">{{.Text}}</a>{{end}}</li>{{end}}</ul>{{end -}}
+    </td></tr>
   {{end}}
   </tbody>
 </table>
+{{if .NewLocations}}
+<h2>Neue Orte</h2>
+<p class="hint">Diese Orte würden beim Import neu angelegt.</p>
+<table>
+  <thead>
+    <tr><th>Name</th><th>Positionen</th></tr>
+  </thead>
+  <tbody>
+  {{range .NewLocations}}
+    <tr><td>{{.Name}}</td><td>{{.Positions}}</td></tr>
+  {{end}}
+  </tbody>
+</table>
+{{end}}
 {{end}}
 {{end}}

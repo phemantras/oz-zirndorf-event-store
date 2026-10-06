@@ -63,16 +63,27 @@ func marshalImport(t *testing.T, file any) []byte {
 }
 
 func newTestImportService(locations *fakeLocationRepo) *ImportService {
-	return NewImportService(locations)
+	return NewImportService(locations, newFakeEventRepo())
 }
 
 func previewOf(t *testing.T, data []byte, locations ...Location) ImportPreview {
 	t.Helper()
-	preview, err := newTestImportService(newFakeLocationRepo(locations...)).PreviewImport(context.Background(), data)
+	return previewWithEvents(t, data, newFakeEventRepo(), locations...)
+}
+
+// previewWithEvents previews data against the stored events and locations.
+func previewWithEvents(t *testing.T, data []byte, events *fakeEventRepo, locations ...Location) ImportPreview {
+	t.Helper()
+	preview, err := NewImportService(newFakeLocationRepo(locations...), events).PreviewImport(context.Background(), data)
 	if err != nil {
 		t.Fatalf("PreviewImport: %v", err)
 	}
 	return preview
+}
+
+// validCount returns how many entries of preview have no problem.
+func validCount(preview ImportPreview) int {
+	return len(preview.Entries) - preview.CountOf(ImportClassError)
 }
 
 func TestPreviewImportAcceptsValidEntriesWithStoredAndNewLocations(t *testing.T) {
@@ -84,8 +95,8 @@ func TestPreviewImportAcceptsValidEntriesWithStoredAndNewLocations(t *testing.T)
 		t.Fatalf("PreviewImport: %v", err)
 	}
 
-	if preview.ValidCount() != 2 || preview.ErrorCount() != 0 {
-		t.Errorf("valid %d, errors %d, want 2 and 0; entries %+v", preview.ValidCount(), preview.ErrorCount(), preview.Entries)
+	if validCount(preview) != 2 || preview.CountOf(ImportClassError) != 0 {
+		t.Errorf("valid %d, errors %d, want 2 and 0; entries %+v", validCount(preview), preview.CountOf(ImportClassError), preview.Entries)
 	}
 	want := EventInput{
 		Title:     "Konzert im Park",
@@ -192,7 +203,7 @@ func TestPreviewImportAcceptsAFileWithByteOrderMark(t *testing.T) {
 
 	preview := previewOf(t, data, hall())
 
-	if preview.ValidCount() != 1 {
+	if validCount(preview) != 1 {
 		t.Errorf("entries = %+v, want one valid", preview.Entries)
 	}
 }
@@ -202,7 +213,7 @@ func TestPreviewImportAcceptsFormatVersionWrittenAsDecimal(t *testing.T) {
 
 	preview := previewOf(t, data, hall())
 
-	if preview.ValidCount() != 1 {
+	if validCount(preview) != 1 {
 		t.Errorf("entries = %+v, want one valid", preview.Entries)
 	}
 }
@@ -213,7 +224,7 @@ func TestPreviewImportAcceptsAFileOfExactlyTheMaximumSize(t *testing.T) {
 
 	preview := previewOf(t, data, hall())
 
-	if preview.ValidCount() != 1 {
+	if validCount(preview) != 1 {
 		t.Errorf("entries = %+v, want one valid", preview.Entries)
 	}
 }
@@ -306,8 +317,8 @@ func TestPreviewImportReportsProblemsPerEntry(t *testing.T) {
 
 			preview := previewOf(t, marshalImport(t, importFile(marketEntry(), broken, concertEntry())), hall())
 
-			if preview.ValidCount() != 2 || preview.ErrorCount() != 1 {
-				t.Errorf("valid %d, errors %d, want 2 and 1", preview.ValidCount(), preview.ErrorCount())
+			if validCount(preview) != 2 || preview.CountOf(ImportClassError) != 1 {
+				t.Errorf("valid %d, errors %d, want 2 and 1", validCount(preview), preview.CountOf(ImportClassError))
 			}
 			got := preview.Entries[1]
 			if got.Position != 2 || got.Title != broken["title"] || got.IsValid() {
@@ -430,8 +441,8 @@ func TestPreviewImportReportsAnEntryThatIsNoObject(t *testing.T) {
 			t.Errorf("entry %d = %+v, want only %v", entry.Position, entry, want)
 		}
 	}
-	if preview.ErrorCount() != 2 {
-		t.Errorf("errors = %d, want 2", preview.ErrorCount())
+	if preview.CountOf(ImportClassError) != 2 {
+		t.Errorf("errors = %d, want 2", preview.CountOf(ImportClassError))
 	}
 }
 

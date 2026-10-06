@@ -66,6 +66,9 @@ const (
 	// ProblemTooMany means a list has more items than its limit;
 	// FieldError.Limit names the limit.
 	ProblemTooMany FieldProblem = "tooMany"
+	// ProblemDuplicateInFile means another entry of the same import file
+	// gives the same import key.
+	ProblemDuplicateInFile FieldProblem = "duplicateInFile"
 )
 
 // FieldError names one rejected field and why it was rejected.

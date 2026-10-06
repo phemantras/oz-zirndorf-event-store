@@ -98,3 +98,9 @@ func TestValidationErrorNamesTheExceededLimit(t *testing.T) {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
+
+func TestFieldProblemDuplicateInFileCode(t *testing.T) {
+	if ProblemDuplicateInFile != "duplicateInFile" {
+		t.Errorf("ProblemDuplicateInFile = %q", ProblemDuplicateInFile)
+	}
+}

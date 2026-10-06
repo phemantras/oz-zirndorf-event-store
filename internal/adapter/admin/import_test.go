@@ -88,6 +88,14 @@ func TestImportPageOffersFileUploadWithHints(t *testing.T) {
 	assertBodyLacks(t, rec, "<table")
 }
 
+func TestImportNamesEveryClassInGerman(t *testing.T) {
+	for _, class := range core.ImportClasses() {
+		if importClassLabels[class] == "" {
+			t.Errorf("class %q has no German label", class)
+		}
+	}
+}
+
 func TestHomeLinksImport(t *testing.T) {
 	ts := newTestServer(t)
 
@@ -96,16 +104,20 @@ func TestHomeLinksImport(t *testing.T) {
 	assertBodyContains(t, rec, `href="`+importPath+`">Import</a>`)
 }
 
-func TestImportOfAValidFileShowsEveryEntryAsValidAndStoresNothing(t *testing.T) {
+func TestImportOfAValidFileShowsEveryEntryAsNewAndStoresNothing(t *testing.T) {
 	ts := newTestServer(t)
 	ts.seed(t, hallName)
 
 	rec := ts.postImport(t, importFileField, validImportFile)
 
 	assertStatusCode(t, rec, http.StatusOK)
-	assertBodyContains(t, rec, "2 gültig, 0 fehlerhaft", "Kirchweihmarkt", "Konzert an der Veste", msgImportPersonalData)
-	if got := strings.Count(rec.Body.String(), "<td>"+statusImportValid+"</td>"); got != 2 {
-		t.Errorf("%d rows are valid, want 2", got)
+	assertBodyContains(t, rec,
+		"<li>neu: 2</li>", "<li>Aktualisierung: 0</li>", "<li>unverändert: 0</li>", "<li>Duplikatverdacht: 0</li>", "<li>fehlerhaft: 0</li>",
+		"Kirchweihmarkt", "Konzert an der Veste", msgImportPersonalData, msgImportNothingSaved,
+		"<h2>Neue Orte</h2>", "<td>Alte Veste</td><td>2</td>",
+	)
+	if got := strings.Count(rec.Body.String(), "<td>"+importClassLabels[core.ImportClassNew]+"</td>"); got != 2 {
+		t.Errorf("%d rows are new, want 2", got)
 	}
 	if len(ts.events.events) != 0 || len(ts.locations.locations) != 1 {
 		t.Errorf("events = %d, locations = %d, want the store unchanged", len(ts.events.events), len(ts.locations.locations))
@@ -120,7 +132,7 @@ func TestImportNamesEveryProblemByPositionTitleAndField(t *testing.T) {
 
 	assertStatusCode(t, rec, http.StatusOK)
 	assertBodyContains(t, rec,
-		"1 gültig, 4 fehlerhaft",
+		"<li>neu: 1</li>", "<li>fehlerhaft: 4</li>",
 		"Ort: Bitte zu jedem Event einen Ort mit Namen angeben.",
 		"Beginn-Datum: Das Beginn-Datum ist kein gültiges Datum (Format JJJJ-MM-TT).",
 		"Titel: Höchstens 200 Zeichen.",
@@ -129,11 +141,11 @@ func TestImportNamesEveryProblemByPositionTitleAndField(t *testing.T) {
 		"Programmpunkt 3, Beginn-Uhrzeit: "+msgOutsideEvent,
 		"Eintrag: "+msgImportWrongType,
 	)
-	want := []string{"2", "Flohmarkt", statusImportInvalid, "Beginn-Datum: Das Beginn-Datum ist kein gültiges Datum (Format JJJJ-MM-TT).", "Ort: Bitte zu jedem Event einen Ort mit Namen angeben."}
+	want := []string{"2", "Flohmarkt", importClassLabels[core.ImportClassError], "Beginn-Datum: Das Beginn-Datum ist kein gültiges Datum (Format JJJJ-MM-TT).", "Ort: Bitte zu jedem Event einen Ort mit Namen angeben."}
 	if got := importRowTexts(rec, "2"); !slices.Equal(got, want) {
 		t.Errorf("row 2 = %q, want %q", got, want)
 	}
-	if got := importRowTexts(rec, "1"); !slices.Equal(got, []string{"1", "Kirchweihmarkt", statusImportValid}) {
+	if got := importRowTexts(rec, "1"); !slices.Equal(got, []string{"1", "Kirchweihmarkt", importClassLabels[core.ImportClassNew]}) {
 		t.Errorf("row 1 = %q", got)
 	}
 	if len(ts.events.events) != 0 || len(ts.locations.locations) != 1 {
@@ -178,6 +190,7 @@ func TestImportMessagesFollowTheFormsOfEventAndLocation(t *testing.T) {
 		{Field: core.EventFieldAllDay, Problem: core.ProblemInvalidFormat}:                     msgImportWrongType,
 		{Field: "location.address", Problem: core.ProblemInvalidFormat}:                        msgImportWrongType,
 		{Field: core.EventFieldNote, Problem: core.ProblemOutOfRange}:                          msgFieldInvalid,
+		{Field: core.EventFieldImportKey, Problem: core.ProblemDuplicateInFile}:                "Diesen Import-Schlüssel tragen mehrere Einträge der Datei.",
 	}
 	for field, want := range tests {
 		if got := importProblemMessage(field); got != want {
@@ -272,9 +285,10 @@ func TestImportRequiresSessionAndSameOrigin(t *testing.T) {
 }
 
 // importRowTexts returns the texts of the result row at position: its
-// cells, the reasons of the last one as separate texts.
+// cells, the details of the last one as separate texts.
 func importRowTexts(rec *httptest.ResponseRecorder, position string) []string {
-	for _, row := range strings.Split(html.UnescapeString(rec.Body.String()), "<tr>") {
+	for _, row := range strings.Split(html.UnescapeString(rec.Body.String()), "<tr")[1:] {
+		_, row, _ = strings.Cut(row, ">")
 		row, _, found := strings.Cut(row, "</tr>")
 		if !found || !strings.HasPrefix(strings.TrimSpace(row), "<td>"+position+"</td>") {
 			continue
@@ -292,7 +306,8 @@ func importRowTexts(rec *httptest.ResponseRecorder, position string) []string {
 
 // isMarkup reports whether a part between angle brackets is a tag name.
 func isMarkup(text string) bool {
-	return slices.Contains([]string{"td", "/td", "ul", "/ul", "li", "/li"}, text) || strings.HasPrefix(text, "ul ")
+	return slices.Contains([]string{"td", "/td", "ul", "/ul", "li", "/li", "p", "/p", "a", "/a", "span", "/span"}, text) ||
+		strings.HasPrefix(text, "ul ") || strings.HasPrefix(text, "a ") || strings.HasPrefix(text, "span ")
 }
 
 // failingFile fails to read or to close.

@@ -29,7 +29,7 @@ INSERT INTO events (title, title_key, type, location_id, start_date, start_time,
                     source_description, source_url, note, effective_start, effective_end)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 RETURNING id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-          source_description, source_url, note, effective_start, effective_end, title_key
+          source_description, source_url, note, effective_start, effective_end, title_key, import_key
 `
 
 type CreateEventParams struct {
@@ -65,6 +65,7 @@ type CreateEventRow struct {
 	EffectiveStart    pgtype.Timestamptz
 	EffectiveEnd      pgtype.Timestamptz
 	TitleKey          string
+	ImportKey         pgtype.Text
 }
 
 func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (CreateEventRow, error) {
@@ -101,6 +102,7 @@ func (q *Queries) CreateEvent(ctx context.Context, arg CreateEventParams) (Creat
 		&i.EffectiveStart,
 		&i.EffectiveEnd,
 		&i.TitleKey,
+		&i.ImportKey,
 	)
 	return i, err
 }
@@ -164,7 +166,7 @@ func (q *Queries) DeleteTimetableEntriesOfEvent(ctx context.Context, eventID pgt
 
 const findEventsByDuplicateKey = `-- name: FindEventsByDuplicateKey :many
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events
 WHERE title_key = $1 AND start_date = $2 AND location_id = $3
 `
@@ -191,6 +193,7 @@ type FindEventsByDuplicateKeyRow struct {
 	EffectiveStart    pgtype.Timestamptz
 	EffectiveEnd      pgtype.Timestamptz
 	TitleKey          string
+	ImportKey         pgtype.Text
 }
 
 func (q *Queries) FindEventsByDuplicateKey(ctx context.Context, arg FindEventsByDuplicateKeyParams) ([]FindEventsByDuplicateKeyRow, error) {
@@ -218,6 +221,7 @@ func (q *Queries) FindEventsByDuplicateKey(ctx context.Context, arg FindEventsBy
 			&i.EffectiveStart,
 			&i.EffectiveEnd,
 			&i.TitleKey,
+			&i.ImportKey,
 		); err != nil {
 			return nil, err
 		}
@@ -231,7 +235,7 @@ func (q *Queries) FindEventsByDuplicateKey(ctx context.Context, arg FindEventsBy
 
 const getEvent = `-- name: GetEvent :one
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events
 WHERE id = $1
 `
@@ -252,6 +256,7 @@ type GetEventRow struct {
 	EffectiveStart    pgtype.Timestamptz
 	EffectiveEnd      pgtype.Timestamptz
 	TitleKey          string
+	ImportKey         pgtype.Text
 }
 
 func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, error) {
@@ -273,6 +278,7 @@ func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, er
 		&i.EffectiveStart,
 		&i.EffectiveEnd,
 		&i.TitleKey,
+		&i.ImportKey,
 	)
 	return i, err
 }
@@ -280,7 +286,7 @@ func (q *Queries) GetEvent(ctx context.Context, id pgtype.UUID) (GetEventRow, er
 const listEvents = `-- name: ListEvents :many
 
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events
 `
 
@@ -300,6 +306,7 @@ type ListEventsRow struct {
 	EffectiveStart    pgtype.Timestamptz
 	EffectiveEnd      pgtype.Timestamptz
 	TitleKey          string
+	ImportKey         pgtype.Text
 }
 
 // Plain CRUD only: sorting, validation and the effective period live in the
@@ -329,6 +336,7 @@ func (q *Queries) ListEvents(ctx context.Context) ([]ListEventsRow, error) {
 			&i.EffectiveStart,
 			&i.EffectiveEnd,
 			&i.TitleKey,
+			&i.ImportKey,
 		); err != nil {
 			return nil, err
 		}
@@ -342,7 +350,7 @@ func (q *Queries) ListEvents(ctx context.Context) ([]ListEventsRow, error) {
 
 const listEventsOverlapping = `-- name: ListEventsOverlapping :many
 SELECT id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-       source_description, source_url, note, effective_start, effective_end, title_key
+       source_description, source_url, note, effective_start, effective_end, title_key, import_key
 FROM events
 WHERE ($1::timestamptz IS NULL OR effective_end > $1)
   AND ($2::timestamptz IS NULL OR effective_start < $2)
@@ -369,6 +377,7 @@ type ListEventsOverlappingRow struct {
 	EffectiveStart    pgtype.Timestamptz
 	EffectiveEnd      pgtype.Timestamptz
 	TitleKey          string
+	ImportKey         pgtype.Text
 }
 
 // The one filter predicate of AD-16 on the stored effective period; a NULL
@@ -399,6 +408,7 @@ func (q *Queries) ListEventsOverlapping(ctx context.Context, arg ListEventsOverl
 			&i.EffectiveStart,
 			&i.EffectiveEnd,
 			&i.TitleKey,
+			&i.ImportKey,
 		); err != nil {
 			return nil, err
 		}
@@ -533,7 +543,7 @@ SET title = $2, title_key = $3, type = $4, location_id = $5, start_date = $6, st
     archived_at = NULL
 WHERE id = $1
 RETURNING id, title, type, location_id, start_date, start_time, end_date, end_time, all_day,
-          source_description, source_url, note, effective_start, effective_end, title_key
+          source_description, source_url, note, effective_start, effective_end, title_key, import_key
 `
 
 type UpdateEventParams struct {
@@ -570,6 +580,7 @@ type UpdateEventRow struct {
 	EffectiveStart    pgtype.Timestamptz
 	EffectiveEnd      pgtype.Timestamptz
 	TitleKey          string
+	ImportKey         pgtype.Text
 }
 
 func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (UpdateEventRow, error) {
@@ -607,6 +618,7 @@ func (q *Queries) UpdateEvent(ctx context.Context, arg UpdateEventParams) (Updat
 		&i.EffectiveStart,
 		&i.EffectiveEnd,
 		&i.TitleKey,
+		&i.ImportKey,
 	)
 	return i, err
 }

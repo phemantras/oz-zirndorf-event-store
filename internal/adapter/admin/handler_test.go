@@ -58,7 +58,7 @@ func newTestServer(t *testing.T) *testServer {
 	tx := memoryTx{repos: core.Repos{Events: ts.events, Locations: ts.locations}}
 	ts.eventService = core.NewEventService(tx, ts.events, ts.locations)
 	ts.locationService = core.NewLocationService(tx, ts.locations)
-	ts.importService = core.NewImportService(ts.locations)
+	ts.importService = core.NewImportService(ts.locations, ts.events)
 	ts.handler = newHandler(Config{
 		User:          testUser,
 		PasswordHash:  hash,

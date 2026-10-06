@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"slices"
 	"strconv"
 	"strings"
@@ -87,7 +86,8 @@ func (e *ImportFileError) Error() string {
 
 func (e *ImportFileError) Unwrap() error { return ErrValidation }
 
-// ImportEntry is one event of an import file as read and checked.
+// ImportEntry is one event of an import file as read, checked and
+// classified.
 type ImportEntry struct {
 	// Position counts the entries of the file from 1.
 	Position int
@@ -100,6 +100,19 @@ type ImportEntry struct {
 	// schema, such as location.address.street or timetable[2].date; none
 	// means the entry is valid.
 	Problems []FieldError
+	// Class is what importing the entry would do.
+	Class ImportClass
+	// TargetID is the stored event with the import key of the entry, set
+	// for ImportClassUpdate and ImportClassUnchanged.
+	TargetID string
+	// Changes lists the fields an update would change, in the order of
+	// EventInput.
+	Changes []ImportChange
+	// Candidates are what an ImportClassDuplicateSuspect entry may
+	// duplicate: stored events first, then other entries of the file.
+	Candidates []ImportCandidate
+	// Hints point out what does not change the class.
+	Hints []ImportHint
 }
 
 // IsValid reports whether the entry has no problem.
@@ -108,64 +121,67 @@ func (e ImportEntry) IsValid() bool {
 }
 
 // ImportPreview is the result of checking an import file, one entry per
-// event in file order.
+// event in file order, and the locations the import would create.
 type ImportPreview struct {
 	Entries []ImportEntry
+	// NewLocations are the locations of valid entries that no stored
+	// location has by name, once per NormalizeKey of the name, in the
+	// order of their first entry.
+	NewLocations []ImportNewLocation
 }
 
-// ValidCount returns how many entries have no problem.
-func (p ImportPreview) ValidCount() int {
+// CountOf returns how many entries have class.
+func (p ImportPreview) CountOf(class ImportClass) int {
 	count := 0
 	for _, entry := range p.Entries {
-		if entry.IsValid() {
+		if entry.Class == class {
 			count++
 		}
 	}
 	return count
 }
 
-// ErrorCount returns how many entries have problems.
-func (p ImportPreview) ErrorCount() int {
-	return len(p.Entries) - p.ValidCount()
-}
-
 // ImportService holds the import use cases.
 type ImportService struct {
 	locations LocationRepo
+	events    EventRepo
 }
 
 // NewImportService returns the import use cases, which read the stored
-// locations from locations.
-func NewImportService(locations LocationRepo) *ImportService {
-	return &ImportService{locations: locations}
+// locations from locations and the stored events from events.
+func NewImportService(locations LocationRepo, events EventRepo) *ImportService {
+	return &ImportService{locations: locations, events: events}
 }
 
-// PreviewImport reads an import file and checks every entry with the rules
-// of SaveEvent and SaveLocation. It writes nothing. A file that cannot be
+// PreviewImport reads an import file, checks every entry with the rules
+// of SaveEvent and SaveLocation and classifies it against all stored
+// events, archived ones included. It writes nothing. A file that cannot be
 // read as format v1 yields *ImportFileError; otherwise every entry is
 // returned with its problems, which never affect the other entries. A
 // location whose name matches a stored one by NormalizeKey refers to it,
-// and its other fields are ignored; a new location must be complete.
+// and its other fields are only compared; a new location must be complete.
 func (s *ImportService) PreviewImport(ctx context.Context, data []byte) (ImportPreview, error) {
 	rawEntries, err := readImportFile(data)
 	if err != nil {
 		return ImportPreview{}, err
 	}
-	stored, err := s.locations.List(ctx)
+	classifier, err := s.newImportClassifier(ctx)
 	if err != nil {
-		return ImportPreview{}, fmt.Errorf("list locations for import: %w", err)
-	}
-	storedNames := make(map[string]bool, len(stored))
-	for _, location := range stored {
-		storedNames[NormalizeKey(location.Name)] = true
+		return ImportPreview{}, err
 	}
 	entries := make([]ImportEntry, 0, len(rawEntries))
+	imported := make([]importedEvent, 0, len(rawEntries))
 	for index, raw := range rawEntries {
-		entry := readImportEntry(raw, storedNames)
+		entry, event := readImportEntry(raw, classifier.locationsByKey)
 		entry.Position = index + firstImportPosition
 		entries = append(entries, entry)
+		imported = append(imported, event)
 	}
-	return ImportPreview{Entries: entries}, nil
+	newLocations, err := classifier.classify(ctx, entries, imported)
+	if err != nil {
+		return ImportPreview{}, err
+	}
+	return ImportPreview{Entries: entries, NewLocations: newLocations}, nil
 }
 
 // readImportFile checks the top level of an import file and returns its
@@ -200,14 +216,31 @@ func readImportFile(data []byte) ([]json.RawMessage, error) {
 	return entries, nil
 }
 
-// readImportEntry reads one entry and checks it. JSON type errors are
+// importedEvent is an entry as the core would store it: the parsed event
+// and the location it refers to. Only valid entries use it.
+type importedEvent struct {
+	// event has no location ID; location says where it takes place.
+	event Event
+	// location is the stored location the entry names, or the new one it
+	// brings along, without ID.
+	location Location
+}
+
+// isNewLocation reports whether the entry brings a location that is not
+// stored yet.
+func (i importedEvent) isNewLocation() bool {
+	return i.location.ID == ""
+}
+
+// readImportEntry reads one entry and checks it, its class ImportClassError
+// when it has problems and ImportClassNew otherwise. JSON type errors are
 // reported at their field as invalidFormat; the rules then report nothing
 // more for that field or the fields within it.
-func readImportEntry(raw json.RawMessage, storedNames map[string]bool) ImportEntry {
+func readImportEntry(raw json.RawMessage, storedLocations map[string]Location) (ImportEntry, importedEvent) {
 	reader := &jsonReader{}
 	fields, isObject := reader.object(raw, ImportFieldEntry)
 	if !isObject {
-		return ImportEntry{Problems: reader.problems}
+		return ImportEntry{Problems: reader.problems, Class: ImportClassError}, importedEvent{}
 	}
 	in := readEventInput(reader, fields)
 	// The import names its location only by the object location, so the
@@ -216,13 +249,19 @@ func readImportEntry(raw json.RawMessage, storedNames map[string]bool) ImportEnt
 	if checked.Location == nil {
 		checked.Location = &LocationInput{}
 	}
-	_, eventProblems := newEvent(checked)
-	problems := slices.Concat(eventProblems, importLocationProblems(in.Location, storedNames))
-	return ImportEntry{
+	event, eventProblems := newEvent(checked)
+	location, locationProblems := resolveImportLocation(in.Location, storedLocations)
+	problems := slices.Concat(eventProblems, locationProblems)
+	entry := ImportEntry{
 		Title:    normalizeText(in.Title),
 		Input:    in,
 		Problems: slices.Concat(reader.problems, withoutFieldsWithin(problems, reader.problems)),
+		Class:    ImportClassNew,
 	}
+	if !entry.IsValid() {
+		entry.Class = ImportClassError
+	}
+	return entry, importedEvent{event: event, location: location}
 }
 
 // readEventInput reads the fields of an entry by the names of EventInput
@@ -299,30 +338,31 @@ func readTimetable(reader *jsonReader, fields map[string]json.RawMessage) []Time
 	return timetable
 }
 
-// importLocationProblems checks the location an entry brings along: it is
-// required, its name too. A stored name needs nothing else; a new location
-// is checked like SaveLocation, its fields named by their import paths.
-func importLocationProblems(location *LocationInput, storedNames map[string]bool) []FieldError {
+// resolveImportLocation checks the location an entry brings along: it is
+// required, its name too. A stored name needs nothing else and yields the
+// stored location; a new location is checked like SaveLocation, its fields
+// named by their import paths, and yielded without ID.
+func resolveImportLocation(location *LocationInput, storedLocations map[string]Location) (Location, []FieldError) {
 	if location == nil {
-		return []FieldError{{Field: EventFieldLocation, Problem: ProblemMissing}}
+		return Location{}, []FieldError{{Field: EventFieldLocation, Problem: ProblemMissing}}
 	}
 	if normalizeText(location.Name) == "" {
-		return []FieldError{{Field: importLocationField(LocationFieldName), Problem: ProblemMissing}}
+		return Location{}, []FieldError{{Field: importLocationField(LocationFieldName), Problem: ProblemMissing}}
 	}
-	if storedNames[NormalizeKey(location.Name)] {
-		return nil
+	if stored, ok := storedLocations[NormalizeKey(location.Name)]; ok {
+		return stored, nil
 	}
-	_, err := newLocation(*location)
+	created, err := newLocation(*location)
 	var validation *ValidationError
 	if !errors.As(err, &validation) {
-		return nil
+		return created, nil
 	}
 	problems := make([]FieldError, 0, len(validation.Fields))
 	for _, problem := range validation.Fields {
 		problem.Field = importLocationField(problem.Field)
 		problems = append(problems, problem)
 	}
-	return problems
+	return Location{}, problems
 }
 
 // importLocationField returns the import path of a location field:
