@@ -306,8 +306,8 @@ func importRowTexts(rec *httptest.ResponseRecorder, position string) []string {
 
 // isMarkup reports whether a part between angle brackets is a tag name.
 func isMarkup(text string) bool {
-	return slices.Contains([]string{"td", "/td", "ul", "/ul", "li", "/li", "p", "/p", "a", "/a", "span", "/span"}, text) ||
-		strings.HasPrefix(text, "ul ") || strings.HasPrefix(text, "a ") || strings.HasPrefix(text, "span ")
+	return slices.Contains([]string{"td", "/td", "ul", "/ul", "li", "/li", "p", "/p", "a", "/a", "span", "/span", "label", "/label"}, text) ||
+		strings.HasPrefix(text, "ul ") || strings.HasPrefix(text, "a ") || strings.HasPrefix(text, "span ") || strings.HasPrefix(text, "input ")
 }
 
 // failingFile fails to read or to close.

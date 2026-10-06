@@ -648,3 +648,23 @@ func (q *Queries) UpdateEventDerived(ctx context.Context, arg UpdateEventDerived
 	}
 	return result.RowsAffected(), nil
 }
+
+const updateEventImportKey = `-- name: UpdateEventImportKey :execrows
+UPDATE events
+SET import_key = $2
+WHERE id = $1
+`
+
+type UpdateEventImportKeyParams struct {
+	ID        pgtype.UUID
+	ImportKey pgtype.Text
+}
+
+// Only the import commit sets the import key (Story 3.3).
+func (q *Queries) UpdateEventImportKey(ctx context.Context, arg UpdateEventImportKeyParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateEventImportKey, arg.ID, arg.ImportKey)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}

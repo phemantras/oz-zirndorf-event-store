@@ -264,6 +264,24 @@ func (r *EventRepo) UpdateDerived(ctx context.Context, id string, derived core.D
 	return nil
 }
 
+// SetImportKey replaces only the import key of the event with id. A missing
+// or unparsable id yields core.ErrNotFound, a key another event has
+// core.ErrConflict.
+func (r *EventRepo) SetImportKey(ctx context.Context, id, importKey string) error {
+	uuid, err := parseID(eventKind, id)
+	if err != nil {
+		return err
+	}
+	affected, err := r.queries.UpdateEventImportKey(ctx, db.UpdateEventImportKeyParams{ID: uuid, ImportKey: optionalText(importKey)})
+	if err != nil {
+		return translateError("update import key of event", err)
+	}
+	if affected == noRowsAffected {
+		return fmt.Errorf("update import key of event %s: %w", id, core.ErrNotFound)
+	}
+	return nil
+}
+
 // MarkArchived sets the archive mark to now on every event whose effective
 // end is at or before now and that has no mark yet, in one statement, and
 // returns how many it marked.

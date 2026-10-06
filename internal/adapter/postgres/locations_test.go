@@ -348,3 +348,34 @@ func TestLocationRepoPassesDatabaseFailuresOnUntranslated(t *testing.T) {
 		}
 	}
 }
+
+// TestRecomputeNameKeysKeepsGoingAfterADatabaseConflict recomputes, in one
+// transaction, a key the database still reports as taken: the location and
+// the holder fail as one group, and the holder's own new key is stored
+// after the conflict.
+func TestRecomputeNameKeysKeepsGoingAfterADatabaseConflict(t *testing.T) {
+	repo, pool := migratedLocationRepo(t)
+	ctx := context.Background()
+	tent := hallLocation()
+	tent.Name, tent.NameKey = "Festzelt", "alt"
+	tent = createLocation(t, repo, tent)
+	holder := parkLocation()
+	holder.Name, holder.NameKey = "Zeltplatz", "festzelt"
+	holder = createLocation(t, repo, holder)
+
+	failures, err := core.NewLocationService(postgres.NewTxRunner(pool), repo).RecomputeNameKeys(ctx)
+
+	if err != nil || len(failures) != 1 {
+		t.Fatalf("RecomputeNameKeys = %+v, %v, want one failure", failures, err)
+	}
+	if want := slices.Sorted(slices.Values([]string{tent.ID, holder.ID})); !slices.Equal(failures[0].LocationIDs, want) {
+		t.Errorf("failure group = %v, want %v", failures[0].LocationIDs, want)
+	}
+	stored, err := repo.Get(ctx, holder.ID)
+	if err != nil || stored.NameKey != "zeltplatz" {
+		t.Errorf("holder = %+v, %v, want name key zeltplatz", stored, err)
+	}
+	if stored, err := repo.Get(ctx, tent.ID); err != nil || stored.NameKey != "alt" {
+		t.Errorf("tent = %+v, %v, want its stored name key", stored, err)
+	}
+}

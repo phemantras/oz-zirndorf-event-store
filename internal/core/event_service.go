@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// EventRepo is the storage port for events. Only EventService calls
-// Create, Update, Delete and UpdateDerived; adapters never get the
+// EventRepo is the storage port for events. Only EventService and
+// ImportService call Create, Update, Delete, UpdateDerived and SetImportKey; adapters never get the
 // repository to write past the core (AD-6). Events come with their
 // timetable in no particular order; the core sorts it.
 type EventRepo interface {
@@ -51,6 +51,10 @@ type EventRepo interface {
 	// as archive mark, and returns how many it marked. Marked events keep
 	// their mark.
 	MarkArchived(ctx context.Context, now time.Time) (int, error)
+	// SetImportKey replaces only the import key of the event with id, or
+	// yields ErrNotFound, or ErrConflict when another event has it. Only
+	// CommitImport calls it.
+	SetImportKey(ctx context.Context, id, importKey string) error
 }
 
 // Derived are the values of an event that the core derives from its input
@@ -103,8 +107,8 @@ type EventService struct {
 	inReview map[string]struct{}
 }
 
-// NewEventService returns the event use cases: saving runs in transactions
-// of tx, reading and recomputing use events and locations directly.
+// NewEventService returns the event use cases: writing and recomputing run
+// in transactions of tx, reading uses events and locations directly.
 func NewEventService(tx TxRunner, events EventRepo, locations LocationRepo) *EventService {
 	return &EventService{tx: tx, events: events, locations: locations, inReview: map[string]struct{}{}}
 }
@@ -364,28 +368,46 @@ func compareListEntries(a, b EventListEntry) int {
 }
 
 // RecomputeDerived recomputes the derived values of every event, effective
-// period and title key, and stores them where they changed (AD-16). An event
-// whose period the current rules reject, or whose timetable no longer lies
-// within the recomputed period (AD-15), keeps its stored period, gets the
-// current title key, is marked for review and is returned as failure. An
-// event deleted meanwhile is skipped. Failing to list or store, and an ended
-// ctx, are errors: they say nothing about an event.
+// period and title key, and stores them where they changed (AD-16). It reads
+// and writes in one transaction, so it sees what the transactions before it
+// committed. An event whose period the current rules reject, or whose
+// timetable no longer lies within the recomputed period (AD-15), keeps its
+// stored period, gets the current title key, is marked for review and is
+// returned as failure. An event deleted meanwhile is skipped. Failing to
+// list or store, and an ended ctx, are errors: they say nothing about an
+// event and mark nothing.
 func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure, error) {
-	events, err := s.events.List(ctx)
+	var failures []RecomputeFailure
+	err := s.tx.InTx(ctx, func(repos Repos) error {
+		var err error
+		failures, err = recomputeDerived(ctx, repos.Events)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, failure := range failures {
+		s.markForReview(failure.EventID)
+	}
+	return failures, nil
+}
+
+// recomputeDerived is the transaction-bound part of RecomputeDerived.
+func recomputeDerived(ctx context.Context, events EventRepo) ([]RecomputeFailure, error) {
+	stored, err := events.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list events to recompute: %w", err)
 	}
 	var failures []RecomputeFailure
-	for _, event := range events {
+	for _, event := range stored {
 		if err := ctx.Err(); err != nil {
 			return nil, fmt.Errorf("recompute derived values: %w", err)
 		}
-		ruleErr, err := s.recomputeEvent(ctx, event)
+		ruleErr, err := recomputeEvent(ctx, events, event)
 		if err != nil {
 			return nil, err
 		}
 		if ruleErr != nil {
-			s.markForReview(event.ID)
 			failures = append(failures, RecomputeFailure{EventID: event.ID, Err: ruleErr})
 		}
 	}
@@ -396,7 +418,7 @@ func (s *EventService) RecomputeDerived(ctx context.Context) ([]RecomputeFailure
 // derive other ones from its times and title. ruleErr reports a period the
 // rules reject or a timetable entry outside it, the stored period being
 // kept; err reports a failed write.
-func (s *EventService) recomputeEvent(ctx context.Context, event Event) (ruleErr, err error) {
+func recomputeEvent(ctx context.Context, events EventRepo, event Event) (ruleErr, err error) {
 	derived := Derived{Period: event.Period, TitleKey: NormalizeKey(event.Title)}
 	period, periodErr := event.Times.EffectivePeriod()
 	if periodErr != nil {
@@ -407,7 +429,7 @@ func (s *EventService) recomputeEvent(ctx context.Context, event Event) (ruleErr
 	if derived.Period.Start.Equal(event.Period.Start) && derived.Period.End.Equal(event.Period.End) && derived.TitleKey == event.TitleKey {
 		return ruleErr, nil
 	}
-	err = s.events.UpdateDerived(ctx, event.ID, derived)
+	err = events.UpdateDerived(ctx, event.ID, derived)
 	if errors.Is(err, ErrNotFound) {
 		return nil, nil
 	}

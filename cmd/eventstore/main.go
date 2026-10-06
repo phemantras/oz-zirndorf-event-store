@@ -100,7 +100,7 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	}
 	// The admin shares both services with the recomputation, so it sees
 	// their review marks.
-	cases := useCases{locations: locations, events: events, imports: core.NewImportService(locationRepo, eventRepo)}
+	cases := useCases{locations: locations, events: events, imports: core.NewImportService(events)}
 	return serve(ctx, newServer(pool, logger, newRouteHandlers(cfg, logger, cases)), listener, logger)
 }
 

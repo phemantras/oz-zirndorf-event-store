@@ -63,7 +63,7 @@ func marshalImport(t *testing.T, file any) []byte {
 }
 
 func newTestImportService(locations *fakeLocationRepo) *ImportService {
-	return NewImportService(locations, newFakeEventRepo())
+	return NewImportService(newEventServiceOn(newFakeEventRepo(), locations))
 }
 
 func previewOf(t *testing.T, data []byte, locations ...Location) ImportPreview {
@@ -74,7 +74,7 @@ func previewOf(t *testing.T, data []byte, locations ...Location) ImportPreview {
 // previewWithEvents previews data against the stored events and locations.
 func previewWithEvents(t *testing.T, data []byte, events *fakeEventRepo, locations ...Location) ImportPreview {
 	t.Helper()
-	preview, err := NewImportService(newFakeLocationRepo(locations...), events).PreviewImport(context.Background(), data)
+	preview, err := NewImportService(newEventServiceOn(events, newFakeLocationRepo(locations...))).PreviewImport(context.Background(), data)
 	if err != nil {
 		t.Fatalf("PreviewImport: %v", err)
 	}

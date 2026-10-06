@@ -12,11 +12,20 @@
 </form>
 {{range .FileErrors}}<p class="error" role="alert">{{.}}</p>
 {{end}}
+{{with .Summary}}
+<h2>{{.Heading}}</h2>
+<ul class="import-counts">{{range .Counts}}<li>{{.Label}}: {{.Count}}</li>{{end}}<li>{{.LocationsLabel}}: {{.CreatedLocations}}</li></ul>
+<p><a href="{{.EventsURL}}">Zur Event-Liste</a></p>
+{{end}}
 {{with .Result}}
 <h2>Ergebnis</h2>
 <ul class="import-counts">{{range .Counts}}<li>{{.Label}}: {{.Count}}</li>{{end}}</ul>
-<p class="hint">{{$.NothingSaved}}</p>
+<p class="hint">{{$.CommitHint}}</p>
 <p class="hint">{{$.PrivacyHint}}</p>
+<form method="post" action="{{$.CommitAction}}" enctype="multipart/form-data">
+<input type="hidden" name="{{$.ContentField}}" value="{{$.Content}}">
+{{range .Rows}}{{range .Hidden}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">
+{{end}}{{end -}}
 <table>
   <thead>
     <tr><th>Position</th><th>Titel</th><th>Klasse</th><th>Details</th></tr>
@@ -28,11 +37,14 @@
       {{- with .TargetURL}}<p>Ziel: <a href="{{.}}">vorhandenes Event</a></p>{{end}}
       {{- if .Changes}}<p>Änderungen:</p><ul>{{range .Changes}}<li>{{.Label}}: <span class="change-value">{{.Old}}</span> → <span class="change-value">{{.New}}</span></li>{{end}}</ul>{{end}}
       {{- if .Candidates}}<p>Mögliche Duplikate:</p><ul>{{range .Candidates}}<li><a href="{{.URL}}">{{.Text}}</a></li>{{end}}</ul>{{end}}
-      {{- if .Hints}}<p>Hinweise:</p><ul>{{range .Hints}}<li>{{.Text}}{{with .Link}} <a href="{{.URL}}">{{.Text}}</a>{{end}}</li>{{end}}</ul>{{end -}}
+      {{- if .Hints}}<p>Hinweise:</p><ul>{{range .Hints}}<li>{{.Text}}{{with .Link}} <a href="{{.URL}}">{{.Text}}</a>{{end}}</li>{{end}}</ul>{{end}}
+      {{- if .Choices}}<p>{{.ChoiceLegend}}</p><ul>{{range .Choices}}<li><label><input type="radio" name="{{.Name}}" value="{{.Value}}"> {{.Label}}</label></li>{{end}}</ul>{{end -}}
     </td></tr>
   {{end}}
   </tbody>
 </table>
+<button type="submit">{{$.CommitButton}}</button>
+</form>
 {{if .NewLocations}}
 <h2>Neue Orte</h2>
 <p class="hint">Diese Orte würden beim Import neu angelegt.</p>

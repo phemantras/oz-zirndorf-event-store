@@ -113,6 +113,9 @@ type ImportEntry struct {
 	Candidates []ImportCandidate
 	// Hints point out what does not change the class.
 	Hints []ImportHint
+	// NewLocation reports whether a valid entry brings a location that is
+	// not stored yet.
+	NewLocation bool
 }
 
 // IsValid reports whether the entry has no problem.
@@ -143,14 +146,14 @@ func (p ImportPreview) CountOf(class ImportClass) int {
 
 // ImportService holds the import use cases.
 type ImportService struct {
-	locations LocationRepo
-	events    EventRepo
+	events *EventService
 }
 
-// NewImportService returns the import use cases, which read the stored
-// locations from locations and the stored events from events.
-func NewImportService(locations LocationRepo, events EventRepo) *ImportService {
-	return &ImportService{locations: locations, events: events}
+// NewImportService returns the import use cases. They read through the
+// repositories of events, write in its transactions and clear its review
+// marks.
+func NewImportService(events *EventService) *ImportService {
+	return &ImportService{events: events}
 }
 
 // PreviewImport reads an import file, checks every entry with the rules
@@ -165,23 +168,47 @@ func (s *ImportService) PreviewImport(ctx context.Context, data []byte) (ImportP
 	if err != nil {
 		return ImportPreview{}, err
 	}
-	classifier, err := s.newImportClassifier(ctx)
+	classified, err := classifyImport(ctx, Repos{Events: s.events.events, Locations: s.events.locations}, rawEntries)
 	if err != nil {
 		return ImportPreview{}, err
 	}
-	entries := make([]ImportEntry, 0, len(rawEntries))
-	imported := make([]importedEvent, 0, len(rawEntries))
+	return ImportPreview{Entries: classified.entries, NewLocations: classified.newLocations}, nil
+}
+
+// classifiedImport is an import file read and classified against the
+// stored events and locations.
+type classifiedImport struct {
+	entries []ImportEntry
+	// imported holds the parsed event of each entry at the same index.
+	imported     []importedEvent
+	newLocations []ImportNewLocation
+	// storedEvents holds every stored event by ID.
+	storedEvents map[string]Event
+}
+
+// classifyImport reads every entry of rawEntries and classifies it against
+// what repos store.
+func classifyImport(ctx context.Context, repos Repos, rawEntries []json.RawMessage) (classifiedImport, error) {
+	classifier, err := newImportClassifier(ctx, repos)
+	if err != nil {
+		return classifiedImport{}, err
+	}
+	classified := classifiedImport{
+		entries:      make([]ImportEntry, 0, len(rawEntries)),
+		imported:     make([]importedEvent, 0, len(rawEntries)),
+		storedEvents: classifier.eventsByID,
+	}
 	for index, raw := range rawEntries {
 		entry, event := readImportEntry(raw, classifier.locationsByKey)
 		entry.Position = index + firstImportPosition
-		entries = append(entries, entry)
-		imported = append(imported, event)
+		classified.entries = append(classified.entries, entry)
+		classified.imported = append(classified.imported, event)
 	}
-	newLocations, err := classifier.classify(ctx, entries, imported)
+	classified.newLocations, err = classifier.classify(ctx, classified.entries, classified.imported)
 	if err != nil {
-		return ImportPreview{}, err
+		return classifiedImport{}, err
 	}
-	return ImportPreview{Entries: entries, NewLocations: newLocations}, nil
+	return classified, nil
 }
 
 // readImportFile checks the top level of an import file and returns its

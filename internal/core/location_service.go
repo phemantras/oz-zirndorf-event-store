@@ -8,9 +8,9 @@ import (
 	"sync"
 )
 
-// LocationRepo is the storage port for locations. Only LocationService
-// calls Create, Update, UpdateNameKey and Delete; adapters never get the
-// repository to write past the core (AD-6).
+// LocationRepo is the storage port for locations. Only LocationService and
+// ImportService call Create, Update, UpdateNameKey and Delete; adapters
+// never get the repository to write past the core (AD-6).
 type LocationRepo interface {
 	// List returns all locations in no particular order.
 	List(ctx context.Context) ([]Location, error)
@@ -66,8 +66,8 @@ type LocationService struct {
 	inReview map[string][]string
 }
 
-// NewLocationService returns the location use cases: deleting runs in
-// transactions of tx, saving, reading and recomputing use repo directly.
+// NewLocationService returns the location use cases: saving, deleting and
+// recomputing run in transactions of tx, reading uses repo directly.
 func NewLocationService(tx TxRunner, repo LocationRepo) *LocationService {
 	return &LocationService{tx: tx, repo: repo, inReview: map[string][]string{}}
 }
@@ -114,16 +114,49 @@ func deleteLocation(ctx context.Context, repos Repos, id string) (string, error)
 }
 
 // SaveLocation creates a location when id is empty and otherwise updates
-// the location with id, keeping its ID. It returns ErrNotFound for an
-// unknown id, *ValidationError for invalid input and *LocationConflictError
-// when another location already has the same name key.
-//
-// Without a transaction the name check is not atomic; the unique name_key
-// in the database closes that gap, and its ErrConflict is reported the same
-// way. A successful save clears the review mark of the collision group of
+// the location with id, keeping its ID, in one transaction. It returns
+// ErrNotFound for an unknown id, *ValidationError for invalid input and
+// *LocationConflictError when another location already has the same name
+// key. A successful save clears the review mark of the collision group of
 // the location.
 func (s *LocationService) SaveLocation(ctx context.Context, id string, in LocationInput) (Location, error) {
-	storedID, err := s.storedID(ctx, id)
+	var saved Location
+	err := s.tx.InTx(ctx, func(repos Repos) error {
+		var err error
+		saved, err = saveLocation(ctx, repos, id, in)
+		return err
+	})
+	var taken *nameKeyTakenError
+	if errors.As(err, &taken) {
+		// The failed write ended the transaction, so the location that holds
+		// the name key is loaded after it.
+		return Location{}, s.conflictWith(ctx, taken.nameKey)
+	}
+	if err != nil {
+		return Location{}, err
+	}
+	s.clearReview(saved.ID)
+	return saved, nil
+}
+
+// nameKeyTakenError reports that the database refused a location because
+// another one holds its name key, although the check before found none.
+// It matches ErrConflict with errors.Is.
+type nameKeyTakenError struct {
+	nameKey string
+	err     error
+}
+
+func (e *nameKeyTakenError) Error() string {
+	return fmt.Sprintf("name key %q taken on write: %v", e.nameKey, e.err)
+}
+
+func (e *nameKeyTakenError) Unwrap() error { return ErrConflict }
+
+// saveLocation is the transaction-bound part of SaveLocation. A name key
+// that the database reports as taken yields *nameKeyTakenError.
+func saveLocation(ctx context.Context, repos Repos, id string, in LocationInput) (Location, error) {
+	storedID, err := storedLocationIDToUpdate(ctx, repos.Locations, id)
 	if err != nil {
 		return Location{}, err
 	}
@@ -131,30 +164,29 @@ func (s *LocationService) SaveLocation(ctx context.Context, id string, in Locati
 	if err != nil {
 		return Location{}, err
 	}
-	if err := s.ensureNameIsFree(ctx, storedID, location.NameKey); err != nil {
+	if err := ensureNameIsFree(ctx, repos.Locations, storedID, location.NameKey); err != nil {
 		return Location{}, err
 	}
 
 	location.ID = storedID
-	saved, err := s.write(ctx, location)
+	saved, err := writeLocation(ctx, repos.Locations, location)
 	if errors.Is(err, ErrConflict) {
-		return Location{}, s.conflictWith(ctx, location.NameKey)
+		return Location{}, &nameKeyTakenError{nameKey: location.NameKey, err: err}
 	}
 	if err != nil {
 		return Location{}, fmt.Errorf("save location: %w", err)
 	}
-	s.clearReview(saved.ID)
 	return saved, nil
 }
 
-// storedID returns the ID of the location to update as the repository
-// spells it, so an id given in other letter case is not mistaken for another
-// location. An empty id stays empty: a new location is created.
-func (s *LocationService) storedID(ctx context.Context, id string) (string, error) {
+// storedLocationIDToUpdate returns the ID of the location to update as the
+// repository spells it, so an id given in other letter case is not mistaken
+// for another location. An empty id stays empty: a new location is created.
+func storedLocationIDToUpdate(ctx context.Context, locations LocationRepo, id string) (string, error) {
 	if id == "" {
 		return "", nil
 	}
-	current, err := s.repo.Get(ctx, id)
+	current, err := locations.Get(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("get location to update: %w", err)
 	}
@@ -163,8 +195,8 @@ func (s *LocationService) storedID(ctx context.Context, id string) (string, erro
 
 // ensureNameIsFree fails with *LocationConflictError when a location other
 // than id already uses nameKey.
-func (s *LocationService) ensureNameIsFree(ctx context.Context, id, nameKey string) error {
-	existing, err := s.repo.FindByNameKey(ctx, nameKey)
+func ensureNameIsFree(ctx context.Context, locations LocationRepo, id, nameKey string) error {
+	existing, err := locations.FindByNameKey(ctx, nameKey)
 	if errors.Is(err, ErrNotFound) {
 		return nil
 	}
@@ -177,12 +209,13 @@ func (s *LocationService) ensureNameIsFree(ctx context.Context, id, nameKey stri
 	return nil
 }
 
-// write creates location when it has no ID and updates it otherwise.
-func (s *LocationService) write(ctx context.Context, location Location) (Location, error) {
+// writeLocation creates location when it has no ID and updates it
+// otherwise.
+func writeLocation(ctx context.Context, locations LocationRepo, location Location) (Location, error) {
 	if location.ID == "" {
-		return s.repo.Create(ctx, location)
+		return locations.Create(ctx, location)
 	}
-	return s.repo.Update(ctx, location)
+	return locations.Update(ctx, location)
 }
 
 // conflictWith loads the location that won a concurrent save of nameKey,
@@ -230,15 +263,32 @@ func (s *LocationService) ListLocationEntries(ctx context.Context) ([]LocationLi
 
 // RecomputeNameKeys recomputes the name key of every location from its name
 // and stores it where it changed (AD-16, ENT-17); names stay as they are.
-// Locations whose new keys collide keep their stored keys, are marked for
-// review as one group and are returned as one failure per group. That holds
-// for collisions found among all locations before writing and for a key the
-// database reports as taken, whose holder joins the group. A location
-// deleted meanwhile is skipped. It writes without TxRunner, the one
-// exception of AD-6. Failing to list, look up or store, and an ended ctx,
-// are errors: they mark nothing.
+// It reads and writes in one transaction, so it sees what the transactions
+// before it committed. Locations whose new keys collide keep their stored
+// keys, are marked for review as one group and are returned as one failure
+// per group. That holds for collisions found among all locations before
+// writing and for a key the database reports as taken, whose holder joins
+// the group. A location deleted meanwhile is skipped. Failing to list, look
+// up or store, and an ended ctx, are errors: they mark nothing.
 func (s *LocationService) RecomputeNameKeys(ctx context.Context) ([]LocationRecomputeFailure, error) {
-	locations, err := s.repo.List(ctx)
+	var failures []LocationRecomputeFailure
+	err := s.tx.InTx(ctx, func(repos Repos) error {
+		var err error
+		failures, err = recomputeNameKeys(ctx, repos.Locations)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, failure := range failures {
+		s.markForReview(failure.LocationIDs)
+	}
+	return failures, nil
+}
+
+// recomputeNameKeys is the transaction-bound part of RecomputeNameKeys.
+func recomputeNameKeys(ctx context.Context, repo LocationRepo) ([]LocationRecomputeFailure, error) {
+	locations, err := repo.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list locations to recompute: %w", err)
 	}
@@ -261,16 +311,13 @@ func (s *LocationService) RecomputeNameKeys(ctx context.Context) ([]LocationReco
 			}
 			continue
 		}
-		failure, err := s.recomputeNameKey(ctx, location, nameKey)
+		failure, err := recomputeNameKey(ctx, repo, location, nameKey)
 		if err != nil {
 			return nil, err
 		}
 		if failure != nil {
 			failures = append(failures, *failure)
 		}
-	}
-	for _, failure := range failures {
-		s.markForReview(failure.LocationIDs)
 	}
 	return failures, nil
 }
@@ -289,16 +336,16 @@ func groupByNewNameKey(locations []Location) map[string][]Location {
 // recomputeNameKey stores nameKey for location if it differs from the
 // stored one. It returns a failure when the database reports the key as
 // taken, and an error when storing or looking up the holder fails.
-func (s *LocationService) recomputeNameKey(ctx context.Context, location Location, nameKey string) (*LocationRecomputeFailure, error) {
+func recomputeNameKey(ctx context.Context, repo LocationRepo, location Location, nameKey string) (*LocationRecomputeFailure, error) {
 	if location.NameKey == nameKey {
 		return nil, nil
 	}
-	err := s.repo.UpdateNameKey(ctx, location.ID, nameKey)
+	err := repo.UpdateNameKey(ctx, location.ID, nameKey)
 	switch {
 	case err == nil, errors.Is(err, ErrNotFound):
 		return nil, nil
 	case errors.Is(err, ErrConflict):
-		return s.storedCollision(ctx, location.ID, nameKey)
+		return storedCollision(ctx, repo, location.ID, nameKey)
 	default:
 		return nil, fmt.Errorf("store name key of location %s: %w", location.ID, err)
 	}
@@ -307,8 +354,8 @@ func (s *LocationService) recomputeNameKey(ctx context.Context, location Locatio
 // storedCollision returns the failure of the location with id whose new
 // nameKey another location still holds, that holder included. A holder gone
 // meanwhile leaves the location alone in its group.
-func (s *LocationService) storedCollision(ctx context.Context, id, nameKey string) (*LocationRecomputeFailure, error) {
-	holder, err := s.repo.FindByNameKey(ctx, nameKey)
+func storedCollision(ctx context.Context, repo LocationRepo, id, nameKey string) (*LocationRecomputeFailure, error) {
+	holder, err := repo.FindByNameKey(ctx, nameKey)
 	if errors.Is(err, ErrNotFound) {
 		failure := collisionFailure(nameKey, id)
 		return &failure, nil

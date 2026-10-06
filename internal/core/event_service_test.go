@@ -17,6 +17,10 @@ const (
 	newEventID = "0192f0b1-0000-7000-8000-000000000103"
 )
 
+// generatedEventIDFormat numbers the IDs of further events the fake
+// creates once newEventID is taken.
+const generatedEventIDFormat = "0192f0b1-0000-7000-8000-9%011d"
+
 // fakeEventRepo keeps events in memory and lets tests inject failures.
 type fakeEventRepo struct {
 	events map[string]Event
@@ -30,6 +34,7 @@ type fakeEventRepo struct {
 	updateDerivedErr map[string]error
 	overlapErr       error
 	archiveErr       error
+	importKeyErr     error
 	// duringOverlap, when set, runs inside ListOverlapping, as a concurrent
 	// writer would.
 	duringOverlap func()
@@ -38,6 +43,7 @@ type fakeEventRepo struct {
 	updated        []Event
 	deleted        []string
 	derivedUpdated []string
+	importKeysSet  []string
 	findCalls      int
 	overlaps       []Overlap
 	// archiveNows are the instants MarkArchived was called with; it
@@ -106,15 +112,20 @@ func (r *fakeEventRepo) Create(_ context.Context, event Event) (Event, error) {
 		return Event{}, r.writeErr
 	}
 	event.ID = newEventID
+	if _, taken := r.events[event.ID]; taken {
+		event.ID = fmt.Sprintf(generatedEventIDFormat, len(r.created))
+	}
 	r.events[event.ID] = event
 	r.created = append(r.created, event)
 	return event, nil
 }
 
+// Update keeps the stored import key, like the database does.
 func (r *fakeEventRepo) Update(_ context.Context, event Event) (Event, error) {
 	if r.writeErr != nil {
 		return Event{}, r.writeErr
 	}
+	event.ImportKey = r.events[event.ID].ImportKey
 	r.events[event.ID] = event
 	r.updated = append(r.updated, event)
 	return event, nil
@@ -171,6 +182,26 @@ func (r *fakeEventRepo) UpdateDerived(_ context.Context, id string, derived Deri
 	event.Period, event.TitleKey = derived.Period, derived.TitleKey
 	r.events[id] = event
 	r.derivedUpdated = append(r.derivedUpdated, id)
+	return nil
+}
+
+// SetImportKey enforces the unique import key like the database does.
+func (r *fakeEventRepo) SetImportKey(_ context.Context, id, importKey string) error {
+	if r.importKeyErr != nil {
+		return r.importKeyErr
+	}
+	event, ok := r.events[id]
+	if !ok {
+		return ErrNotFound
+	}
+	for _, other := range r.events {
+		if other.ID != id && importKey != "" && other.ImportKey == importKey {
+			return ErrConflict
+		}
+	}
+	event.ImportKey = importKey
+	r.events[id] = event
+	r.importKeysSet = append(r.importKeysSet, id)
 	return nil
 }
 
@@ -842,11 +873,13 @@ func TestSaveEventRejectsEntryOutsideAShortenedEventWithoutWriting(t *testing.T)
 
 func TestSaveEventPassesTransactionFailuresOnAndKeepsTheReviewMark(t *testing.T) {
 	events, locations := newFakeEventRepo(brokenEvent(t, marketID)), newFakeLocationRepo(hall())
-	service := NewEventService(&fakeTx{beginErr: errDatabaseDown}, events, locations)
+	tx := &fakeTx{repos: Repos{Events: events, Locations: locations}}
+	service := NewEventService(tx, events, locations)
 	ctx := context.Background()
 	if _, err := service.RecomputeDerived(ctx); err != nil {
 		t.Fatalf("RecomputeDerived: %v", err)
 	}
+	tx.beginErr = errDatabaseDown
 
 	_, err := service.SaveEvent(ctx, marketID, validEventInput(), RejectDuplicates)
 
@@ -1013,4 +1046,36 @@ func TestMarkArchivedPassesFailuresOn(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRecomputeDerivedReadsAndWritesInOneTransaction(t *testing.T) {
+	outside, inTx := newFakeEventRepo(), newFakeEventRepo(staleEvent(t, concertID), brokenEvent(t, marketID))
+	locations := newFakeLocationRepo(hall())
+	tx := &fakeTx{repos: Repos{Events: inTx, Locations: locations}}
+	service := NewEventService(tx, outside, locations)
+
+	failures, err := service.RecomputeDerived(context.Background())
+
+	if err != nil || len(failures) != 1 || failures[0].EventID != marketID {
+		t.Fatalf("RecomputeDerived = %v, %v, want the broken market as failure", failures, err)
+	}
+	if tx.runs != 1 || !slices.Contains(inTx.derivedUpdated, concertID) || len(outside.derivedUpdated) != 0 {
+		t.Errorf("runs = %d, updated in tx = %v, outside = %v, want the concert in one transaction", tx.runs, inTx.derivedUpdated, outside.derivedUpdated)
+	}
+	if !service.needsReview(marketID) {
+		t.Error("the broken market is not marked for review")
+	}
+}
+
+func TestRecomputeDerivedPassesTransactionFailureOnWithoutMarking(t *testing.T) {
+	repo := newFakeEventRepo(brokenEvent(t, marketID))
+	locations := newFakeLocationRepo(hall())
+	service := NewEventService(&fakeTx{repos: Repos{Events: repo, Locations: locations}, beginErr: errDatabaseDown}, repo, locations)
+
+	failures, err := service.RecomputeDerived(context.Background())
+
+	if !errors.Is(err, errDatabaseDown) || failures != nil {
+		t.Errorf("RecomputeDerived = %v, %v, want only %v", failures, err, errDatabaseDown)
+	}
+	assertNeedsReview(t, service, map[string]bool{marketID: false})
 }

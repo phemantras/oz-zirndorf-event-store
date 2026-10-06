@@ -26,14 +26,22 @@ const (
 
 // LocationRepo implements core.LocationRepo on the locations table.
 type LocationRepo struct {
+	conn    Conn
 	queries *db.Queries
 }
 
 var _ core.LocationRepo = (*LocationRepo)(nil)
 
+// Conn is what the repositories run their queries on: the pool, or a
+// transaction, in which Begin starts a savepoint.
+type Conn interface {
+	db.DBTX
+	Begin(ctx context.Context) (pgx.Tx, error)
+}
+
 // NewLocationRepo returns a location repository on conn, usually the pool.
-func NewLocationRepo(conn db.DBTX) *LocationRepo {
-	return &LocationRepo{queries: db.New(conn)}
+func NewLocationRepo(conn Conn) *LocationRepo {
+	return &LocationRepo{conn: conn, queries: db.New(conn)}
 }
 
 // List returns all locations in no particular order; the core sorts them.
@@ -119,13 +127,20 @@ func (r *LocationRepo) Update(ctx context.Context, location core.Location) (core
 
 // UpdateNameKey replaces only the name key of the location with id. A
 // missing or unparsable id yields core.ErrNotFound, a taken name key
-// core.ErrConflict.
+// core.ErrConflict. It writes in a transaction of its own, a savepoint
+// within a transaction, so a taken name key does not end the transaction
+// the recomputation of all name keys runs in.
 func (r *LocationRepo) UpdateNameKey(ctx context.Context, id, nameKey string) error {
 	uuid, err := parseID(locationKind, id)
 	if err != nil {
 		return err
 	}
-	affected, err := r.queries.UpdateLocationNameKey(ctx, db.UpdateLocationNameKeyParams{ID: uuid, NameKey: nameKey})
+	var affected int64
+	err = pgx.BeginFunc(ctx, r.conn, func(tx pgx.Tx) error {
+		var err error
+		affected, err = db.New(tx).UpdateLocationNameKey(ctx, db.UpdateLocationNameKeyParams{ID: uuid, NameKey: nameKey})
+		return err
+	})
 	if err != nil {
 		return translateError("update location name key", err)
 	}

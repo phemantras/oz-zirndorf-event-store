@@ -774,6 +774,10 @@ func (emptyImports) PreviewImport(context.Context, []byte) (core.ImportPreview, 
 	return core.ImportPreview{Entries: []core.ImportEntry{{Position: 1, Title: importedTitle, Class: core.ImportClassNew}}}, nil
 }
 
+func (emptyImports) CommitImport(context.Context, []byte, []core.ImportDecision) (core.ImportSummary, error) {
+	return core.ImportSummary{}, core.ErrNotFound
+}
+
 // importedTitle is the title of the entry emptyImports finds in any file.
 const importedTitle = "Kirchweihmarkt"
 
