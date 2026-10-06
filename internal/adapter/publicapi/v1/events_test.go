@@ -421,7 +421,7 @@ func TestListEventsDeliversExactlyTheReadForm(t *testing.T) {
 	}
 	for _, event := range events {
 		assertKeys(t, "event", event, "title", "type", "location", "startDate", "startTime", "endDate", "endTime", "allDay",
-			"startPrecision", "endPrecision", "source", "note", "timetable", "effectiveStart", "effectiveEnd", "archived")
+			"startPrecision", "endPrecision", "source", "note", "timetable", "effectiveStart", "effectiveEnd")
 		location := event["location"].(map[string]any)
 		assertKeys(t, "location", location, "name", "address", "latitude", "longitude", "precision", "note")
 		assertKeys(t, "address", location["address"], "street", "postalCode", "city")
@@ -472,7 +472,7 @@ func keysAtEveryLevel(value any) []string {
 func TestListEventsFormatsDatesTimesAndInstants(t *testing.T) {
 	rec := serveEvents(t, &recordingLister{listed: []core.ListedEvent{fullListedEvent()}}, "")
 
-	want := `{"data":[{"allDay":false,"archived":false,` +
+	want := `{"data":[{"allDay":false,` +
 		`"effectiveEnd":"2026-12-24T21:00:00+01:00","effectiveStart":"2026-12-24T19:30:00+01:00",` +
 		`"endDate":"2026-12-24","endPrecision":"exact","endTime":"21:00",` +
 		`"location":{"address":{"city":"Zirndorf","postalCode":"90513","street":"Volkhardtstraße 2"},` +
@@ -488,7 +488,7 @@ func TestListEventsFormatsDatesTimesAndInstants(t *testing.T) {
 func TestListEventsDeliversEmptyValuesAsNull(t *testing.T) {
 	rec := serveEvents(t, &recordingLister{listed: []core.ListedEvent{minimalListedEvent()}}, "")
 
-	want := `{"data":[{"allDay":true,"archived":false,` +
+	want := `{"data":[{"allDay":true,` +
 		`"effectiveEnd":"2026-12-25T00:00:00+01:00","effectiveStart":"2026-12-24T00:00:00+01:00",` +
 		`"endDate":null,"endPrecision":null,"endTime":null,` +
 		`"location":{"address":{"city":null,"postalCode":null,"street":null},` +
@@ -499,14 +499,17 @@ func TestListEventsDeliversEmptyValuesAsNull(t *testing.T) {
 	assertSameJSON(t, rec.Body.Bytes(), want)
 }
 
-func TestListEventsMarksArchivedAsTheCoreSays(t *testing.T) {
+func TestListEventsDeliversAnArchivedEventWithoutAnArchivedKey(t *testing.T) {
 	archived := minimalListedEvent()
 	archived.Archived = true
 
 	events := decodeEvents(t, serveEvents(t, &recordingLister{listed: []core.ListedEvent{archived}}, ""))
 
-	if len(events) != 1 || events[0]["archived"] != true {
-		t.Errorf("events = %v, want one archived", events)
+	if len(events) != 1 {
+		t.Fatalf("got %d events, want 1", len(events))
+	}
+	if _, found := events[0]["archived"]; found {
+		t.Errorf("event %v contains the key archived", events[0])
 	}
 }
 

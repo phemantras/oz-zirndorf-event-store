@@ -64,8 +64,7 @@ const wantFirstAdventWeekend = `{
 		{"description": "Besuch des Christkinds", "date": "2026-11-28", "startTime": "14:00", "endTime": "21:00"}
 	],
 	"effectiveStart": "2026-11-27T17:00:00+01:00",
-	"effectiveEnd": "2026-11-30T00:00:00+01:00",
-	"archived": false
+	"effectiveEnd": "2026-11-30T00:00:00+01:00"
 }`
 
 // TestChristmasMarketIsFoundByPeriod is the acceptance test of SM-1: with

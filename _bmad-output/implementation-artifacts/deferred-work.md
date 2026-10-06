@@ -75,3 +75,6 @@
   evidence: `epics.md` Z. 194 und 199, PRD SM-2 und Story 3.5 („Wenn Andreas die Datei in Produktion importiert, dann liefert … den Weihnachtsmarkt“) widersprechen der Entscheidung vom 2026-10-06.
   status: done
   target: Sprint Change Proposal 2026-10-06 (vor Story 3.5)
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-8-archived-aus-der-leseform-entfernen.md`
+  summary: Die Beispiele in `api/v1/openapi.yaml` werden von keinem Test gegen ihre Schemas geprüft.
+  evidence: `contract_test.go` prüft nur Feldnamen, Grenzen und `$ref`s; ein Beispiel mit einem gestrichenen Feld wie `archived` bliebe unbemerkt (Seam-Review Story 2.8).

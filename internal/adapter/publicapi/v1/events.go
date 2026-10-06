@@ -150,7 +150,6 @@ func eventOf(event core.ListedEvent) Event {
 		Timetable:      timetableOf(event.Timetable),
 		EffectiveStart: event.Period.Start,
 		EffectiveEnd:   event.Period.End,
-		Archived:       event.Archived,
 	}
 }
 

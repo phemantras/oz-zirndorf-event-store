@@ -96,7 +96,10 @@ info:
     - **Past events.** An event is over, and archived, as soon as
       `effectiveEnd` is reached, independent of any background job: an
       event that ends at 14:00 is no longer active from 14:00 on.
-      `archived` says which of the two lists an event belongs to.
+      The list an event appears in says whether it is over; an event has
+      no field of its own for that. Clients that cache events compare
+      `effectiveEnd` with the current time to know whether a cached event
+      is over by now.
     - **Events awaiting correction.** At every start-up all stored events
       are recomputed, so that changed rules apply everywhere. An event
       whose stored data can no longer be recomputed, for example
@@ -126,7 +129,8 @@ info:
     Incompatible changes, for example to the list of event types or to
     field names, only happen in a new major version. New optional fields
     may be added to v1 at any time; clients must ignore fields they do not
-    know.
+    know. One exception was made once: the field `archived` was removed
+    from v1 before the API had its first client (Story 2.8).
 
     ## CORS
 
@@ -257,7 +261,6 @@ paths:
                         endTime: null
                     effectiveStart: '2026-11-27T17:00:00+01:00'
                     effectiveEnd: '2026-11-30T00:00:00+01:00'
-                    archived: false
         '400':
           $ref: '#/components/responses/BadRequest'
         '500':
@@ -275,7 +278,8 @@ paths:
         every event is in exactly one of `/v1/events` and
         `/v1/archive/events`, except events awaiting correction, which are
         in neither (see "Time model"). The events have the same form as in
-        `/v1/events`, with `archived` set to `true`.
+        `/v1/events`; being listed here is what says an event is over. For
+        cached events see "Time model".
 
         Defaults: without `from` the filter period is open at the start;
         without `to` it ends now. So without parameters every past event
@@ -363,7 +367,6 @@ paths:
                     timetable: []
                     effectiveStart: '2026-10-16T00:00:00+02:00'
                     effectiveEnd: '2026-10-20T00:00:00+02:00'
-                    archived: true
         '400':
           $ref: '#/components/responses/BadRequest'
         '500':
@@ -659,8 +662,7 @@ components:
         An event as the public API lists it (read form). It has the field
         names of EventInput without `importKey`, a complete location, plus
         the derived fields `startPrecision`, `endPrecision`,
-        `effectiveStart`, `effectiveEnd` and `archived`. It has no
-        identifiers.
+        `effectiveStart` and `effectiveEnd`. It has no identifiers.
       required:
         - title
         - type
@@ -677,7 +679,6 @@ components:
         - timetable
         - effectiveStart
         - effectiveEnd
-        - archived
       properties:
         title:
           type: string
@@ -757,14 +758,6 @@ components:
             all day; 00:00 of the day after the start date when there is no
             end date. The event is over from this instant on.
           example: '2026-11-30T00:00:00+01:00'
-        archived:
-          type: boolean
-          description: |
-            Whether the event is over, that is its `effectiveEnd` is not
-            after now. It is `false` for every event in `/v1/events` and
-            `true` for every event in `/v1/archive/events`, computed at the
-            moment of the request, independent of any background job.
-          example: false
     EventList:
       type: object
       description: List envelope (KON-8) around events.
