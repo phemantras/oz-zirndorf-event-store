@@ -758,6 +758,10 @@ func (emptyEvents) DeleteEvent(context.Context, string) error {
 	return core.ErrNotFound
 }
 
+func (emptyEvents) RemoveImportKey(context.Context, string) error {
+	return core.ErrNotFound
+}
+
 func (emptyEvents) ListActiveEvents(context.Context, core.Clock, core.EventFilter) ([]core.ListedEvent, error) {
 	return nil, nil
 }

@@ -144,6 +144,10 @@ func (f failingEvents) DeleteEvent(context.Context, string) error {
 	return f.err
 }
 
+func (f failingEvents) RemoveImportKey(context.Context, string) error {
+	return f.err
+}
+
 const (
 	marketTitle = "Kirchweihmarkt"
 	// unknownEventID is a well-formed id that no test stores.

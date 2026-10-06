@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -51,9 +52,17 @@ const (
 	importNewLocationFieldPrefix = "newLocation"
 	importCandidatesFieldPrefix  = "candidates"
 	importChoiceFieldPrefix      = "choice"
+	// importFingerprintsFieldPrefix names the fingerprints of the stored
+	// events an entry could write, sent as id:fingerprint pairs.
+	importFingerprintsFieldPrefix = "fingerprints"
 	// importCandidateSeparator separates the IDs of the stored candidates
 	// of a duplicate suspect.
 	importCandidateSeparator = " "
+	// importFingerprintSeparator separates the pairs of the fingerprints
+	// field, importFingerprintPairSeparator the event ID and fingerprint of
+	// a pair.
+	importFingerprintSeparator     = " "
+	importFingerprintPairSeparator = ":"
 	// importNewLocationTrue marks an entry that brought a new location.
 	importNewLocationTrue = "true"
 	// importChoiceValueSeparator joins the overwrite choice and the ID of
@@ -414,9 +423,23 @@ func importDecisionsOf(form url.Values) []core.ImportDecision {
 			OverwriteID: overwriteID,
 			// strings.Fields splits at the importCandidateSeparator.
 			CandidateIDs: strings.Fields(form.Get(importDecisionField(importCandidatesFieldPrefix, position))),
+			Fingerprints: importFingerprintsOf(form.Get(importDecisionField(importFingerprintsFieldPrefix, position))),
 		})
 	}
 	return decisions
+}
+
+// importFingerprintsOf reads the id:fingerprint pairs of a fingerprints
+// field. A pair without separator yields an empty fingerprint, which
+// matches no stored event, so its entry counts as stale.
+func importFingerprintsOf(text string) map[string]string {
+	fingerprints := make(map[string]string)
+	// strings.Fields splits at the importFingerprintSeparator.
+	for _, pair := range strings.Fields(text) {
+		id, fingerprint, _ := strings.Cut(pair, importFingerprintPairSeparator)
+		fingerprints[id] = fingerprint
+	}
+	return fingerprints
 }
 
 // importDecisionField returns the name of the field prefix of the entry at
@@ -590,7 +613,8 @@ func importRowOf(entry core.ImportEntry) importRow {
 
 // importHiddenFieldsOf returns the fields that send back what the preview
 // showed of an entry: its position, class, target, if so that it brings a
-// new location, and for a duplicate suspect its stored candidates.
+// new location, for a duplicate suspect its stored candidates, and the
+// fingerprints of the stored events it could write.
 func importHiddenFieldsOf(entry core.ImportEntry) []importFormField {
 	fields := []importFormField{
 		{Name: importPositionField, Value: strconv.Itoa(entry.Position)},
@@ -606,7 +630,23 @@ func importHiddenFieldsOf(entry core.ImportEntry) []importFormField {
 			Value: strings.Join(entry.StoredCandidateIDs(), importCandidateSeparator),
 		})
 	}
+	if fingerprints := entry.StoredFingerprints(); len(fingerprints) > 0 {
+		fields = append(fields, importFormField{
+			Name:  importDecisionField(importFingerprintsFieldPrefix, entry.Position),
+			Value: importFingerprintsText(fingerprints),
+		})
+	}
 	return fields
+}
+
+// importFingerprintsText returns the value of a fingerprints field: the
+// id:fingerprint pairs sorted by event ID.
+func importFingerprintsText(fingerprints map[string]string) string {
+	pairs := make([]string, 0, len(fingerprints))
+	for _, id := range slices.Sorted(maps.Keys(fingerprints)) {
+		pairs = append(pairs, id+importFingerprintPairSeparator+fingerprints[id])
+	}
+	return strings.Join(pairs, importFingerprintSeparator)
 }
 
 // importChoicesOf returns the decisions on a duplicate suspect: skip,

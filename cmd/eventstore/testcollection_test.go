@@ -119,7 +119,7 @@ func previewAndCommit(t *testing.T, imports *core.ImportService, data []byte, wa
 		}
 		decisions = append(decisions, core.ImportDecision{
 			Position: entry.Position, Class: entry.Class, TargetID: entry.TargetID,
-			NewLocation: entry.NewLocation, CandidateIDs: entry.StoredCandidateIDs(),
+			NewLocation: entry.NewLocation, CandidateIDs: entry.StoredCandidateIDs(), Fingerprints: entry.StoredFingerprints(),
 		})
 	}
 	summary, err := imports.CommitImport(ctx, data, decisions)

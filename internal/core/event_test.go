@@ -424,3 +424,48 @@ func TestNewEventChecksTheLimitsOfENT24(t *testing.T) {
 		})
 	}
 }
+
+func TestEventFingerprintChangesWithEveryStoredFieldButNotTheTimetableOrder(t *testing.T) {
+	base := func() Event {
+		event := storedEvent(t, marketID, "Kirchweihmarkt", EventTimes{StartDate: kirchweihFriday, EndDate: kirchweihFriday.NextDay()})
+		event.ImportKey = "kirchweihmarkt-2026"
+		event.Note = "Mit Fahrgeschäften"
+		event.Timetable = []TimetableEntry{
+			{ID: "1", Description: "Bieranstich", Date: kirchweihFriday, StartTime: &LocalTime{Hour: 18}},
+			{ID: "2", Description: "Abbau", Date: kirchweihFriday.NextDay()},
+		}
+		return event
+	}
+	fingerprint := EventFingerprint(base())
+	if len(fingerprint) != 64 {
+		t.Errorf("fingerprint = %q, want 64 hex digits of SHA-256", fingerprint)
+	}
+
+	same := base()
+	slices.Reverse(same.Timetable)
+	same.Timetable[0].ID = "3"
+	same.Period, same.TitleKey = Period{}, ""
+	if got := EventFingerprint(same); got != fingerprint {
+		t.Errorf("fingerprint of the same event = %q, want %q regardless of timetable order, entry IDs and derived values", got, fingerprint)
+	}
+
+	changes := map[string]func(*Event){
+		"title":           func(e *Event) { e.Title = "Kirchweih" },
+		"start time":      func(e *Event) { e.Times.StartTime = &LocalTime{Hour: 10} },
+		"note":            func(e *Event) { e.Note = "Ohne Fahrgeschäfte" },
+		"location":        func(e *Event) { e.LocationID = parkID },
+		"timetable":       func(e *Event) { e.Timetable[1].Description = "Kehraus" },
+		"timetable entry": func(e *Event) { e.Timetable = e.Timetable[:1] },
+		"import key":      func(e *Event) { e.ImportKey = "" },
+		"source":          func(e *Event) { e.Source.URL = "https://example.org" },
+	}
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			changed := base()
+			change(&changed)
+			if got := EventFingerprint(changed); got == fingerprint {
+				t.Errorf("fingerprint unchanged after changing the %s", name)
+			}
+		})
+	}
+}

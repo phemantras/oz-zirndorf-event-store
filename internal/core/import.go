@@ -111,6 +111,9 @@ type ImportEntry struct {
 	// TargetID is the stored event with the import key of the entry, set
 	// for ImportClassUpdate and ImportClassUnchanged.
 	TargetID string
+	// TargetFingerprint is the EventFingerprint of the stored target, set
+	// with TargetID.
+	TargetFingerprint string
 	// Changes lists the fields an update would change, in the order of
 	// EventInput.
 	Changes []ImportChange
@@ -139,6 +142,21 @@ func (e ImportEntry) StoredCandidateIDs() []string {
 		}
 	}
 	return ids
+}
+
+// StoredFingerprints returns the fingerprints of the stored events the
+// entry could write, by event ID: its target and its stored candidates.
+func (e ImportEntry) StoredFingerprints() map[string]string {
+	fingerprints := make(map[string]string)
+	if e.TargetID != "" {
+		fingerprints[e.TargetID] = e.TargetFingerprint
+	}
+	for _, candidate := range e.Candidates {
+		if candidate.EventID != "" {
+			fingerprints[candidate.EventID] = candidate.Fingerprint
+		}
+	}
+	return fingerprints
 }
 
 // ImportPreview is the result of checking an import file, one entry per

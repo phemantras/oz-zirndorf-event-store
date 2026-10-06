@@ -6,6 +6,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -29,6 +31,9 @@ type entryDecision struct {
 	choice      string
 	// candidates are the IDs of the stored candidates the preview showed.
 	candidates []string
+	// fingerprints are the fingerprints of the stored events the preview
+	// showed, by event ID.
+	fingerprints map[string]string
 }
 
 // decisionFields returns the fields the commit form sends for decision.
@@ -45,10 +50,24 @@ func decisionFields(decision entryDecision) []formField {
 	if decision.candidates != nil {
 		fields = append(fields, formField{importDecisionField(importCandidatesFieldPrefix, position), strings.Join(decision.candidates, importCandidateSeparator)})
 	}
+	if decision.fingerprints != nil {
+		var pairs []string
+		for id, fingerprint := range decision.fingerprints {
+			pairs = append(pairs, id+importFingerprintPairSeparator+fingerprint)
+		}
+		slices.Sort(pairs)
+		fields = append(fields, formField{importDecisionField(importFingerprintsFieldPrefix, position), strings.Join(pairs, importFingerprintSeparator)})
+	}
 	if decision.choice != "" {
 		fields = append(fields, formField{importDecisionField(importChoiceFieldPrefix, position), decision.choice})
 	}
 	return fields
+}
+
+// fingerprintOf returns the fingerprints of event as the preview shows
+// them.
+func fingerprintOf(event core.Event) map[string]string {
+	return map[string]string{event.ID: core.EventFingerprint(event)}
 }
 
 func (ts *testServer) postCommit(t *testing.T, content string, fields ...[]formField) *httptest.ResponseRecorder {
@@ -102,11 +121,13 @@ func TestImportPreviewOffersToCommitTheFileWithEveryEntry(t *testing.T) {
 		`name="class-2" value="duplicateSuspect"`, `name="target-2" value=""`,
 		`name="class-3" value="new"`, `name="newLocation-3" value="true"`, `name="newLocation-4" value="true"`,
 		`name="choice-2" value="skip"`, `name="choice-2" value="create"`, `name="choice-2" value="overwrite:`+market.ID+`"`,
-		`name="candidates-2" value="`+market.ID+`"`, "<fieldset><legend>"+msgImportChoiceLegend+"</legend>",
+		`name="candidates-2" value="`+market.ID+`"`,
+		`name="fingerprints-1" value="`+market.ID+`:`+core.EventFingerprint(market)+`"`,
+		`name="fingerprints-2" value="`+market.ID+`:`+core.EventFingerprint(market)+`"`, "<fieldset><legend>"+msgImportChoiceLegend+"</legend>",
 		msgImportChoiceSkip, msgImportChoiceCreate, msgImportChoiceOverwrite+" Kirchweihmarkt (16.10.2026)",
 		msgImportCommitHint, ">"+msgImportCommitButton+"</button>",
 	)
-	assertBodyLacks(t, rec, "checked", `name="newLocation-1"`, `name="choice-1"`, `name="choice-3"`, `name="candidates-1"`, `name="candidates-3"`)
+	assertBodyLacks(t, rec, "checked", `name="newLocation-1"`, `name="choice-1"`, `name="choice-3"`, `name="candidates-1"`, `name="candidates-3"`, `name="fingerprints-3"`)
 }
 
 func TestImportOffersNoOverwriteForADuplicateOnlyOfTheFile(t *testing.T) {
@@ -126,7 +147,7 @@ func TestImportCommitStoresTheDecidedEntriesAndShowsTheSummary(t *testing.T) {
 	market := ts.seedKeyedMarket(t)
 
 	rec := ts.postCommit(t, classifiedImportFile,
-		decisionFields(entryDecision{position: 1, class: core.ImportClassUpdate, targetID: market.ID}),
+		decisionFields(entryDecision{position: 1, class: core.ImportClassUpdate, targetID: market.ID, fingerprints: fingerprintOf(market)}),
 		decisionFields(entryDecision{position: 2, class: core.ImportClassDuplicateSuspect, choice: string(core.ImportChoiceCreate), candidates: []string{market.ID}}),
 		decisionFields(entryDecision{position: 3, class: core.ImportClassNew, newLocation: true}),
 		decisionFields(entryDecision{position: 4, class: core.ImportClassNew, newLocation: true}),
@@ -154,13 +175,42 @@ func TestImportCommitOverwritesTheChosenEvent(t *testing.T) {
 	rec := ts.postCommit(t, file,
 		decisionFields(entryDecision{
 			position: 1, class: core.ImportClassDuplicateSuspect, candidates: []string{market.ID},
-			choice: string(core.ImportChoiceOverwrite) + importChoiceValueSeparator + market.ID,
+			choice:       string(core.ImportChoiceOverwrite) + importChoiceValueSeparator + market.ID,
+			fingerprints: fingerprintOf(market),
 		}))
 
 	assertStatusCode(t, rec, http.StatusOK)
 	assertBodyContains(t, rec, "<li>aktualisiert: 1</li>")
 	if got := ts.events.events[market.ID]; got.Source.Description != "Plakat" || got.ImportKey != marketImportKey {
 		t.Errorf("market = %+v, want it overwritten with its import key kept", got)
+	}
+}
+
+func TestImportCommitOverwritesTheChosenOfTwoStoredCandidates(t *testing.T) {
+	ts := newTestServer(t)
+	market := ts.seedKeyedMarket(t)
+	twin := market
+	// The ID sorts after the market's, so it is the second pair of the
+	// fingerprints field.
+	twin.ID, twin.ImportKey, twin.Note = "0192f0b1-0000-7000-9000-999999999999", "", "Zwilling"
+	ts.events.events[twin.ID] = twin
+	file := `{"formatVersion": 1, "events": [{"title": "Kirchweihmarkt", "type": "market", "location": {"name": "Paul-Metz-Halle"},
+	          "startDate": "2026-10-16", "source": {"description": "Plakat"}}]}`
+
+	rec := ts.postCommit(t, file,
+		decisionFields(entryDecision{
+			position: 1, class: core.ImportClassDuplicateSuspect, candidates: []string{market.ID, twin.ID},
+			choice:       string(core.ImportChoiceOverwrite) + importChoiceValueSeparator + twin.ID,
+			fingerprints: map[string]string{market.ID: core.EventFingerprint(market), twin.ID: core.EventFingerprint(twin)},
+		}))
+
+	assertStatusCode(t, rec, http.StatusOK)
+	assertBodyContains(t, rec, "<li>aktualisiert: 1</li>")
+	if got := ts.events.events[twin.ID]; got.Source.Description != "Plakat" || got.Note != "" {
+		t.Errorf("twin = %+v, want it overwritten", got)
+	}
+	if got := ts.events.events[market.ID]; got.Source.Description == "Plakat" {
+		t.Errorf("market = %+v, want it unchanged", got)
 	}
 }
 
@@ -204,16 +254,19 @@ func TestImportCommitListsTheEntriesItDidNotTake(t *testing.T) {
 }
 
 // The cap on entries keeps the commit form within the parts a multipart
-// form may have; a file of the most entries, each sending every field, is
-// still read.
+// form may have; a file of the most entries, each sending the most fields
+// an entry can have, is still read. An entry that brings a new location
+// never has stored candidates, so at most a duplicate suspect sends 6
+// fields and an update with a new location 5.
 func TestImportCommitReadsTheFormOfTheMostEntries(t *testing.T) {
 	ts := newTestServer(t)
 	content := `{"formatVersion":1,"events":[` + strings.TrimSuffix(strings.Repeat("{},", core.MaxImportEntries), ",") + `]}`
 	var decisions [][]formField
 	for position := 1; position <= core.MaxImportEntries; position++ {
 		decisions = append(decisions, decisionFields(entryDecision{
-			position: position, class: core.ImportClassDuplicateSuspect, targetID: "ziel", newLocation: true,
+			position: position, class: core.ImportClassDuplicateSuspect, targetID: "ziel",
 			candidates: []string{"erster", "zweiter"}, choice: string(core.ImportChoiceSkip),
+			fingerprints: map[string]string{"erster": strings.Repeat("a", 64), "zweiter": strings.Repeat("b", 64)},
 		}))
 	}
 
@@ -282,5 +335,37 @@ func TestImportNamesEveryOutcomeInGerman(t *testing.T) {
 		if importOutcomeLabels[outcome] == "" {
 			t.Errorf("outcome %q has no German label", outcome)
 		}
+	}
+}
+
+func TestImportCommitStaleWhenTheTargetChangedOrTheFormSentNoFingerprint(t *testing.T) {
+	const changedNote = "vor dem Import geändert"
+	// Each case returns the fingerprints the form sends and may change the
+	// stored market after the preview.
+	tests := map[string]func(*testServer, core.Event) map[string]string{
+		"target changed": func(ts *testServer, market core.Event) map[string]string {
+			previewed := fingerprintOf(market)
+			market.Note = changedNote
+			ts.events.events[market.ID] = market
+			return previewed
+		},
+		"no fingerprint":           func(*testServer, core.Event) map[string]string { return nil },
+		"pair without fingerprint": func(_ *testServer, market core.Event) map[string]string { return map[string]string{market.ID: ""} },
+	}
+	for name, fingerprints := range tests {
+		t.Run(name, func(t *testing.T) {
+			ts := newTestServer(t)
+			market := ts.seedKeyedMarket(t)
+			sent := fingerprints(ts, market)
+			stored := ts.events.events[market.ID]
+
+			rec := ts.postCommit(t, classifiedImportFile,
+				decisionFields(entryDecision{position: 1, class: core.ImportClassUpdate, targetID: market.ID, fingerprints: sent}))
+
+			assertBodyContains(t, rec, "<tr><td>1</td><td>Kirchweihmarkt</td><td>veraltet</td></tr>", "<li>aktualisiert: 0</li>")
+			if got := ts.events.events[market.ID]; !reflect.DeepEqual(got, stored) {
+				t.Errorf("market = %+v, want it kept as %+v", got, stored)
+			}
+		})
 	}
 }

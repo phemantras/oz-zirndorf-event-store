@@ -42,6 +42,10 @@ type ImportDecision struct {
 	// CandidateIDs are the stored events the preview showed as candidates
 	// of a duplicate suspect.
 	CandidateIDs []string
+	// Fingerprints are the EventFingerprint values the preview showed for
+	// the stored events the entry could write, by event ID: its target and
+	// its stored candidates.
+	Fingerprints map[string]string
 }
 
 // ImportOutcome is what committing an import did with an entry.
@@ -61,8 +65,8 @@ const (
 	ImportOutcomeError ImportOutcome = "error"
 	// ImportOutcomeStale is an entry whose class, target or new location
 	// differs from the preview, whose chosen event to overwrite is no
-	// stored candidate any more, or that has a stored candidate the
-	// preview did not show.
+	// stored candidate any more, that has a stored candidate the preview
+	// did not show, or whose event to write changed since the preview.
 	ImportOutcomeStale ImportOutcome = "stale"
 )
 
@@ -235,17 +239,25 @@ func planEntry(entry ImportEntry, decision ImportDecision, given bool, storedEve
 }
 
 // isStale reports whether the entry differs from what the preview showed:
-// another class, target or new location, a chosen event to overwrite that
-// is no stored candidate of the entry any more, or a stored candidate the
-// preview did not show, such as the event a first commit of the same form
-// created.
+// another class, target or new location, stale candidates of a duplicate
+// suspect, or an event to write whose fingerprint the decision does not
+// carry, because it changed since the preview or the form sent none.
 func isStale(entry ImportEntry, decision ImportDecision) bool {
 	if decision.Class != entry.Class || decision.TargetID != entry.TargetID || decision.NewLocation != entry.NewLocation {
 		return true
 	}
-	if entry.Class != ImportClassDuplicateSuspect {
-		return false
+	if entry.Class == ImportClassDuplicateSuspect && hasStaleCandidates(entry, decision) {
+		return true
 	}
+	written := storedEventToWrite(entry, decision)
+	return written != "" && decision.Fingerprints[written] != entry.StoredFingerprints()[written]
+}
+
+// hasStaleCandidates reports whether a duplicate suspect has a chosen event
+// to overwrite that is no stored candidate any more, or a stored candidate
+// the preview did not show, such as the event a first commit of the same
+// form created.
+func hasStaleCandidates(entry ImportEntry, decision ImportDecision) bool {
 	storedCandidates := entry.StoredCandidateIDs()
 	if decision.Choice == ImportChoiceOverwrite && !slices.Contains(storedCandidates, decision.OverwriteID) {
 		return true
@@ -253,6 +265,20 @@ func isStale(entry ImportEntry, decision ImportDecision) bool {
 	return slices.ContainsFunc(storedCandidates, func(id string) bool {
 		return !slices.Contains(decision.CandidateIDs, id)
 	})
+}
+
+// storedEventToWrite returns the ID of the stored event the entry would
+// replace: the target of an update or the event a duplicate suspect
+// overwrites; empty when it replaces none.
+func storedEventToWrite(entry ImportEntry, decision ImportDecision) string {
+	switch {
+	case entry.Class == ImportClassUpdate:
+		return entry.TargetID
+	case entry.Class == ImportClassDuplicateSuspect && decision.Choice == ImportChoiceOverwrite:
+		return decision.OverwriteID
+	default:
+		return ""
+	}
 }
 
 // hasOtherImportKey reports whether target has an import key and the entry

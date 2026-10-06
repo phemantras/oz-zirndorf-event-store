@@ -52,9 +52,9 @@ type EventRepo interface {
 	// as archive mark, and returns how many it marked. Marked events keep
 	// their mark.
 	MarkArchived(ctx context.Context, now time.Time) (int, error)
-	// SetImportKey replaces only the import key of the event with id, or
-	// yields ErrNotFound, or ErrConflict when another event has it. Only
-	// CommitImport calls it.
+	// SetImportKey replaces only the import key of the event with id, an
+	// empty one removing it, or yields ErrNotFound, or ErrConflict when
+	// another event has it. Only CommitImport and RemoveImportKey call it.
 	SetImportKey(ctx context.Context, id, importKey string) error
 }
 
@@ -264,6 +264,28 @@ func deleteEvent(ctx context.Context, repos Repos, id string) (string, error) {
 		return "", fmt.Errorf("delete event: %w", err)
 	}
 	return current.ID, nil
+}
+
+// RemoveImportKey removes the import key of the event with id in one
+// transaction and leaves every other field as it is, so a later import
+// treats the event like one without import key. It returns ErrNotFound for
+// an unknown id, such as an event deleted before.
+func (s *EventService) RemoveImportKey(ctx context.Context, id string) error {
+	return s.tx.InTx(ctx, func(repos Repos) error {
+		return removeImportKey(ctx, repos, id)
+	})
+}
+
+// removeImportKey is the transaction-bound part of RemoveImportKey.
+func removeImportKey(ctx context.Context, repos Repos, id string) error {
+	current, err := repos.Events.Get(ctx, id)
+	if err != nil {
+		return fmt.Errorf("get event to remove its import key: %w", err)
+	}
+	if err := repos.Events.SetImportKey(ctx, current.ID, ""); err != nil {
+		return fmt.Errorf("remove import key: %w", err)
+	}
+	return nil
 }
 
 // MarkArchived marks every event that is over at the time of clock and not

@@ -190,8 +190,12 @@ type EventInput struct {
 	// EndTime Local end time `HH:MM`; requires `endDate`.
 	EndTime *string `json:"endTime,omitempty"`
 
-	// ImportKey Key of the event in the import source; importing the same key
-	// again updates the event instead of creating another one.
+	// ImportKey Key of the event in the import source. A key identifies exactly
+	// one event, not a recurring series: importing the same key again
+	// updates that event instead of creating another one, even when it
+	// is archived. Every date of a series therefore needs a key of its
+	// own, such as one per year. The admin shows the key and can
+	// remove it; the event is then imported like one without key.
 	ImportKey *string `json:"importKey,omitempty"`
 
 	// Location The location an imported event brings along. `name` is required: a
