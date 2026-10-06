@@ -59,12 +59,32 @@ const (
 	// ProblemAfterNow means a period filter of archived events starts at or
 	// after now, where only active events can lie.
 	ProblemAfterNow FieldProblem = "afterNow"
+	// ProblemTooLong means a text has more characters than its limit,
+	// counted in code points after normalization; FieldError.Limit names
+	// the limit.
+	ProblemTooLong FieldProblem = "tooLong"
+	// ProblemTooMany means a list has more items than its limit;
+	// FieldError.Limit names the limit.
+	ProblemTooMany FieldProblem = "tooMany"
 )
 
 // FieldError names one rejected field and why it was rejected.
 type FieldError struct {
 	Field   string
 	Problem FieldProblem
+	// Limit is the exceeded limit of ProblemTooLong and ProblemTooMany, and
+	// 0 for every problem without a limit.
+	Limit int
+}
+
+// String names the field, the problem and, if there is one, the limit,
+// such as "title tooLong 200".
+func (e FieldError) String() string {
+	text := e.Field + " " + string(e.Problem)
+	if e.Limit > 0 {
+		text += " " + strconv.Itoa(e.Limit)
+	}
+	return text
 }
 
 // ValidationError lists every rejected field of an input. It matches
@@ -76,7 +96,7 @@ type ValidationError struct {
 func (e *ValidationError) Error() string {
 	problems := make([]string, 0, len(e.Fields))
 	for _, field := range e.Fields {
-		problems = append(problems, field.Field+" "+string(field.Problem))
+		problems = append(problems, field.String())
 	}
 	return ErrValidation.Error() + ": " + strings.Join(problems, ", ")
 }

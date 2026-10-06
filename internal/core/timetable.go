@@ -165,6 +165,9 @@ func timetableEntryFieldsAt(index int) timetableEntryFields {
 func parseTimetable(inputs []TimetableEntryInput, period *Period) ([]TimetableEntry, []FieldError) {
 	var entries []TimetableEntry
 	var problems []FieldError
+	if len(inputs) > MaxTimetableEntries {
+		problems = append(problems, FieldError{Field: EventFieldTimetable, Problem: ProblemTooMany, Limit: MaxTimetableEntries})
+	}
 	for index, in := range inputs {
 		entry, entryProblems := parseTimetableEntry(in, timetableEntryFieldsAt(index), period)
 		entries = append(entries, entry)
@@ -181,6 +184,7 @@ func parseTimetableEntry(in TimetableEntryInput, fields timetableEntryFields, pe
 	if entry.Description == "" {
 		problems = appendProblem(problems, fields.description, ProblemMissing)
 	}
+	problems = append(problems, checkLength(fields.description, entry.Description, MaxTimetableDescriptionLength)...)
 	var problem FieldProblem
 	entry.Date, problem = parseLocalDate(in.Date)
 	if in.Date == "" {

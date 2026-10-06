@@ -113,11 +113,7 @@ func splitTimetableProblems(fields []core.FieldError) ([]core.FieldError, map[in
 		if byEntry[index] == nil {
 			byEntry[index] = map[string]string{}
 		}
-		message, known := timetableFieldMessages[core.FieldError{Field: name, Problem: field.Problem}]
-		if !known {
-			message = msgFieldInvalid
-		}
-		byEntry[index][name] = message
+		byEntry[index][name] = fieldErrorMessage(core.FieldError{Field: name, Problem: field.Problem, Limit: field.Limit}, timetableFieldMessages)
 	}
 	return eventFields, byEntry
 }

@@ -27,9 +27,12 @@ const (
 	eventPathPattern = eventsPath + "/{" + eventIDParam + "}"
 	// eventDeletePathPattern deletes the event; only POST, never GET.
 	eventDeletePathPattern = eventPathPattern + deletePathSuffix
-	// maxEventFormBytes bounds the event form body; a real form with a long
-	// note and a festival programme of some dozen entries stays far below.
-	maxEventFormBytes = 64 << 10
+	// maxEventFormBytes bounds the event form body. It leaves room for a
+	// form of mostly ASCII text that uses every limit of ENT-24,
+	// URL-encoded, among them 100 timetable entries of 500 characters
+	// each; the same at full length in umlauts, nine bytes each when
+	// encoded, exceeds it.
+	maxEventFormBytes = 256 << 10
 )
 
 // allDayChecked is the value the all-day checkbox sends when checked.
@@ -303,7 +306,10 @@ func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status
 		Timetable:        timetableViews(form.values.Timetable, form.timetableErrors),
 		DuplicateWarning: duplicateWarningOf(form.duplicates, form.values, h.clock),
 	}
-	if len(form.timetableErrors) > 0 {
+	switch {
+	case form.errors[core.EventFieldTimetable] != "":
+		page.TimetableError = form.errors[core.EventFieldTimetable]
+	case len(form.timetableErrors) > 0:
 		page.TimetableError = msgTimetableProblems
 	}
 	if form.id != "" {

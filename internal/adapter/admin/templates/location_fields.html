@@ -35,5 +35,6 @@
 
   <label for="{{.IDPrefix}}note">Notiz (optional)</label>
   <textarea id="{{.IDPrefix}}note" name="note"{{with .FormID}} form="{{.}}"{{end}} rows="3" aria-describedby="{{.IDPrefix}}note-hint">{{.Values.Note}}</textarea>
+  {{with index .Errors "note"}}<p class="field-error">{{.}}</p>{{end}}
   <p class="hint" id="{{.IDPrefix}}note-hint">{{.PrivacyHint}}</p>
 {{end}}

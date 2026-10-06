@@ -302,14 +302,17 @@ func TestEventFormWithUnevenTimetableFieldsIsABadRequest(t *testing.T) {
 	}
 }
 
-func TestEventFormAcceptsALargeTimetable(t *testing.T) {
+// TestEventFormAcceptsEveryTextAndTheTimetableAtTheirLimits proves that
+// maxEventFormBytes leaves room for a form that uses every limit.
+func TestEventFormAcceptsEveryTextAndTheTimetableAtTheirLimits(t *testing.T) {
 	ts := newTestServer(t)
 	hall := ts.seed(t, hallName)
 	form := marketForm(hall.ID)
-	form.Set(core.EventFieldNote, strings.Repeat("x", 4000))
-	const entries = 60
-	for range entries {
-		form.Add(timetableFormDescription, strings.Repeat("Programmpunkt ", 10))
+	form.Set(core.EventFieldTitle, strings.Repeat("ü", core.MaxTitleLength))
+	form.Set(core.EventFieldNote, strings.Repeat("ü", core.MaxNoteLength))
+	form.Set(core.EventFieldSourceDescription, strings.Repeat("ü", core.MaxSourceDescriptionLength))
+	for range core.MaxTimetableEntries {
+		form.Add(timetableFormDescription, strings.Repeat("x", core.MaxTimetableDescriptionLength))
 		form.Add(timetableFormDate, "2026-10-17")
 		form.Add(timetableFormStartTime, "10:00")
 		form.Add(timetableFormEndTime, "11:00")
@@ -317,9 +320,46 @@ func TestEventFormAcceptsALargeTimetable(t *testing.T) {
 
 	event := ts.seedEvent(t, form)
 
-	if len(event.Timetable) != entries {
-		t.Errorf("stored %d entries, want %d", len(event.Timetable), entries)
+	if len(event.Timetable) != core.MaxTimetableEntries {
+		t.Errorf("stored %d entries, want %d", len(event.Timetable), core.MaxTimetableEntries)
 	}
+}
+
+func TestTooManyTimetableEntriesShowTheLimitAndKeepTheEntries(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	var entries [][4]string
+	for range core.MaxTimetableEntries + 1 {
+		entries = append(entries, markttag)
+	}
+
+	rec := ts.post(eventsPath, festForm(hall.ID, entries...))
+
+	assertStatusCode(t, rec, http.StatusUnprocessableEntity)
+	assertBodyContains(t, rec, "Höchstens 100 Programmpunkte.")
+	assertBodyLacks(t, rec, msgTimetableProblems)
+	if got := len(timetableEntriesOf(rec)); got != core.MaxTimetableEntries+1 {
+		t.Errorf("form shows %d entries, want all %d", got, core.MaxTimetableEntries+1)
+	}
+	if len(ts.events.events) != 0 {
+		t.Error("an event with too many entries was stored")
+	}
+}
+
+func TestTooLongEntryDescriptionShowsTheLimitAtTheEntry(t *testing.T) {
+	ts := newTestServer(t)
+	hall := ts.seed(t, hallName)
+	long := markttag
+	long[0] = strings.Repeat("x", core.MaxTimetableDescriptionLength+1)
+
+	rec := ts.post(eventsPath, festForm(hall.ID, markttag, long))
+
+	assertStatusCode(t, rec, http.StatusUnprocessableEntity)
+	entries := timetableEntriesOf(rec)
+	if got := fieldErrorsIn(entries[1]); !slices.Equal(got, []string{"Höchstens 500 Zeichen."}) {
+		t.Errorf("messages of entry 2 = %v", got)
+	}
+	assertBodyContains(t, rec, msgTimetableProblems, long[0])
 }
 
 // timetableEntriesOf returns the markup of each timetable entry of a form

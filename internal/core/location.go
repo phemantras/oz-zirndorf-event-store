@@ -41,6 +41,9 @@ const (
 	LocationFieldLongitude  = "longitude"
 	LocationFieldPrecision  = "precision"
 	LocationFieldNote       = "note"
+	// LocationFieldAddress is the object of the import that holds street,
+	// postalCode and city.
+	LocationFieldAddress = "address"
 )
 
 // Coordinate bounds in degrees, both inclusive.
@@ -89,6 +92,21 @@ type LocationInput struct {
 	Note       string
 }
 
+// normalized returns the input with every text normalized by
+// normalizeText.
+func (in LocationInput) normalized() LocationInput {
+	return LocationInput{
+		Name:       normalizeText(in.Name),
+		Street:     normalizeText(in.Street),
+		PostalCode: normalizeText(in.PostalCode),
+		City:       normalizeText(in.City),
+		Latitude:   normalizeText(in.Latitude),
+		Longitude:  normalizeText(in.Longitude),
+		Precision:  normalizeText(in.Precision),
+		Note:       normalizeText(in.Note),
+	}
+}
+
 // newLocation canonicalizes and validates input and returns the location
 // without ID. It reports every rejected field at once as *ValidationError.
 func newLocation(in LocationInput) (Location, error) {
@@ -107,9 +125,11 @@ func newLocation(in LocationInput) (Location, error) {
 	if location.Name == "" {
 		report(LocationFieldName, ProblemMissing)
 	}
+	problems = append(problems, checkLength(LocationFieldName, location.Name, MaxLocationNameLength)...)
 	if location.Street == "" {
 		report(LocationFieldStreet, ProblemMissing)
 	}
+	problems = append(problems, checkLength(LocationFieldStreet, location.Street, MaxStreetLength)...)
 	var problem FieldProblem
 	if location.PostalCode, problem = parsePostalCode(in.PostalCode); problem != "" {
 		report(LocationFieldPostalCode, problem)
@@ -117,6 +137,7 @@ func newLocation(in LocationInput) (Location, error) {
 	if location.City == "" {
 		report(LocationFieldCity, ProblemMissing)
 	}
+	problems = append(problems, checkLength(LocationFieldCity, location.City, MaxCityLength)...)
 	if location.Latitude, problem = parseCoordinate(in.Latitude, maxLatitude); problem != "" {
 		report(LocationFieldLatitude, problem)
 	}
@@ -126,6 +147,7 @@ func newLocation(in LocationInput) (Location, error) {
 	if location.Precision, problem = parsePrecision(in.Precision); problem != "" {
 		report(LocationFieldPrecision, problem)
 	}
+	problems = append(problems, checkLength(LocationFieldNote, location.Note, MaxLocationNoteLength)...)
 
 	if problems != nil {
 		return Location{}, &ValidationError{Fields: problems}

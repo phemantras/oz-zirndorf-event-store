@@ -1,0 +1,23 @@
+# comment: ignored
+title: Fixture
+schemas:
+  Thing:
+    type: object
+    description: |
+      maxLength: 999
+      name: text of a block scalar
+
+      maxItems: 999 after an empty line
+    properties:
+      name:
+        maxLength: 200
+      list:
+        maxItems: 100
+        example:
+          - date: '2026-11-27'
+      quoted:
+        pattern: '^[0-9]{5}$'
+  Other:
+    required:
+      - name
+    maxLength: 7

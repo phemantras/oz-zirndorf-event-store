@@ -336,3 +336,15 @@ func TestFragmentRenderFailureAnswersInternalServerErrorAndLogs(t *testing.T) {
 		t.Errorf("log %q does not record the render failure", ts.logs.String())
 	}
 }
+
+func TestSavingNewLocationOverTheLimitShowsItInline(t *testing.T) {
+	ts := newTestServer(t)
+	form := hallForm()
+	form.Set(core.LocationFieldStreet, strings.Repeat("s", core.MaxStreetLength+1))
+	form.Set(core.LocationFieldNote, strings.Repeat("ü", core.MaxLocationNoteLength))
+
+	rec := ts.htmxPost(inlineLocationPath, form)
+
+	assertStatusCode(t, rec, http.StatusUnprocessableEntity)
+	assertBodyContains(t, rec, "Höchstens 200 Zeichen.", form.Get(core.LocationFieldStreet), form.Get(core.LocationFieldNote))
+}

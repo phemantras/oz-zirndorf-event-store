@@ -96,7 +96,7 @@ func TestTimetableEntryEndingBeforeItsStartEndsTheNextDay(t *testing.T) {
 	// Ending at 01:00 on Sunday lies outside an event that ends at 00:00.
 	in := festInput(entryInput("Disco", "2026-10-17", "22:00", "01:00"))
 	_, problems := newEvent(in)
-	want := []FieldError{{TimetableField(0, TimetableFieldEndTime), ProblemOutsideEvent}}
+	want := []FieldError{{Field: TimetableField(0, TimetableFieldEndTime), Problem: ProblemOutsideEvent}}
 	if !slices.Equal(problems, want) {
 		t.Errorf("problems = %v, want %v", problems, want)
 	}
@@ -132,23 +132,23 @@ func TestNewEventRejectsEntriesOutsideTheEvent(t *testing.T) {
 	}{
 		"day after the event": {
 			festInput(entryInput("Kehraus", "2026-10-18", "", "")),
-			FieldError{TimetableField(0, TimetableFieldDate), ProblemOutsideEvent},
+			FieldError{Field: TimetableField(0, TimetableFieldDate), Problem: ProblemOutsideEvent},
 		},
 		"day before the event": {
 			festInput(entryInput("Aufbau", "2026-10-15", "", "")),
-			FieldError{TimetableField(0, TimetableFieldDate), ProblemOutsideEvent},
+			FieldError{Field: TimetableField(0, TimetableFieldDate), Problem: ProblemOutsideEvent},
 		},
 		"starts before the event": {
 			festInput(entryInput("Aufbau", "2026-10-16", "17:00", "19:00")),
-			FieldError{TimetableField(0, TimetableFieldStartTime), ProblemOutsideEvent},
+			FieldError{Field: TimetableField(0, TimetableFieldStartTime), Problem: ProblemOutsideEvent},
 		},
 		"starts when the event ends": {
 			festInput(entryInput("Kehraus", "2026-10-18", "00:00", "")),
-			FieldError{TimetableField(0, TimetableFieldStartTime), ProblemOutsideEvent},
+			FieldError{Field: TimetableField(0, TimetableFieldStartTime), Problem: ProblemOutsideEvent},
 		},
 		"only end at the start of the event": {
 			festInput(entryInput("Aufbau", "2026-10-16", "", "18:00")),
-			FieldError{TimetableField(0, TimetableFieldEndTime), ProblemOutsideEvent},
+			FieldError{Field: TimetableField(0, TimetableFieldEndTime), Problem: ProblemOutsideEvent},
 		},
 		"ends after a shortened event": {
 			func() EventInput {
@@ -156,7 +156,7 @@ func TestNewEventRejectsEntriesOutsideTheEvent(t *testing.T) {
 				in.EndDate, in.EndTime = "2026-10-16", "23:00"
 				return in
 			}(),
-			FieldError{TimetableField(0, TimetableFieldEndTime), ProblemOutsideEvent},
+			FieldError{Field: TimetableField(0, TimetableFieldEndTime), Problem: ProblemOutsideEvent},
 		},
 	}
 	for name, tt := range tests {
@@ -178,12 +178,12 @@ func TestNewEventReportsTimetableProblemsByEnteredIndex(t *testing.T) {
 	)
 	_, problems := newEvent(in)
 	want := []FieldError{
-		{TimetableField(1, TimetableFieldDescription), ProblemMissing},
-		{TimetableField(1, TimetableFieldDate), ProblemMissing},
-		{TimetableField(2, TimetableFieldDate), ProblemInvalidFormat},
-		{TimetableField(2, TimetableFieldStartTime), ProblemInvalidFormat},
-		{TimetableField(2, TimetableFieldEndTime), ProblemInvalidFormat},
-		{TimetableField(3, TimetableFieldEndTime), ProblemNotAfterStart},
+		{Field: TimetableField(1, TimetableFieldDescription), Problem: ProblemMissing},
+		{Field: TimetableField(1, TimetableFieldDate), Problem: ProblemMissing},
+		{Field: TimetableField(2, TimetableFieldDate), Problem: ProblemInvalidFormat},
+		{Field: TimetableField(2, TimetableFieldStartTime), Problem: ProblemInvalidFormat},
+		{Field: TimetableField(2, TimetableFieldEndTime), Problem: ProblemInvalidFormat},
+		{Field: TimetableField(3, TimetableFieldEndTime), Problem: ProblemNotAfterStart},
 	}
 	if !slices.Equal(problems, want) {
 		t.Errorf("problems = %v, want %v", problems, want)
@@ -203,11 +203,11 @@ func TestNewEventRejectsEntryTimesInTheSpringGap(t *testing.T) {
 	}{
 		"start": {
 			spring(entryInput("Nachtwanderung", "2026-03-29", "02:30", "")),
-			FieldError{TimetableField(0, TimetableFieldStartTime), ProblemNonexistentTime},
+			FieldError{Field: TimetableField(0, TimetableFieldStartTime), Problem: ProblemNonexistentTime},
 		},
 		"end on the next day": {
 			spring(entryInput("Disco", "2026-03-28", "23:00", "02:30")),
-			FieldError{TimetableField(0, TimetableFieldEndTime), ProblemNonexistentTime},
+			FieldError{Field: TimetableField(0, TimetableFieldEndTime), Problem: ProblemNonexistentTime},
 		},
 	}
 	for name, tt := range tests {
@@ -231,8 +231,8 @@ func TestNewEventChecksTimetableBoundsOnlyForAValidPeriod(t *testing.T) {
 	_, problems := newEvent(in)
 
 	want := []FieldError{
-		{EventFieldEndDate, ProblemNotAfterStart},
-		{TimetableField(1, TimetableFieldDescription), ProblemMissing},
+		{Field: EventFieldEndDate, Problem: ProblemNotAfterStart},
+		{Field: TimetableField(1, TimetableFieldDescription), Problem: ProblemMissing},
 	}
 	if !slices.Equal(problems, want) {
 		t.Errorf("problems = %v, want %v", problems, want)
@@ -251,7 +251,7 @@ func TestTimetableInstantReportsInvalidValues(t *testing.T) {
 func TestDayEntryOnAnInvalidDateIsReported(t *testing.T) {
 	fields := timetableEntryFieldsAt(0)
 	problems := dayEntryProblems(TimetableEntry{Date: LocalDate{2026, time.February, 30}}, fields, nil)
-	if !slices.Equal(problems, []FieldError{{fields.date, ProblemInvalidFormat}}) {
+	if !slices.Equal(problems, []FieldError{{Field: fields.date, Problem: ProblemInvalidFormat}}) {
 		t.Errorf("problems = %v, want date invalidFormat", problems)
 	}
 }
@@ -342,4 +342,33 @@ func (in EventInput) timetableText() string {
 		text += "[" + entry.Description + " " + entry.Date + " " + entry.StartTime + "-" + entry.EndTime + "]"
 	}
 	return text
+}
+
+func TestNewEventLimitsTheDescriptionOfAnEntry(t *testing.T) {
+	in := festInput(
+		entryInput(overLimit(MaxTimetableDescriptionLength-1), "2026-10-17", "", ""),
+		entryInput(overLimit(MaxTimetableDescriptionLength), "2026-10-17", "", ""),
+	)
+
+	_, problems := newEvent(in)
+
+	want := []FieldError{{Field: TimetableField(1, TimetableFieldDescription), Problem: ProblemTooLong, Limit: MaxTimetableDescriptionLength}}
+	if !slices.Equal(problems, want) {
+		t.Errorf("problems = %v, want %v", problems, want)
+	}
+}
+
+func TestNewEventReportsTooManyEntriesBesideTheirOwnProblems(t *testing.T) {
+	entries := slices.Repeat([]TimetableEntryInput{entryInput("Musik", "2026-10-17", "", "")}, MaxTimetableEntries+1)
+	entries[MaxTimetableEntries] = entryInput("", "2026-10-17", "", "")
+
+	_, problems := newEvent(festInput(entries...))
+
+	want := []FieldError{
+		{Field: EventFieldTimetable, Problem: ProblemTooMany, Limit: MaxTimetableEntries},
+		{Field: TimetableField(MaxTimetableEntries, TimetableFieldDescription), Problem: ProblemMissing},
+	}
+	if !slices.Equal(problems, want) {
+		t.Errorf("problems = %v, want %v", problems, want)
+	}
 }

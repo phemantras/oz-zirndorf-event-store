@@ -89,6 +89,8 @@ type Config struct {
 	Events EventUseCases
 	// Clock decides which events the list shows as archived.
 	Clock core.Clock
+	// Imports are the core use cases behind the import page.
+	Imports ImportUseCases
 }
 
 // handler serves the admin interface.
@@ -103,6 +105,7 @@ type handler struct {
 	locations       LocationUseCases
 	events          EventUseCases
 	clock           core.Clock
+	imports         ImportUseCases
 }
 
 // NewHandler returns the admin interface for all paths below /admin/,
@@ -123,6 +126,7 @@ func newHandler(cfg Config) *handler {
 		locations:       cfg.Locations,
 		events:          cfg.Events,
 		clock:           cfg.Clock,
+		imports:         cfg.Imports,
 	}
 }
 
@@ -149,6 +153,8 @@ func (h *handler) routes() http.Handler {
 	protected.HandleFunc(http.MethodGet+" "+inlineLocationCancelPath, h.cancelInlineLocation)
 	protected.HandleFunc(http.MethodPost+" "+inlineLocationPath, h.createInlineLocation)
 	protected.HandleFunc(http.MethodGet+" "+timetableEntryPath, h.showTimetableEntry)
+	protected.HandleFunc(http.MethodGet+" "+importPath, h.showImport)
+	protected.HandleFunc(http.MethodPost+" "+importPath, h.checkImport)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc(http.MethodGet+" "+loginPath, h.showLogin)

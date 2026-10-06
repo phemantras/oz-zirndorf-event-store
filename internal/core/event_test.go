@@ -181,76 +181,76 @@ func TestNewEventReportsEveryInvalidField(t *testing.T) {
 				*in = EventInput{Title: "  ", Type: "", LocationID: " ", StartDate: "", Source: EventSource{Description: " "}}
 			},
 			want: []FieldError{
-				{EventFieldTitle, ProblemMissing},
-				{EventFieldType, ProblemMissing},
-				{EventFieldLocationID, ProblemMissing},
-				{EventFieldStartDate, ProblemMissing},
-				{EventFieldSourceDescription, ProblemMissing},
+				{Field: EventFieldTitle, Problem: ProblemMissing},
+				{Field: EventFieldType, Problem: ProblemMissing},
+				{Field: EventFieldLocationID, Problem: ProblemMissing},
+				{Field: EventFieldStartDate, Problem: ProblemMissing},
+				{Field: EventFieldSourceDescription, Problem: ProblemMissing},
 			},
 		},
 		"unknown type": {
 			change: func(in *EventInput) { in.Type = "concert" },
-			want:   []FieldError{{EventFieldType, ProblemUnknownCode}},
+			want:   []FieldError{{Field: EventFieldType, Problem: ProblemUnknownCode}},
 		},
 		"ftp link": {
 			change: func(in *EventInput) { in.Source.URL = "ftp://x" },
-			want:   []FieldError{{EventFieldSourceURL, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldSourceURL, Problem: ProblemInvalidFormat}},
 		},
 		"link without scheme": {
 			change: func(in *EventInput) { in.Source.URL = "amtsblatt.de" },
-			want:   []FieldError{{EventFieldSourceURL, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldSourceURL, Problem: ProblemInvalidFormat}},
 		},
 		"link without host": {
 			change: func(in *EventInput) { in.Source.URL = "https://" },
-			want:   []FieldError{{EventFieldSourceURL, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldSourceURL, Problem: ProblemInvalidFormat}},
 		},
 		"unparsable link": {
 			change: func(in *EventInput) { in.Source.URL = "http://zirndorf.de/%zz" },
-			want:   []FieldError{{EventFieldSourceURL, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldSourceURL, Problem: ProblemInvalidFormat}},
 		},
 		"German date and spoken time": {
 			change: func(in *EventInput) { in.StartDate, in.StartTime = "16.10.2026", "7 Uhr" },
-			want:   []FieldError{{EventFieldStartDate, ProblemInvalidFormat}, {EventFieldStartTime, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldStartDate, Problem: ProblemInvalidFormat}, {Field: EventFieldStartTime, Problem: ProblemInvalidFormat}},
 		},
 		"malformed end date and end time": {
 			change: func(in *EventInput) { in.EndDate, in.EndTime = "2026-10-1", "7:00" },
-			want:   []FieldError{{EventFieldEndDate, ProblemInvalidFormat}, {EventFieldEndTime, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldEndDate, Problem: ProblemInvalidFormat}, {Field: EventFieldEndTime, Problem: ProblemInvalidFormat}},
 		},
 		"date that does not exist": {
 			change: func(in *EventInput) { in.StartDate = "2026-02-30" },
-			want:   []FieldError{{EventFieldStartDate, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldStartDate, Problem: ProblemInvalidFormat}},
 		},
 		"year zero": {
 			change: func(in *EventInput) { in.StartDate = "0000-01-01" },
-			want:   []FieldError{{EventFieldStartDate, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldStartDate, Problem: ProblemInvalidFormat}},
 		},
 		"date with sign": {
 			change: func(in *EventInput) { in.StartDate = "+026-10-16" },
-			want:   []FieldError{{EventFieldStartDate, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldStartDate, Problem: ProblemInvalidFormat}},
 		},
 		"time out of range": {
 			change: func(in *EventInput) { in.StartTime, in.EndDate, in.EndTime = "24:00", "2026-10-16", "12:60" },
-			want:   []FieldError{{EventFieldStartTime, ProblemInvalidFormat}, {EventFieldEndTime, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldStartTime, Problem: ProblemInvalidFormat}, {Field: EventFieldEndTime, Problem: ProblemInvalidFormat}},
 		},
 		"time with seconds": {
 			change: func(in *EventInput) { in.StartTime = "19:00:00" },
-			want:   []FieldError{{EventFieldStartTime, ProblemInvalidFormat}},
+			want:   []FieldError{{Field: EventFieldStartTime, Problem: ProblemInvalidFormat}},
 		},
 		"end before start": {
 			change: func(in *EventInput) { in.StartTime, in.EndDate, in.EndTime = "19:00", "2026-10-16", "18:00" },
-			want:   []FieldError{{EventFieldEndTime, ProblemNotAfterStart}},
+			want:   []FieldError{{Field: EventFieldEndTime, Problem: ProblemNotAfterStart}},
 		},
 		"all day with time": {
 			change: func(in *EventInput) { in.StartTime, in.AllDay = "19:00", true },
-			want:   []FieldError{{EventFieldStartTime, ProblemConflictsWithAllDay}},
+			want:   []FieldError{{Field: EventFieldStartTime, Problem: ProblemConflictsWithAllDay}},
 		},
 		"spring gap": {
 			change: func(in *EventInput) { in.StartDate, in.StartTime = "2027-03-28", "02:30" },
-			want:   []FieldError{{EventFieldStartTime, ProblemNonexistentTime}},
+			want:   []FieldError{{Field: EventFieldStartTime, Problem: ProblemNonexistentTime}},
 		},
 		"text problems with a time problem": {
 			change: func(in *EventInput) { in.Title, in.EndTime = "", "22:00" },
-			want:   []FieldError{{EventFieldTitle, ProblemMissing}, {EventFieldEndDate, ProblemMissing}},
+			want:   []FieldError{{Field: EventFieldTitle, Problem: ProblemMissing}, {Field: EventFieldEndDate, Problem: ProblemMissing}},
 		},
 	}
 	for name, tt := range tests {
@@ -319,4 +319,108 @@ func (in EventInput) timesText() string {
 		allDay = " allDay"
 	}
 	return in.StartDate + " " + in.StartTime + " - " + in.EndDate + " " + in.EndTime + allDay
+}
+
+func TestEventFieldNamesOfTheImport(t *testing.T) {
+	got := []string{EventFieldLocation, EventFieldImportKey}
+	want := []string{"location", "importKey"}
+	if !slices.Equal(got, want) {
+		t.Errorf("import field names = %v, want %v", got, want)
+	}
+}
+
+func TestCanonicalizeNormalizesImportKeyAndBroughtLocation(t *testing.T) {
+	in := validEventInput()
+	in.LocationID = ""
+	in.ImportKey = " kirchweih-2026 "
+	in.Location = &LocationInput{
+		Name: " " + decomposedOelmuehle + " ", Street: " Am Bach 1 ", PostalCode: " 90513 ", City: " Zirndorf ",
+		Latitude: " 49.4 ", Longitude: " 10.9 ", Precision: " building ", Note: "  ",
+	}
+
+	got := in.Canonicalize()
+
+	if got.ImportKey != "kirchweih-2026" {
+		t.Errorf("ImportKey = %q, want it trimmed", got.ImportKey)
+	}
+	want := LocationInput{
+		Name: composedOelmuehle, Street: "Am Bach 1", PostalCode: "90513", City: "Zirndorf",
+		Latitude: "49.4", Longitude: "10.9", Precision: "building", Note: "",
+	}
+	if got.Location == nil || *got.Location != want {
+		t.Errorf("Location = %+v, want %+v", got.Location, want)
+	}
+	if in.Location.Name == composedOelmuehle {
+		t.Error("Canonicalize changed the location of its receiver")
+	}
+}
+
+func TestNewEventAsksForNoLocationIDWhenTheLocationIsBroughtAlong(t *testing.T) {
+	in := validEventInput()
+	in.LocationID = ""
+	in.Location = &LocationInput{Name: "Paul-Metz-Halle"}
+
+	if _, problems := newEvent(in); problems != nil {
+		t.Errorf("problems = %v, want none", problems)
+	}
+}
+
+func TestNewEventChecksTheLimitsOfENT24(t *testing.T) {
+	tests := map[string]struct {
+		change func(*EventInput)
+		want   []FieldError
+	}{
+		"title": {
+			change: func(in *EventInput) { in.Title = overLimit(MaxTitleLength) },
+			want:   []FieldError{{Field: EventFieldTitle, Problem: ProblemTooLong, Limit: MaxTitleLength}},
+		},
+		"source description": {
+			change: func(in *EventInput) { in.Source.Description = overLimit(MaxSourceDescriptionLength) },
+			want:   []FieldError{{Field: EventFieldSourceDescription, Problem: ProblemTooLong, Limit: MaxSourceDescriptionLength}},
+		},
+		"source url": {
+			change: func(in *EventInput) { in.Source.URL = "https://zirndorf.de/" + overLimit(MaxSourceURLLength) },
+			want:   []FieldError{{Field: EventFieldSourceURL, Problem: ProblemTooLong, Limit: MaxSourceURLLength}},
+		},
+		"note": {
+			change: func(in *EventInput) { in.Note = overLimit(MaxNoteLength) },
+			want:   []FieldError{{Field: EventFieldNote, Problem: ProblemTooLong, Limit: MaxNoteLength}},
+		},
+		"import key": {
+			change: func(in *EventInput) { in.ImportKey = overLimit(MaxImportKeyLength) },
+			want:   []FieldError{{Field: EventFieldImportKey, Problem: ProblemTooLong, Limit: MaxImportKeyLength}},
+		},
+		"timetable": {
+			change: func(in *EventInput) {
+				in.Timetable = slices.Repeat([]TimetableEntryInput{{Description: "Musik", Date: "2026-10-16"}}, MaxTimetableEntries+1)
+			},
+			want: []FieldError{{Field: EventFieldTimetable, Problem: ProblemTooMany, Limit: MaxTimetableEntries}},
+		},
+		"surrounding whitespace does not count": {
+			change: func(in *EventInput) { in.Title = "  " + overLimit(MaxTitleLength-1) + "  " },
+			want:   nil,
+		},
+		"every limit at once is exactly allowed": {
+			change: func(in *EventInput) {
+				in.Title = overLimit(MaxTitleLength - 1)
+				in.Source.Description = overLimit(MaxSourceDescriptionLength - 1)
+				in.Note = overLimit(MaxNoteLength - 1)
+				in.ImportKey = overLimit(MaxImportKeyLength - 1)
+				in.Timetable = slices.Repeat([]TimetableEntryInput{{Description: "Musik", Date: "2026-10-16"}}, MaxTimetableEntries)
+			},
+			want: nil,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			in := validEventInput()
+			tt.change(&in)
+
+			_, problems := newEvent(in)
+
+			if !slices.Equal(problems, tt.want) {
+				t.Errorf("problems = %v, want %v", problems, tt.want)
+			}
+		})
+	}
 }

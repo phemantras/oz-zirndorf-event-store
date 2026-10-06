@@ -189,28 +189,28 @@ func TestListActiveEventsRejectsInvalidFiltersWithoutAskingTheRepository(t *test
 		filter EventFilter
 		want   []FieldError
 	}{
-		{"german date", EventFilter{From: ptr("24.12.2026")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"nonexistent date", EventFilter{From: ptr("2026-02-30")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"instant without offset", EventFilter{To: ptr("2026-12-24T18:00")}, []FieldError{{FilterFieldTo, ProblemInvalidFormat}}},
-		{"offset without colon", EventFilter{To: ptr("2026-12-24T18:00+0100")}, []FieldError{{FilterFieldTo, ProblemInvalidFormat}}},
-		{"hour with one digit", EventFilter{From: ptr("2026-12-24T8:00+01:00")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"hour out of range", EventFilter{From: ptr("2026-12-24T24:00+01:00")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"nonexistent day in an instant", EventFilter{From: ptr("2026-02-30T10:00Z")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"lower-case separator", EventFilter{From: ptr("2026-12-24t18:00z")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"from given empty", EventFilter{From: ptr("")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"to given empty", EventFilter{To: ptr("")}, []FieldError{{FilterFieldTo, ProblemInvalidFormat}}},
+		{"german date", EventFilter{From: ptr("24.12.2026")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"nonexistent date", EventFilter{From: ptr("2026-02-30")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"instant without offset", EventFilter{To: ptr("2026-12-24T18:00")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemInvalidFormat}}},
+		{"offset without colon", EventFilter{To: ptr("2026-12-24T18:00+0100")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemInvalidFormat}}},
+		{"hour with one digit", EventFilter{From: ptr("2026-12-24T8:00+01:00")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"hour out of range", EventFilter{From: ptr("2026-12-24T24:00+01:00")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"nonexistent day in an instant", EventFilter{From: ptr("2026-02-30T10:00Z")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"lower-case separator", EventFilter{From: ptr("2026-12-24t18:00z")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"from given empty", EventFilter{From: ptr("")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"to given empty", EventFilter{To: ptr("")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemInvalidFormat}}},
 		{"from and to given empty", EventFilter{From: ptr(""), To: ptr("")},
-			[]FieldError{{FilterFieldFrom, ProblemInvalidFormat}, {FilterFieldTo, ProblemInvalidFormat}}},
-		{"unknown type", EventFilter{Types: []string{"market", "foo"}}, []FieldError{{FilterFieldType, ProblemUnknownCode}}},
-		{"empty type", EventFilter{Types: []string{""}}, []FieldError{{FilterFieldType, ProblemMissing}}},
+			[]FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}, {Field: FilterFieldTo, Problem: ProblemInvalidFormat}}},
+		{"unknown type", EventFilter{Types: []string{"market", "foo"}}, []FieldError{{Field: FilterFieldType, Problem: ProblemUnknownCode}}},
+		{"empty type", EventFilter{Types: []string{""}}, []FieldError{{Field: FilterFieldType, Problem: ProblemMissing}}},
 		{"every parameter", EventFilter{From: ptr("morgen"), To: ptr("übermorgen"), Types: []string{"foo"}}, []FieldError{
-			{FilterFieldFrom, ProblemInvalidFormat}, {FilterFieldTo, ProblemInvalidFormat}, {FilterFieldType, ProblemUnknownCode},
+			{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}, {Field: FilterFieldTo, Problem: ProblemInvalidFormat}, {Field: FilterFieldType, Problem: ProblemUnknownCode},
 		}},
-		{"empty period", EventFilter{From: ptr("2026-12-28"), To: ptr("2026-12-27")}, []FieldError{{FilterFieldTo, ProblemEmptyPeriod}}},
+		{"empty period", EventFilter{From: ptr("2026-12-28"), To: ptr("2026-12-27")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemEmptyPeriod}}},
 		{"empty period of instants", EventFilter{From: ptr("2026-12-28T18:01+01:00"), To: ptr("2026-12-28T18:00+01:00")},
-			[]FieldError{{FilterFieldTo, ProblemEmptyPeriod}}},
-		{"only to before today", EventFilter{To: ptr("2026-12-23")}, []FieldError{{FilterFieldTo, ProblemBeforeToday}}},
-		{"only to just before today", EventFilter{To: ptr("2026-12-23T23:59+01:00")}, []FieldError{{FilterFieldTo, ProblemBeforeToday}}},
+			[]FieldError{{Field: FilterFieldTo, Problem: ProblemEmptyPeriod}}},
+		{"only to before today", EventFilter{To: ptr("2026-12-23")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemBeforeToday}}},
+		{"only to just before today", EventFilter{To: ptr("2026-12-23T23:59+01:00")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemBeforeToday}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -419,7 +419,7 @@ func TestListActiveEventsTakesTodayFromEuropeBerlinForAClockInAnotherZone(t *tes
 	t.Run("to yesterday is before today", func(t *testing.T) {
 		_, err := newQueryService(newFakeEventRepo()).ListActiveEvents(context.Background(), clock, EventFilter{To: ptr("2026-12-23")})
 		var validation *ValidationError
-		if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{FilterFieldTo, ProblemBeforeToday}}) {
+		if !errors.As(err, &validation) || !slices.Equal(validation.Fields, []FieldError{{Field: FilterFieldTo, Problem: ProblemBeforeToday}}) {
 			t.Errorf("err = %v, want to beforeToday", err)
 		}
 	})
@@ -581,17 +581,17 @@ func TestListArchivedEventsRejectsInvalidFiltersWithoutAskingTheRepository(t *te
 		filter EventFilter
 		want   []FieldError
 	}{
-		{"german date", EventFilter{From: ptr("24.12.2026")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"instant without offset", EventFilter{To: ptr("2026-12-24T18:00")}, []FieldError{{FilterFieldTo, ProblemInvalidFormat}}},
-		{"from given empty", EventFilter{From: ptr("")}, []FieldError{{FilterFieldFrom, ProblemInvalidFormat}}},
-		{"unknown type", EventFilter{Types: []string{"foo"}}, []FieldError{{FilterFieldType, ProblemUnknownCode}}},
-		{"empty type", EventFilter{Types: []string{""}}, []FieldError{{FilterFieldType, ProblemMissing}}},
+		{"german date", EventFilter{From: ptr("24.12.2026")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"instant without offset", EventFilter{To: ptr("2026-12-24T18:00")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemInvalidFormat}}},
+		{"from given empty", EventFilter{From: ptr("")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}}},
+		{"unknown type", EventFilter{Types: []string{"foo"}}, []FieldError{{Field: FilterFieldType, Problem: ProblemUnknownCode}}},
+		{"empty type", EventFilter{Types: []string{""}}, []FieldError{{Field: FilterFieldType, Problem: ProblemMissing}}},
 		{"every parameter", EventFilter{From: ptr("gestern"), To: ptr(""), Types: []string{"foo"}}, []FieldError{
-			{FilterFieldFrom, ProblemInvalidFormat}, {FilterFieldTo, ProblemInvalidFormat}, {FilterFieldType, ProblemUnknownCode},
+			{Field: FilterFieldFrom, Problem: ProblemInvalidFormat}, {Field: FilterFieldTo, Problem: ProblemInvalidFormat}, {Field: FilterFieldType, Problem: ProblemUnknownCode},
 		}},
-		{"empty period", EventFilter{From: ptr("2026-12-28"), To: ptr("2026-12-27")}, []FieldError{{FilterFieldTo, ProblemEmptyPeriod}}},
-		{"only from after now", EventFilter{From: ptr("2027-01-01")}, []FieldError{{FilterFieldFrom, ProblemAfterNow}}},
-		{"only from at now", EventFilter{From: ptr("2026-12-24T12:00+01:00")}, []FieldError{{FilterFieldFrom, ProblemAfterNow}}},
+		{"empty period", EventFilter{From: ptr("2026-12-28"), To: ptr("2026-12-27")}, []FieldError{{Field: FilterFieldTo, Problem: ProblemEmptyPeriod}}},
+		{"only from after now", EventFilter{From: ptr("2027-01-01")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemAfterNow}}},
+		{"only from at now", EventFilter{From: ptr("2026-12-24T12:00+01:00")}, []FieldError{{Field: FilterFieldFrom, Problem: ProblemAfterNow}}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

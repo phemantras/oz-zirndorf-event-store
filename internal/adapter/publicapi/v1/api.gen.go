@@ -183,7 +183,8 @@ type Event struct {
 
 // EventInput An event as an import file delivers it (write form). It has the
 // field names of Event without the derived fields, plus `importKey`,
-// and no identifiers. The import schema includes it.
+// and no identifiers. The import schema includes it. Text limits
+// count Unicode code points after NFC normalization and trimming.
 type EventInput struct {
 	// AllDay Whether the event lasts whole days, at start and end together.
 	// Then no times may be given; an all-day event with a start or end

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -534,7 +535,8 @@ func (r runningService) stop(t *testing.T) {
 }
 
 // assertListsServedWithSession logs in at baseURL and checks that the
-// location and event lists, wired to PostgreSQL, answer with the session.
+// location and event lists and the import check, wired to PostgreSQL,
+// answer with the session.
 func assertListsServedWithSession(t *testing.T, baseURL string) {
 	t.Helper()
 	session := logIn(t, baseURL)
@@ -542,6 +544,10 @@ func assertListsServedWithSession(t *testing.T, baseURL string) {
 		if status, _ := session.get(t, path); status != http.StatusOK {
 			t.Errorf("GET %s with session: status = %d, want %d", path, status, http.StatusOK)
 		}
+	}
+	body, contentType := importUploadBody(t, importFileWithNewLocation)
+	if status, page := session.upload(t, adminImportPath, contentType, body); status != http.StatusOK || !strings.Contains(page, wantOneValidEntry) {
+		t.Errorf("POST %s with session: status = %d, want %d with %q", adminImportPath, status, http.StatusOK, wantOneValidEntry)
 	}
 }
 
@@ -581,17 +587,35 @@ func (s adminSession) get(t *testing.T, path string) (int, string) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
+	return s.do(t, req)
+}
+
+// do sends req with the session cookie and returns status and body.
+func (s adminSession) do(t *testing.T, req *http.Request) (int, string) {
+	t.Helper()
 	req.AddCookie(s.cookie)
 	resp, err := s.client.Do(req)
 	if err != nil {
-		t.Fatalf("GET %s: %v", path, err)
+		t.Fatalf("%s %s: %v", req.Method, req.URL.Path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("read %s: %v", path, err)
+		t.Fatalf("read %s: %v", req.URL.Path, err)
 	}
 	return resp.StatusCode, string(body)
+}
+
+// upload sends body with contentType to path with the session and returns
+// status and body of the answer.
+func (s adminSession) upload(t *testing.T, path, contentType string, body io.Reader) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, s.baseURL+path, body)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Content-Type", contentType)
+	return s.do(t, req)
 }
 
 func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
@@ -742,8 +766,19 @@ func (emptyEvents) ListArchivedEvents(context.Context, core.Clock, core.EventFil
 	return nil, nil
 }
 
+// emptyImports stands in for the import use cases where no database is
+// available: every file holds one valid entry.
+type emptyImports struct{}
+
+func (emptyImports) PreviewImport(context.Context, []byte) (core.ImportPreview, error) {
+	return core.ImportPreview{Entries: []core.ImportEntry{{Position: 1, Title: importedTitle}}}, nil
+}
+
+// importedTitle is the title of the entry emptyImports finds in any file.
+const importedTitle = "Kirchweihmarkt"
+
 func emptyUseCases() useCases {
-	return useCases{locations: emptyLocations{}, events: emptyEvents{}}
+	return useCases{locations: emptyLocations{}, events: emptyEvents{}, imports: emptyImports{}}
 }
 
 func validConfig(t *testing.T) config {
@@ -804,7 +839,7 @@ func TestNewAdminHandlerLogsInWithConfiguredCredentials(t *testing.T) {
 	if homeRec.Code != http.StatusOK {
 		t.Errorf("home with session cookie: status = %d, want %d", homeRec.Code, http.StatusOK)
 	}
-	for _, path := range []string{adminLocationsPath, adminEventsPath} {
+	for _, path := range []string{adminLocationsPath, adminEventsPath, adminImportPath} {
 		list := httptest.NewRequest(http.MethodGet, path, nil)
 		list.AddCookie(cookies[0])
 		listRec := httptest.NewRecorder()
@@ -813,4 +848,53 @@ func TestNewAdminHandlerLogsInWithConfiguredCredentials(t *testing.T) {
 			t.Errorf("%s with session cookie: status = %d, want %d", path, listRec.Code, http.StatusOK)
 		}
 	}
+	importRec := httptest.NewRecorder()
+	handler.ServeHTTP(importRec, importUpload(t, cookies[0]))
+	if importRec.Code != http.StatusOK || !strings.Contains(importRec.Body.String(), importedTitle) {
+		t.Errorf("import upload: status = %d, want %d with the checked entry", importRec.Code, http.StatusOK)
+	}
 }
+
+// adminImportPath is the import page of the admin.
+const adminImportPath = "/admin/import"
+
+// importUpload is an upload of a file to the import page with the session
+// cookie.
+func importUpload(t *testing.T, cookie *http.Cookie) *http.Request {
+	t.Helper()
+	body, contentType := importUploadBody(t, `{"formatVersion":1,"events":[{}]}`)
+	req := httptest.NewRequest(http.MethodPost, adminImportPath, body)
+	req.Header.Set("Content-Type", contentType)
+	req.AddCookie(cookie)
+	return req
+}
+
+// importUploadBody returns a multipart body that carries file in the file
+// field of the import page, and its Content-Type.
+func importUploadBody(t *testing.T, file string) (*bytes.Buffer, string) {
+	t.Helper()
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "events.json")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte(file)); err != nil {
+		t.Fatalf("write form file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart: %v", err)
+	}
+	return &body, writer.FormDataContentType()
+}
+
+// importFileWithNewLocation is a valid import file of one entry that brings
+// a complete new location along.
+const importFileWithNewLocation = `{"formatVersion":1,"events":[{
+	"title":"Konzert im Park","type":"culture","startDate":"2026-10-17",
+	"location":{"name":"Alte Veste","address":{"street":"Burgweg 1","postalCode":"90513","city":"Zirndorf"},
+		"latitude":49.4501,"longitude":10.9376,"precision":"building"},
+	"source":{"description":"Plakat"}}]}`
+
+// wantOneValidEntry is how the import page counts importFileWithNewLocation.
+const wantOneValidEntry = "1 gültig"

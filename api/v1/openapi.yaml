@@ -138,6 +138,12 @@ info:
 
     This document is served at `/v1/openapi.yaml`. A readable rendering of
     it is served at `/v1/docs`, without any external resource.
+
+    The JSON Schema of the import file format v1 is served at
+    `/v1/import-v1.schema.json`. It includes the schema EventInput of this
+    document and its limits (`maxLength`, `maxItems`); lengths count Unicode
+    code points after NFC normalization and trimming of surrounding
+    whitespace.
 servers:
   - url: /v1
     description: Version 1 on the current host.
@@ -543,6 +549,7 @@ components:
       properties:
         street:
           type: [string, 'null']
+          maxLength: 200
           description: Street with house number, or an area such as a square.
           example: Volkhardtstraße 2
         postalCode:
@@ -552,6 +559,7 @@ components:
           example: '90513'
         city:
           type: [string, 'null']
+          maxLength: 100
           description: City.
           example: Zirndorf
     Source:
@@ -563,11 +571,13 @@ components:
       properties:
         description:
           type: string
+          maxLength: 500
           description: Human-readable source, such as a newsletter or a poster.
           example: Amtsblatt der Stadt Zirndorf, November 2026
         url:
           type: [string, 'null']
           format: uri
+          maxLength: 2000
           description: Link to the source, an http(s) URL, or `null`.
           example: https://www.zirndorf.de/amtsblatt
     TimetableEntry:
@@ -583,6 +593,7 @@ components:
       properties:
         description:
           type: string
+          maxLength: 500
           description: What happens.
           example: Eröffnung durch den Bürgermeister
         date:
@@ -776,6 +787,7 @@ components:
       properties:
         name:
           type: string
+          maxLength: 200
           description: Unique name of the location.
           example: Paul-Metz-Halle
         address:
@@ -798,6 +810,7 @@ components:
           $ref: '#/components/schemas/LocationPrecision'
         note:
           type: [string, 'null']
+          maxLength: 2000
           description: Note about the location.
           example: null
     EventInput:
@@ -805,7 +818,8 @@ components:
       description: |
         An event as an import file delivers it (write form). It has the
         field names of Event without the derived fields, plus `importKey`,
-        and no identifiers. The import schema includes it.
+        and no identifiers. The import schema includes it. Text limits
+        count Unicode code points after NFC normalization and trimming.
       required:
         - title
         - type
@@ -815,6 +829,7 @@ components:
       properties:
         title:
           type: string
+          maxLength: 200
           description: Title of the event, German.
           example: Zirndorfer Weihnachtsmarkt, 1. Adventswochenende
         type:
@@ -852,10 +867,12 @@ components:
           $ref: '#/components/schemas/Source'
         note:
           type: [string, 'null']
+          maxLength: 2000
           description: Note about the event.
           example: null
         timetable:
           type: array
+          maxItems: 100
           description: Timetable of the event, in any order.
           items:
             $ref: '#/components/schemas/TimetableEntry'
@@ -866,6 +883,7 @@ components:
               endTime: '21:00'
         importKey:
           type: [string, 'null']
+          maxLength: 200
           description: |
             Key of the event in the import source; importing the same key
             again updates the event instead of creating another one.

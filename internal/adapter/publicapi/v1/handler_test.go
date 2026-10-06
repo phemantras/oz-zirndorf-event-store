@@ -131,6 +131,24 @@ func TestServesTheEmbeddedSpec(t *testing.T) {
 	}
 }
 
+func TestServesTheEmbeddedImportSchema(t *testing.T) {
+	rec := serve(newTestHandler(), http.MethodGet, importSchemaPath)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/schema+json" {
+		t.Errorf("Content-Type = %q, want application/schema+json", got)
+	}
+	assertAllowsAnyOrigin(t, rec.Header())
+	if len(apispec.ImportSchemaV1) == 0 || !bytes.Equal(rec.Body.Bytes(), apispec.ImportSchemaV1) {
+		t.Error("body is not the embedded import schema")
+	}
+	if importSchemaPath != "/v1/import-v1.schema.json" {
+		t.Errorf("importSchemaPath = %q", importSchemaPath)
+	}
+}
+
 func TestServesTheDocsPage(t *testing.T) {
 	rec := serve(newTestHandler(), http.MethodGet, docsPath)
 
@@ -244,7 +262,7 @@ func TestHeadOnTheDocsPageAnswersWithoutBody(t *testing.T) {
 }
 
 func TestPreflightIsAnsweredOnEveryPath(t *testing.T) {
-	for _, path := range []string{eventTypesPath, specPath, docsPath, docsScriptPath, unknownPath, "/v1/"} {
+	for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, docsScriptPath, unknownPath, "/v1/"} {
 		req := httptest.NewRequest(http.MethodOptions, path, nil)
 		req.Header.Set("Origin", "https://karte.example")
 		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
@@ -289,7 +307,7 @@ func TestPreflightWithoutRequestHeadersAllowsNoHeaders(t *testing.T) {
 
 func TestWriteMethodsAreRejectedOnEveryPath(t *testing.T) {
 	for _, method := range writeMethods {
-		for _, path := range []string{eventTypesPath, specPath, docsPath, docsScriptPath, unknownPath} {
+		for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, docsScriptPath, unknownPath} {
 			rec := serve(newTestHandler(), method, path)
 
 			detail := assertProblem(t, rec, http.StatusMethodNotAllowed)
@@ -359,7 +377,7 @@ func (w *failingWriter) WriteHeader(int)           {}
 func (w *failingWriter) Write([]byte) (int, error) { return 0, errClientGone }
 
 func TestFailedWritesAreLogged(t *testing.T) {
-	for _, path := range []string{specPath, unknownPath} {
+	for _, path := range []string{specPath, importSchemaPath, unknownPath} {
 		var logs bytes.Buffer
 		handler := NewHandler(Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))})
 
@@ -373,7 +391,7 @@ func TestFailedWritesAreLogged(t *testing.T) {
 
 func TestEveryAnswerAllowsAnyOrigin(t *testing.T) {
 	for _, method := range slices.Concat([]string{http.MethodGet, http.MethodHead, http.MethodOptions}, writeMethods) {
-		for _, path := range []string{eventTypesPath, specPath, docsPath, docsScriptPath, unknownPath} {
+		for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, docsScriptPath, unknownPath} {
 			rec := serve(newTestHandler(), method, path)
 			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
 				t.Errorf("%s %s Access-Control-Allow-Origin = %q, want *", method, path, got)

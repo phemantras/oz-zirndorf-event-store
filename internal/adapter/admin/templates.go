@@ -29,6 +29,8 @@ const (
 	timetableEntryFile = templateDir + "timetable_entry.html"
 	// deleteFormFile holds the delete button of the edit pages.
 	deleteFormFile = templateDir + "delete_form.html"
+	// importFile is the upload form and result of checking an import.
+	importFile = templateDir + "import.html"
 )
 
 //go:embed templates
@@ -53,6 +55,7 @@ var (
 	newLocationTemplate = parseFragments(newLocationFile, locationFieldsFile)
 	// timetableEntryTemplate is the empty entry htmx appends.
 	timetableEntryTemplate = parseFragments(timetableEntryFile)
+	importTemplate         = parsePage(importFile)
 )
 
 // loginPage is the data of the login form.

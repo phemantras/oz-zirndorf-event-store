@@ -1,12 +1,21 @@
 package admin
 
-import "github.com/phemantras/oz-zirndorf-event-store/internal/core"
+import (
+	"fmt"
+
+	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
+)
 
 // German texts shared by the forms and pages.
 const (
 	msgNoPersonalData = "Bitte keine Privatpersonen, Kontaktpersonen oder Telefonnummern eintragen."
 	// msgFieldInvalid covers a field problem without a specific message.
 	msgFieldInvalid = "Bitte diese Angabe prüfen."
+	// msgTooLongFormat names the limit of a text that is too long.
+	msgTooLongFormat = "Höchstens %d Zeichen."
+	// msgTooManyFormat names the limit of the timetable, the only list the
+	// core limits.
+	msgTooManyFormat = "Höchstens %d Programmpunkte."
 )
 
 // selectOption is one option of a select field.
@@ -47,11 +56,24 @@ type notFoundPage struct {
 func fieldErrorMessages(fields []core.FieldError, messages map[core.FieldError]string) map[string]string {
 	byField := make(map[string]string, len(fields))
 	for _, field := range fields {
-		message, ok := messages[field]
-		if !ok {
-			message = msgFieldInvalid
-		}
-		byField[field.Field] = message
+		byField[field.Field] = fieldErrorMessage(field, messages)
 	}
 	return byField
+}
+
+// fieldErrorMessage returns the German message for one rejected field:
+// the form's own message for field and problem, whatever the limit; else
+// for a limit the message that names it; else the generic one.
+func fieldErrorMessage(field core.FieldError, messages map[core.FieldError]string) string {
+	if message, ok := messages[core.FieldError{Field: field.Field, Problem: field.Problem}]; ok {
+		return message
+	}
+	switch field.Problem {
+	case core.ProblemTooLong:
+		return fmt.Sprintf(msgTooLongFormat, field.Limit)
+	case core.ProblemTooMany:
+		return fmt.Sprintf(msgTooManyFormat, field.Limit)
+	default:
+		return msgFieldInvalid
+	}
 }
