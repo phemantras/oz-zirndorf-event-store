@@ -88,6 +88,7 @@ context:
 - Go-Multipart erlaubt höchstens 1000 Teile: `TestImportCommitReadsTheFormOfTheMostEntries` sendet `newLocation` nicht mehr für alle 150 Einträge, weil ein Eintrag mit neuem Ort nie Kandidaten hat; höchstens sendet ein Verdachtsfall 6 Felder, ein `update` mit neuem Ort 5 (901 Teile).
 - Postgres-Tests in `internal/adapter/postgres/import_key_test.go` (dort liegen die übrigen `SetImportKey`-Tests) statt `events_test.go`; lokal ohne Datenbank übersprungen, laufen in der CI.
 - `cmd/eventstore/main_test.go`: Stub `emptyEvents` um `RemoveImportKey` ergänzt.
+- Nach CI-Fehler in PR #68: `TestRunCommitThatRepairsAMarkedEventClearsTheMark` (`cmd/eventstore/import_test.go`, Story 2.5 Teil B) baute das Commit-Formular eines `update` von Hand ohne Fingerabdruck und war deshalb korrekt `stale`; der Test sendet jetzt den Fingerabdruck des gespeicherten Ziels. Die Nahtstellen-Liste hatte diesen Ende-zu-Ende-Test nicht erfasst.
 
 ## Spec Change Log
 

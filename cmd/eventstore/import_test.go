@@ -13,6 +13,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/phemantras/oz-zirndorf-event-store/internal/adapter/postgres"
 	"github.com/phemantras/oz-zirndorf-event-store/internal/core"
 )
 
@@ -238,9 +239,13 @@ const wantUpdatedOnce = "aktualisiert: 1"
 // import, and the public API serves the event again.
 func TestRunCommitThatRepairsAMarkedEventClearsTheMark(t *testing.T) {
 	databaseURL := testDatabaseURL(t)
-	_, brokenID := insertProbeEvent(t, databaseURL, probeEvent{
+	pool, brokenID := insertProbeEvent(t, databaseURL, probeEvent{
 		title: repairProbeTitle, allDay: true, startTime: "19:00", importKey: repairProbeKey,
 	})
+	broken, err := postgres.NewEventRepo(pool).Get(context.Background(), brokenID)
+	if err != nil {
+		t.Fatalf("get the broken event: %v", err)
+	}
 	running := startRun(t, databaseURL, slog.New(slog.DiscardHandler))
 	t.Cleanup(func() { running.stop(t) })
 	session := logIn(t, running.baseURL)
@@ -248,7 +253,12 @@ func TestRunCommitThatRepairsAMarkedEventClearsTheMark(t *testing.T) {
 	if _, list := session.get(t, adminEventsPath); !strings.Contains(tableRowWith(list, link), reviewMark) {
 		t.Fatalf("the broken event is not marked %s after the start; body: %s", reviewMark, list)
 	}
-	fields := [][2]string{{"position", "1"}, {"class-1", string(core.ImportClassUpdate)}, {"target-1", brokenID}}
+	// The preview sends the fingerprint of the target; without it the
+	// commit reports the entry as stale.
+	fields := [][2]string{
+		{"position", "1"}, {"class-1", string(core.ImportClassUpdate)}, {"target-1", brokenID},
+		{"fingerprints-1", brokenID + ":" + core.EventFingerprint(broken)},
+	}
 	body, contentType := commitBody(t, probeFile(repairProbeTitle, repairProbeKey), fields)
 
 	status, page := session.upload(t, adminImportCommitPath, contentType, body)
