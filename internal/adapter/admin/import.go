@@ -84,6 +84,14 @@ const (
 	msgImportUnreadable = "Die Datei kann nicht gelesen werden."
 	// msgImportWrongType is the message for a value of the wrong JSON type.
 	msgImportWrongType = "Dieser Wert hat den falschen Typ (zum Beispiel Zahl statt Text) oder ist kein Objekt."
+	// msgImportControlCharacter is the message for a text with a control
+	// character, at any field.
+	msgImportControlCharacter = "Dieser Text enthält ein unzulässiges Steuerzeichen (zum Beispiel ein Nullzeichen). Erlaubt sind nur Tabulator und Zeilenumbruch."
+	// msgImportAmbiguousLocation is the message for a location name that
+	// several stored locations have.
+	msgImportAmbiguousLocation = "Mehrere vorhandene Orte tragen diesen Namen. Bitte die Orte in der Ortsverwaltung eindeutig benennen."
+	// msgImportInvalidEncoding is the message for a file that is not UTF-8.
+	msgImportInvalidEncoding = "Die Datei ist nicht in UTF-8 gespeichert. Bitte im Editor mit der Kodierung UTF-8 speichern und erneut hochladen."
 	// msgImportDuplicateHint introduces the link to what an entry may
 	// duplicate.
 	msgImportDuplicateHint = "Mögliches Duplikat:"
@@ -123,6 +131,12 @@ const (
 	msgImportCreatedLocations = "neu angelegte Orte"
 	// importChoiceOverwriteFormat names the stored event to overwrite.
 	importChoiceOverwriteFormat = msgImportChoiceOverwrite + " %s"
+	// msgImportNoOverwriteHint precedes the link to a stored candidate the
+	// entry may not overwrite.
+	msgImportNoOverwriteHint = "Überschreiben nicht möglich, das Event hat einen anderen Import-Schlüssel:"
+	// importOutcomeReasonFormat joins the German name of an outcome and its
+	// reason.
+	importOutcomeReasonFormat = "%s: %s"
 )
 
 // logMsgImportFailed is logged when checking a file fails for a reason the
@@ -144,6 +158,13 @@ var importOutcomeLabels = map[core.ImportOutcome]string{
 	core.ImportOutcomeStale:     "veraltet",
 }
 
+// importErrorReasonLabels are the German names of the reasons of an
+// erroneous entry without problems.
+var importErrorReasonLabels = map[core.ImportErrorReason]string{
+	core.ImportErrorReasonSharedTarget:   "gleiches Ziel wie ein anderer Eintrag",
+	core.ImportErrorReasonOtherImportKey: "anderer Import-Schlüssel",
+}
+
 // importFileMessages are the German messages for a file rejected as a
 // whole.
 var importFileMessages = map[core.ImportFileProblem]string{
@@ -154,6 +175,7 @@ var importFileMessages = map[core.ImportFileProblem]string{
 	core.ImportProblemNoEntries:            "Die Event-Liste der Datei ist leer.",
 	core.ImportProblemTooLarge:             msgImportTooLarge,
 	core.ImportProblemTooManyEntries:       fmt.Sprintf(msgImportTooManyEntriesFormat, core.MaxImportEntries),
+	core.ImportProblemInvalidEncoding:      msgImportInvalidEncoding,
 }
 
 // msgImportTooManyEntriesFormat names the most events a file may hold.
@@ -204,8 +226,9 @@ var timetableFieldLabels = map[string]string{
 // importOnlyMessages are the German messages for problems only the import
 // reports.
 var importOnlyMessages = map[core.FieldError]string{
-	{Field: core.EventFieldLocation, Problem: core.ProblemMissing}:          "Bitte zu jedem Event einen Ort mit Namen angeben.",
-	{Field: core.EventFieldImportKey, Problem: core.ProblemDuplicateInFile}: "Diesen Import-Schlüssel tragen mehrere Einträge der Datei.",
+	{Field: core.EventFieldLocation, Problem: core.ProblemMissing}:                         "Bitte zu jedem Event einen Ort mit Namen angeben.",
+	{Field: core.EventFieldImportKey, Problem: core.ProblemDuplicateInFile}:                "Diesen Import-Schlüssel tragen mehrere Einträge der Datei.",
+	{Field: importLocationPrefix + core.LocationFieldName, Problem: core.ProblemAmbiguous}: msgImportAmbiguousLocation,
 }
 
 // importClassLabels are the German names of the import classes.
@@ -449,7 +472,8 @@ func importDecisionField(prefix string, position int) string {
 }
 
 // importSummaryViewOf shows the count of every outcome in display order
-// and lists the entries that are stale, undecided or erroneous.
+// and lists the entries that are stale, undecided or erroneous, an
+// erroneous one without problems with its reason.
 func importSummaryViewOf(summary core.ImportSummary) *importSummaryView {
 	view := &importSummaryView{
 		Heading:          msgImportSummaryHeading,
@@ -463,10 +487,20 @@ func importSummaryViewOf(summary core.ImportSummary) *importSummaryView {
 	}
 	for _, result := range summary.Results {
 		if slices.Contains(importOutcomesToList, result.Outcome) {
-			view.Rows = append(view.Rows, importOutcomeRow{Position: result.Position, Title: result.Title, Outcome: importOutcomeLabels[result.Outcome]})
+			view.Rows = append(view.Rows, importOutcomeRow{Position: result.Position, Title: result.Title, Outcome: importOutcomeLabel(result)})
 		}
 	}
 	return view
+}
+
+// importOutcomeLabel returns the German name of the outcome of result,
+// followed by its reason if it has one.
+func importOutcomeLabel(result core.ImportResult) string {
+	label := importOutcomeLabels[result.Outcome]
+	if result.Reason == "" {
+		return label
+	}
+	return fmt.Sprintf(importOutcomeReasonFormat, label, importErrorReasonLabels[result.Reason])
 }
 
 // uploadRejection says why an upload did not reach the core: the status
@@ -604,6 +638,7 @@ func importRowOf(entry core.ImportEntry) importRow {
 	for _, hint := range entry.Hints {
 		row.Hints = append(row.Hints, importHintRowOf(hint))
 	}
+	row.Hints = append(row.Hints, noOverwriteHintsOf(entry)...)
 	row.Hidden = importHiddenFieldsOf(entry)
 	if entry.Class == core.ImportClassDuplicateSuspect {
 		row.ChoiceLegend, row.Choices = msgImportChoiceLegend, importChoicesOf(entry)
@@ -649,8 +684,22 @@ func importFingerprintsText(fingerprints map[string]string) string {
 	return strings.Join(pairs, importFingerprintSeparator)
 }
 
+// noOverwriteHintsOf names every stored candidate the entry may not
+// overwrite, so it is clear why no choice offers it.
+func noOverwriteHintsOf(entry core.ImportEntry) []importHintRow {
+	var hints []importHintRow
+	for _, candidate := range entry.Candidates {
+		if candidate.EventID != "" && !candidate.CanOverwrite {
+			link := importCandidateLink(candidate)
+			hints = append(hints, importHintRow{Text: msgImportNoOverwriteHint, Link: &link})
+		}
+	}
+	return hints
+}
+
 // importChoicesOf returns the decisions on a duplicate suspect: skip,
-// create, and overwrite for every stored event it may duplicate.
+// create, and overwrite for every stored event it may duplicate and may
+// overwrite.
 func importChoicesOf(entry core.ImportEntry) []importChoice {
 	name := importDecisionField(importChoiceFieldPrefix, entry.Position)
 	choices := []importChoice{
@@ -658,7 +707,7 @@ func importChoicesOf(entry core.ImportEntry) []importChoice {
 		{Name: name, Value: string(core.ImportChoiceCreate), Label: msgImportChoiceCreate},
 	}
 	for _, candidate := range entry.Candidates {
-		if candidate.EventID == "" {
+		if !candidate.CanOverwrite {
 			continue
 		}
 		choices = append(choices, importChoice{
@@ -742,8 +791,12 @@ func timetableEntryIndex(field string) (int, bool) {
 
 // importProblemMessage returns the German message for a problem of an
 // import entry, the same as the admin forms show where they have one. A
-// value of the wrong JSON type has its own message.
+// value of the wrong JSON type and a text with a control character have
+// their own message.
 func importProblemMessage(problem core.FieldError) string {
+	if problem.Problem == core.ProblemControlCharacter {
+		return msgImportControlCharacter
+	}
 	if message, ok := importOnlyMessages[core.FieldError{Field: problem.Field, Problem: problem.Problem}]; ok {
 		return message
 	}

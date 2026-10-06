@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // The import file format v1 (api/v1/import-v1.schema.json): an object with
@@ -78,6 +80,9 @@ const (
 	// ImportProblemTooManyEntries means events holds more than
 	// MaxImportEntries entries.
 	ImportProblemTooManyEntries ImportFileProblem = "tooManyEntries"
+	// ImportProblemInvalidEncoding means the file is not valid UTF-8, such
+	// as a file saved in Windows-1252.
+	ImportProblemInvalidEncoding ImportFileProblem = "invalidEncoding"
 )
 
 // ImportFileError reports that an import file was rejected as a whole. It
@@ -197,8 +202,9 @@ func NewImportService(events *EventService) *ImportService {
 // events, archived ones included. It writes nothing. A file that cannot be
 // read as format v1 yields *ImportFileError; otherwise every entry is
 // returned with its problems, which never affect the other entries. A
-// location whose name matches a stored one by NormalizeKey refers to it,
-// and its other fields are only compared; a new location must be complete.
+// location whose name matches exactly one stored one by NormalizeKey refers
+// to it, and its other fields are only compared; a name matching several is
+// ambiguous; a new location must be complete.
 func (s *ImportService) PreviewImport(ctx context.Context, data []byte) (ImportPreview, error) {
 	rawEntries, err := readImportFile(data)
 	if err != nil {
@@ -256,6 +262,10 @@ func readImportFile(data []byte) ([]json.RawMessage, error) {
 	// Windows tools often write a UTF-8 byte order mark, which JSON does
 	// not allow.
 	data = bytes.TrimPrefix(data, utf8ByteOrderMark)
+	// encoding/json would silently replace invalid bytes with U+FFFD.
+	if !utf8.Valid(data) {
+		return nil, &ImportFileError{Problem: ImportProblemInvalidEncoding}
+	}
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil || top == nil {
 		return nil, &ImportFileError{Problem: ImportProblemInvalidJSON}
@@ -300,9 +310,11 @@ func (i importedEvent) isNewLocation() bool {
 
 // readImportEntry reads one entry and checks it, its class ImportClassError
 // when it has problems and ImportClassNew otherwise. JSON type errors are
-// reported at their field as invalidFormat; the rules then report nothing
-// more for that field or the fields within it.
-func readImportEntry(raw json.RawMessage, storedLocations map[string]Location) (ImportEntry, importedEvent) {
+// reported at their field as invalidFormat, texts with a control character
+// as controlCharacter; the rules then report nothing more for that field or
+// the fields within it. storedLocations holds the stored locations by
+// NormalizeKey of their name.
+func readImportEntry(raw json.RawMessage, storedLocations map[string][]Location) (ImportEntry, importedEvent) {
 	reader := &jsonReader{}
 	fields, isObject := reader.object(raw, ImportFieldEntry)
 	if !isObject {
@@ -334,20 +346,20 @@ func readImportEntry(raw json.RawMessage, storedLocations map[string]Location) (
 // in the OpenAPI spec. Unknown fields are ignored.
 func readEventInput(reader *jsonReader, fields map[string]json.RawMessage) EventInput {
 	in := EventInput{
-		Title:     readJSON[string](reader, fields, EventFieldTitle, EventFieldTitle),
-		Type:      readJSON[string](reader, fields, EventFieldType, EventFieldType),
-		StartDate: readJSON[string](reader, fields, EventFieldStartDate, EventFieldStartDate),
-		StartTime: readJSON[string](reader, fields, EventFieldStartTime, EventFieldStartTime),
-		EndDate:   readJSON[string](reader, fields, EventFieldEndDate, EventFieldEndDate),
-		EndTime:   readJSON[string](reader, fields, EventFieldEndTime, EventFieldEndTime),
+		Title:     readText(reader, fields, EventFieldTitle, EventFieldTitle),
+		Type:      readText(reader, fields, EventFieldType, EventFieldType),
+		StartDate: readText(reader, fields, EventFieldStartDate, EventFieldStartDate),
+		StartTime: readText(reader, fields, EventFieldStartTime, EventFieldStartTime),
+		EndDate:   readText(reader, fields, EventFieldEndDate, EventFieldEndDate),
+		EndTime:   readText(reader, fields, EventFieldEndTime, EventFieldEndTime),
 		AllDay:    readJSON[bool](reader, fields, EventFieldAllDay, EventFieldAllDay),
-		Note:      readJSON[string](reader, fields, EventFieldNote, EventFieldNote),
-		ImportKey: readJSON[string](reader, fields, EventFieldImportKey, EventFieldImportKey),
+		Note:      readText(reader, fields, EventFieldNote, EventFieldNote),
+		ImportKey: readText(reader, fields, EventFieldImportKey, EventFieldImportKey),
 	}
 	if source, ok := reader.nestedObject(fields, EventFieldSource, EventFieldSource); ok {
 		in.Source = EventSource{
-			Description: readJSON[string](reader, source, sourceFieldDescription, EventFieldSourceDescription),
-			URL:         readJSON[string](reader, source, sourceFieldURL, EventFieldSourceURL),
+			Description: readText(reader, source, sourceFieldDescription, EventFieldSourceDescription),
+			URL:         readText(reader, source, sourceFieldURL, EventFieldSourceURL),
 		}
 	}
 	if location, ok := reader.nestedObject(fields, EventFieldLocation, EventFieldLocation); ok {
@@ -360,17 +372,17 @@ func readEventInput(reader *jsonReader, fields map[string]json.RawMessage) Event
 // readLocationInput reads the location an entry brings along.
 func readLocationInput(reader *jsonReader, fields map[string]json.RawMessage) *LocationInput {
 	in := &LocationInput{
-		Name:      readJSON[string](reader, fields, LocationFieldName, importLocationField(LocationFieldName)),
+		Name:      readText(reader, fields, LocationFieldName, importLocationField(LocationFieldName)),
 		Latitude:  readCoordinate(reader, fields, LocationFieldLatitude),
 		Longitude: readCoordinate(reader, fields, LocationFieldLongitude),
-		Precision: readJSON[string](reader, fields, LocationFieldPrecision, importLocationField(LocationFieldPrecision)),
-		Note:      readJSON[string](reader, fields, LocationFieldNote, importLocationField(LocationFieldNote)),
+		Precision: readText(reader, fields, LocationFieldPrecision, importLocationField(LocationFieldPrecision)),
+		Note:      readText(reader, fields, LocationFieldNote, importLocationField(LocationFieldNote)),
 	}
 	addressPath := EventFieldLocation + fieldPathSeparator + LocationFieldAddress
 	if address, ok := reader.nestedObject(fields, LocationFieldAddress, addressPath); ok {
-		in.Street = readJSON[string](reader, address, LocationFieldStreet, importLocationField(LocationFieldStreet))
-		in.PostalCode = readJSON[string](reader, address, LocationFieldPostalCode, importLocationField(LocationFieldPostalCode))
-		in.City = readJSON[string](reader, address, LocationFieldCity, importLocationField(LocationFieldCity))
+		in.Street = readText(reader, address, LocationFieldStreet, importLocationField(LocationFieldStreet))
+		in.PostalCode = readText(reader, address, LocationFieldPostalCode, importLocationField(LocationFieldPostalCode))
+		in.City = readText(reader, address, LocationFieldCity, importLocationField(LocationFieldCity))
 	}
 	return in
 }
@@ -395,28 +407,33 @@ func readTimetable(reader *jsonReader, fields map[string]json.RawMessage) []Time
 		entryPath := EventFieldTimetable + listIndexOpen + strconv.Itoa(index) + listIndexClose
 		entryFields, _ := reader.object(raw, entryPath)
 		timetable = append(timetable, TimetableEntryInput{
-			Description: readJSON[string](reader, entryFields, TimetableFieldDescription, TimetableField(index, TimetableFieldDescription)),
-			Date:        readJSON[string](reader, entryFields, TimetableFieldDate, TimetableField(index, TimetableFieldDate)),
-			StartTime:   readJSON[string](reader, entryFields, TimetableFieldStartTime, TimetableField(index, TimetableFieldStartTime)),
-			EndTime:     readJSON[string](reader, entryFields, TimetableFieldEndTime, TimetableField(index, TimetableFieldEndTime)),
+			Description: readText(reader, entryFields, TimetableFieldDescription, TimetableField(index, TimetableFieldDescription)),
+			Date:        readText(reader, entryFields, TimetableFieldDate, TimetableField(index, TimetableFieldDate)),
+			StartTime:   readText(reader, entryFields, TimetableFieldStartTime, TimetableField(index, TimetableFieldStartTime)),
+			EndTime:     readText(reader, entryFields, TimetableFieldEndTime, TimetableField(index, TimetableFieldEndTime)),
 		})
 	}
 	return timetable
 }
 
 // resolveImportLocation checks the location an entry brings along: it is
-// required, its name too. A stored name needs nothing else and yields the
-// stored location; a new location is checked like SaveLocation, its fields
-// named by their import paths, and yielded without ID.
-func resolveImportLocation(location *LocationInput, storedLocations map[string]Location) (Location, []FieldError) {
+// required, its name too. A name of exactly one stored location needs
+// nothing else and yields it; a name of several is ambiguous, as no stored
+// location is preferred. A new location is checked like SaveLocation, its
+// fields named by their import paths, and yielded without ID.
+func resolveImportLocation(location *LocationInput, storedLocations map[string][]Location) (Location, []FieldError) {
 	if location == nil {
 		return Location{}, []FieldError{{Field: EventFieldLocation, Problem: ProblemMissing}}
 	}
 	if normalizeText(location.Name) == "" {
 		return Location{}, []FieldError{{Field: importLocationField(LocationFieldName), Problem: ProblemMissing}}
 	}
-	if stored, ok := storedLocations[NormalizeKey(location.Name)]; ok {
-		return stored, nil
+	stored := storedLocations[NormalizeKey(location.Name)]
+	if len(stored) == 1 {
+		return stored[0], nil
+	}
+	if len(stored) > 1 {
+		return Location{}, []FieldError{{Field: importLocationField(LocationFieldName), Problem: ProblemAmbiguous}}
 	}
 	created, err := newLocation(*location)
 	var validation *ValidationError
@@ -492,8 +509,36 @@ func (r *jsonReader) nestedObject(fields map[string]json.RawMessage, name, path 
 	return r.object(raw, path)
 }
 
+// report records a value of the wrong JSON type at path.
 func (r *jsonReader) report(path string) {
-	r.problems = append(r.problems, FieldError{Field: path, Problem: ProblemInvalidFormat})
+	r.reportProblem(path, ProblemInvalidFormat)
+}
+
+// reportProblem records problem at path.
+func (r *jsonReader) reportProblem(path string, problem FieldProblem) {
+	r.problems = append(r.problems, FieldError{Field: path, Problem: problem})
+}
+
+// allowedControlCharacters are the control characters a text may hold:
+// tab, line feed and carriage return.
+const allowedControlCharacters = "\t\n\r"
+
+// readText is readJSON for a text. A text with any other control character
+// is reported at path as ProblemControlCharacter and yields empty text, as
+// PostgreSQL rejects NUL and none of them belongs in an event.
+func readText(reader *jsonReader, fields map[string]json.RawMessage, name, path string) string {
+	text := readJSON[string](reader, fields, name, path)
+	if strings.ContainsFunc(text, isForbiddenControlCharacter) {
+		reader.reportProblem(path, ProblemControlCharacter)
+		return ""
+	}
+	return text
+}
+
+// isForbiddenControlCharacter reports whether r is a control character
+// other than the allowedControlCharacters.
+func isForbiddenControlCharacter(r rune) bool {
+	return unicode.IsControl(r) && !strings.ContainsRune(allowedControlCharacters, r)
 }
 
 // readJSON decodes the field name into T. Missing and null yield the zero

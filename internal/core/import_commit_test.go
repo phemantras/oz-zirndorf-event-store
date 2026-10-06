@@ -62,6 +62,55 @@ func assertOutcomes(t *testing.T, summary ImportSummary, want ...ImportOutcome) 
 	}
 }
 
+// assertReasons checks the error reason of every result in file order.
+func assertReasons(t *testing.T, summary ImportSummary, want ...ImportErrorReason) {
+	t.Helper()
+	var got []ImportErrorReason
+	for _, result := range summary.Results {
+		got = append(got, result.Reason)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("reasons = %v, want %v", got, want)
+	}
+}
+
+func TestImportErrorReasonCodes(t *testing.T) {
+	if ImportErrorReasonSharedTarget != "sharedTarget" || ImportErrorReasonOtherImportKey != "otherImportKey" {
+		t.Errorf("reasons = %q, %q", ImportErrorReasonSharedTarget, ImportErrorReasonOtherImportKey)
+	}
+}
+
+func TestCommitImportRejectsALocationNameOfSeveralStoredLocationsLikeThePreview(t *testing.T) {
+	twin := Location{ID: parkID, Name: "PAUL-METZ-HALLE", NameKey: "paul-metz-halle-2", Precision: PrecisionBuilding}
+	events := newFakeEventRepo()
+	service, _ := newCommitService(events, newFakeLocationRepo(hall(), twin))
+	data := marshalImport(t, importFile(marketEntry()))
+
+	summary := committedImport(t, service, data, previewAndDecide(t, service, data))
+
+	assertOutcomes(t, summary, ImportOutcomeError)
+	assertReasons(t, summary, "")
+	if len(events.created) != 0 {
+		t.Error("an entry of an ambiguous location was written")
+	}
+}
+
+func TestCommitImportLeavesAnEntryWithAControlCharacterAloneAndWritesTheOthers(t *testing.T) {
+	events := newFakeEventRepo()
+	service, _ := newCommitService(events, newFakeLocationRepo(hall()))
+	broken := marketEntry()
+	broken["title"] = "A\u0000B"
+	data := marshalImport(t, importFile(broken, concertEntry()))
+
+	summary := committedImport(t, service, data, previewAndDecide(t, service, data))
+
+	assertOutcomes(t, summary, ImportOutcomeError, ImportOutcomeCreated)
+	assertReasons(t, summary, "", "")
+	if len(events.created) != 1 || events.created[0].Title != "Konzert im Park" {
+		t.Errorf("created = %+v, want only the concert", events.created)
+	}
+}
+
 func TestCommitImportCreatesNewEventsAndTheirNewLocationOnce(t *testing.T) {
 	events, locations := newFakeEventRepo(), newFakeLocationRepo(hall())
 	service, tx := newCommitService(events, locations)
@@ -124,6 +173,7 @@ func TestCommitImportLeavesUnchangedAndErroneousEntriesAlone(t *testing.T) {
 	summary := committedImport(t, service, data, previewAndDecide(t, service, data))
 
 	assertOutcomes(t, summary, ImportOutcomeUnchanged, ImportOutcomeError)
+	assertReasons(t, summary, "", "")
 	if len(events.created)+len(events.updated) != 0 {
 		t.Error("an unchanged or erroneous entry was written")
 	}
@@ -218,6 +268,7 @@ func TestCommitImportRefusesToOverwriteAnEventWithAnotherImportKey(t *testing.T)
 	summary := committedImport(t, service, data, decisions)
 
 	assertOutcomes(t, summary, ImportOutcomeError)
+	assertReasons(t, summary, ImportErrorReasonOtherImportKey)
 	if len(events.updated) != 0 || len(events.importKeysSet) != 0 {
 		t.Error("the event of another import key was overwritten")
 	}
@@ -239,6 +290,7 @@ func TestCommitImportRejectsEveryEntryOfASharedTarget(t *testing.T) {
 	summary := committedImport(t, service, data, decisions)
 
 	assertOutcomes(t, summary, ImportOutcomeError, ImportOutcomeCreated, ImportOutcomeError)
+	assertReasons(t, summary, ImportErrorReasonSharedTarget, "", ImportErrorReasonSharedTarget)
 	if len(events.updated) != 0 {
 		t.Error("a shared target was written")
 	}
@@ -258,6 +310,7 @@ func TestCommitImportRejectsTwoOverwritesOfTheSameEvent(t *testing.T) {
 	summary := committedImport(t, service, data, decisions)
 
 	assertOutcomes(t, summary, ImportOutcomeError, ImportOutcomeError)
+	assertReasons(t, summary, ImportErrorReasonSharedTarget, ImportErrorReasonSharedTarget)
 	if len(events.updated) != 0 {
 		t.Error("the shared target was written")
 	}

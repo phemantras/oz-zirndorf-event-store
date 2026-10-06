@@ -78,11 +78,29 @@ func ImportOutcomes() []ImportOutcome {
 	}
 }
 
+// ImportErrorReason says why an entry without problems has
+// ImportOutcomeError.
+type ImportErrorReason string
+
+// Reasons of ImportOutcomeError for an entry without problems; an entry
+// with problems has none, the preview names them.
+const (
+	// ImportErrorReasonSharedTarget means another entry writes the same
+	// stored event.
+	ImportErrorReasonSharedTarget ImportErrorReason = "sharedTarget"
+	// ImportErrorReasonOtherImportKey means the event chosen to overwrite
+	// has another import key than the entry.
+	ImportErrorReasonOtherImportKey ImportErrorReason = "otherImportKey"
+)
+
 // ImportResult is the outcome of one entry.
 type ImportResult struct {
 	Position int
 	Title    string
 	Outcome  ImportOutcome
+	// Reason says why an entry without problems has ImportOutcomeError,
+	// empty otherwise.
+	Reason ImportErrorReason
 }
 
 // ImportSummary is what committing an import did: one result per entry in
@@ -159,7 +177,9 @@ func commitImport(ctx context.Context, repos Repos, rawEntries []json.RawMessage
 	var committed importCommit
 	for index, entry := range classified.entries {
 		plan := plans[index]
-		committed.summary.Results = append(committed.summary.Results, ImportResult{Position: entry.Position, Title: entry.Title, Outcome: plan.outcome})
+		committed.summary.Results = append(committed.summary.Results, ImportResult{
+			Position: entry.Position, Title: entry.Title, Outcome: plan.outcome, Reason: plan.reason,
+		})
 		if !plan.writes() {
 			continue
 		}
@@ -178,6 +198,8 @@ type importPlan struct {
 	outcome ImportOutcome
 	// targetID is the stored event that an updated entry replaces.
 	targetID string
+	// reason says why an entry without problems has ImportOutcomeError.
+	reason ImportErrorReason
 }
 
 // writes reports whether the entry is written.
@@ -201,7 +223,7 @@ func planImport(classified classifiedImport, decisions map[int]ImportDecision) [
 	}
 	for index, plan := range plans {
 		if targets[plan.targetID] > 1 {
-			plans[index] = importPlan{outcome: ImportOutcomeError}
+			plans[index] = importPlan{outcome: ImportOutcomeError, reason: ImportErrorReasonSharedTarget}
 		}
 	}
 	return plans
@@ -230,7 +252,7 @@ func planEntry(entry ImportEntry, decision ImportDecision, given bool, storedEve
 		return importPlan{outcome: ImportOutcomeCreated}
 	case ImportChoiceOverwrite:
 		if hasOtherImportKey(storedEvents[decision.OverwriteID], entry) {
-			return importPlan{outcome: ImportOutcomeError}
+			return importPlan{outcome: ImportOutcomeError, reason: ImportErrorReasonOtherImportKey}
 		}
 		return importPlan{outcome: ImportOutcomeUpdated, targetID: decision.OverwriteID}
 	default:

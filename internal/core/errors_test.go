@@ -104,3 +104,12 @@ func TestFieldProblemDuplicateInFileCode(t *testing.T) {
 		t.Errorf("ProblemDuplicateInFile = %q", ProblemDuplicateInFile)
 	}
 }
+
+func TestFieldProblemsOfTheImportCodes(t *testing.T) {
+	if ProblemControlCharacter != "controlCharacter" {
+		t.Errorf("ProblemControlCharacter = %q", ProblemControlCharacter)
+	}
+	if ProblemAmbiguous != "ambiguous" {
+		t.Errorf("ProblemAmbiguous = %q", ProblemAmbiguous)
+	}
+}

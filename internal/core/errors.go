@@ -69,6 +69,13 @@ const (
 	// ProblemDuplicateInFile means another entry of the same import file
 	// gives the same import key.
 	ProblemDuplicateInFile FieldProblem = "duplicateInFile"
+	// ProblemControlCharacter means a text of an import file holds a
+	// control character other than tab, line feed and carriage return,
+	// such as NUL.
+	ProblemControlCharacter FieldProblem = "controlCharacter"
+	// ProblemAmbiguous means a location name of an import file matches
+	// more than one stored location by NormalizeKey.
+	ProblemAmbiguous FieldProblem = "ambiguous"
 )
 
 // FieldError names one rejected field and why it was rejected.

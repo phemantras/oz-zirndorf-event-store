@@ -175,6 +175,11 @@ func TestPreviewImportRejectsTheWholeFile(t *testing.T) {
 		"no entries":                  {data: []byte(`{"formatVersion":1,"events":[]}`), want: ImportProblemNoEntries},
 		"more than 2 MiB":             {data: tooLarge, want: ImportProblemTooLarge},
 		"more than 150 entries":       {data: importFileWithEntries(MaxImportEntries + 1), want: ImportProblemTooManyEntries},
+		// 0xFC is ü in Windows-1252, as an editor saves a file in ANSI.
+		"not UTF-8":                         {data: []byte(`{"formatVersion":1,"events":[{"title":"Gr` + "\xfc" + `n"}]}`), want: ImportProblemInvalidEncoding},
+		"not UTF-8 after a byte order mark": {data: []byte("\xef\xbb\xbf" + `{"formatVersion":1,"events":[{"title":"Gr` + "\xfc" + `n"}]}`), want: ImportProblemInvalidEncoding},
+		"neither UTF-8 nor JSON":            {data: []byte("Titel;Gr\xfcn"), want: ImportProblemInvalidEncoding},
+		"more than 2 MiB and not UTF-8":     {data: slices.Repeat([]byte{0xFC}, MaxImportFileBytes+1), want: ImportProblemTooLarge},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -452,6 +457,128 @@ func TestPreviewImportReportsJSONTypeErrorsOnlyAtTheirField(t *testing.T) {
 	}
 }
 
+func TestPreviewImportReportsControlCharactersOnlyAtTheirField(t *testing.T) {
+	tests := map[string]struct {
+		change func(importObject)
+		want   []FieldError
+	}{
+		"NUL in the title": {
+			change: func(e importObject) { e["title"] = "A\u0000B" },
+			want:   []FieldError{{Field: EventFieldTitle, Problem: ProblemControlCharacter}},
+		},
+		"only NUL as title": {
+			change: func(e importObject) { e["title"] = "\u0000" },
+			want:   []FieldError{{Field: EventFieldTitle, Problem: ProblemControlCharacter}},
+		},
+		"escape in the type": {
+			change: func(e importObject) { e["type"] = "market\u001b" },
+			want:   []FieldError{{Field: EventFieldType, Problem: ProblemControlCharacter}},
+		},
+		"DEL in the start date": {
+			change: func(e importObject) { e["startDate"] = "2026-10-16\u007f" },
+			want:   []FieldError{{Field: EventFieldStartDate, Problem: ProblemControlCharacter}},
+		},
+		"C1 control in the note": {
+			change: func(e importObject) { e["note"] = "a\u0085b" },
+			want:   []FieldError{{Field: EventFieldNote, Problem: ProblemControlCharacter}},
+		},
+		"NUL in the import key": {
+			change: func(e importObject) { e["importKey"] = "markt\u00002026" },
+			want:   []FieldError{{Field: EventFieldImportKey, Problem: ProblemControlCharacter}},
+		},
+		"NUL in the source url": {
+			change: func(e importObject) {
+				e["source"] = importObject{"description": "Amtsblatt", "url": "https://www.zirndorf.de/\u0000"}
+			},
+			want: []FieldError{{Field: EventFieldSourceURL, Problem: ProblemControlCharacter}},
+		},
+		"NUL in the source description": {
+			change: func(e importObject) {
+				e["source"] = importObject{"description": "Amtsblatt\u0000", "url": "https://www.zirndorf.de/amtsblatt"}
+			},
+			want: []FieldError{{Field: EventFieldSourceDescription, Problem: ProblemControlCharacter}},
+		},
+		"NUL in the note of a new location": {
+			change: func(e importObject) {
+				location := concertEntry()["location"].(importObject)
+				location["note"] = "Zugang\u0000"
+				e["location"] = location
+			},
+			want: []FieldError{{Field: "location.note", Problem: ProblemControlCharacter}},
+		},
+		"NUL in the city of a new location": {
+			change: func(e importObject) {
+				location := concertEntry()["location"].(importObject)
+				location["address"].(importObject)["city"] = "Zirndorf\u0000"
+				e["location"] = location
+			},
+			want: []FieldError{{Field: "location.address.city", Problem: ProblemControlCharacter}},
+		},
+		"NUL in the location name": {
+			change: func(e importObject) { e["location"] = importObject{"name": "Paul-Metz-Halle\u0000"} },
+			want:   []FieldError{{Field: "location.name", Problem: ProblemControlCharacter}},
+		},
+		"NUL in the street of a new location": {
+			change: func(e importObject) {
+				location := concertEntry()["location"].(importObject)
+				location["address"].(importObject)["street"] = "Burgweg\u00001"
+				e["location"] = location
+			},
+			want: []FieldError{{Field: "location.address.street", Problem: ProblemControlCharacter}},
+		},
+		"NUL in a timetable description": {
+			change: func(e importObject) {
+				e["timetable"] = []any{importObject{"description": "Musik\u0000", "date": "2026-10-16"}}
+			},
+			want: []FieldError{{Field: "timetable[0].description", Problem: ProblemControlCharacter}},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			broken := marketEntry()
+			tt.change(broken)
+
+			preview := previewOf(t, marshalImport(t, importFile(broken, marketEntry())), hall())
+
+			got := preview.Entries[0]
+			if got.Class != ImportClassError || !slices.Equal(got.Problems, tt.want) {
+				t.Errorf("entry = %s with problems %v, want error with %v", got.Class, got.Problems, tt.want)
+			}
+			if !preview.Entries[1].IsValid() {
+				t.Errorf("the next entry has problems %v", preview.Entries[1].Problems)
+			}
+		})
+	}
+}
+
+func TestPreviewImportAcceptsTabsAndLineBreaksInText(t *testing.T) {
+	entry := marketEntry()
+	entry["note"] = "Erste Zeile\nzweite Zeile\r\nmit\tTabulator"
+	entry["title"] = "Kirchweih\tmarkt"
+
+	preview := previewOf(t, marshalImport(t, importFile(entry)), hall())
+
+	if !preview.Entries[0].IsValid() {
+		t.Errorf("problems = %v, want none", preview.Entries[0].Problems)
+	}
+}
+
+func TestPreviewImportRejectsALocationNameOfSeveralStoredLocations(t *testing.T) {
+	// RecomputeNameKeys leaves such a collision group as it is: the names
+	// differ, their NormalizeKey does not.
+	twin := Location{ID: parkID, Name: "Paul-Metz-Halle ", NameKey: "paul-metz-halle-2", Precision: PrecisionBuilding}
+
+	preview := previewOf(t, marshalImport(t, importFile(marketEntry(), concertEntry())), hall(), twin)
+
+	want := []FieldError{{Field: "location.name", Problem: ProblemAmbiguous}}
+	if got := preview.Entries[0]; got.Class != ImportClassError || !slices.Equal(got.Problems, want) {
+		t.Errorf("entry = %s with problems %v, want error with %v", got.Class, got.Problems, want)
+	}
+	if !preview.Entries[1].IsValid() {
+		t.Errorf("the next entry has problems %v", preview.Entries[1].Problems)
+	}
+}
+
 func TestPreviewImportReportsAnEntryThatIsNoObject(t *testing.T) {
 	preview := previewOf(t, []byte(`{"formatVersion":1,"events":["Kirchweihmarkt",null]}`))
 
@@ -480,6 +607,9 @@ func TestPreviewImportPassesALocationListFailureOn(t *testing.T) {
 func TestImportFileFormatConstants(t *testing.T) {
 	if MaxImportFileBytes != 2*1024*1024 || ImportFormatVersion != 1 {
 		t.Errorf("MaxImportFileBytes = %d, ImportFormatVersion = %d", MaxImportFileBytes, ImportFormatVersion)
+	}
+	if ImportProblemInvalidEncoding != "invalidEncoding" {
+		t.Errorf("ImportProblemInvalidEncoding = %q", ImportProblemInvalidEncoding)
 	}
 	if LocationFieldAddress != "address" {
 		t.Errorf("LocationFieldAddress = %q", LocationFieldAddress)
