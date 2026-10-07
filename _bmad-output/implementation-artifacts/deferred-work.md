@@ -54,7 +54,7 @@
   summary: Browser-Tests für das Admin-JavaScript (`location-map.js`, htmx-Austausch inkl. `htmx-config` für 409/422 und OOB-Ortsauswahl) einführen.
   evidence: Das Repo hat kein JS-/Browser-Test-Setup; ein Tippfehler in `dataset.latitudeField`, ein fehlender `htmx:load`-Hook oder eine falsch sortierte `responseHandling`-Regel bliebe bei grüner CI unentdeckt (Review Story 1.8). Bis dahin deckt nur die manuelle Browserprüfung das ab.
   status: open
-  target: Retro Epic 3, C3 (Andreas ordnet neu zu oder schließt). Story 3.6 hat den Eintrag nicht aufgenommen, weil sie nur einen Knopf mit `hx-confirm` nach dem Muster des Löschens ergänzt und kein neues Skript einführt; ein JS-/Browser-Test-Setup ist ein eigener Umfang.
+  target: Backlog (nächste Retro ordnet zu); Retro Epic 3, C3 hat ihn am 2026-10-07 bewusst offen gelassen, weil kein Epic ein JS-/Browser-Test-Setup plant. Story 3.6 hat den Eintrag nicht aufgenommen, weil sie nur einen Knopf mit `hx-confirm` nach dem Muster des Löschens ergänzt und kein neues Skript einführt; ein JS-/Browser-Test-Setup ist ein eigener Umfang.
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-10-warnung-bei-duplikatverdacht.md`
   summary: Contract-Schritt für `events.title_key` (AD-17): neue Migration entfernt den Default `''`, sobald ein Deploy mit Story 1.10 alle Schlüssel per `RecomputeDerived` nachgezogen hat; gut mit dem Contract-Schritt der Adress-Migration bündelbar.
   evidence: Migration `00006` legt `title_key` mit Default `''` an, damit älterer Code nach einem Rollback weiter schreiben kann; der Default ist danach überflüssig.
@@ -78,6 +78,8 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-8-archived-aus-der-leseform-entfernen.md`
   summary: Die Beispiele in `api/v1/openapi.yaml` werden von keinem Test gegen ihre Schemas geprüft.
   evidence: `contract_test.go` prüft nur Feldnamen, Grenzen und `$ref`s; ein Beispiel mit einem gestrichenen Feld wie `archived` bliebe unbemerkt (Seam-Review Story 2.8).
+  status: open
+  target: Backlog (nächste Retro ordnet zu); Status und Ziel nachgetragen mit Retro Epic 3, C3 (2026-10-07)
 - source_spec: none
   summary: Retro Epic 3, C2 (Test-PR „Import-Absicherung“): `sourceField*` in den AD-9-Vertragstest, Admin-Test Commit mit `MaxImportFileBytes` und 150 Entscheidungen ohne 413, Abnahmetest 3.5 mit `RecomputeDerived`/`RecomputeNameKeys` nach dem Import.
   evidence: Beim Build von C1 per Scope-Prüfung abgetrennt (2026-10-06): C1 und C2 sind laut Retro getrennte PRs und unabhängig auslieferbar; C1 zuerst, weil R1/R2 Daten verfälschen.
