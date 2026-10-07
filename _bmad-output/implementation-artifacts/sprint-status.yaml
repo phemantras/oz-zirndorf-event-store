@@ -73,7 +73,7 @@ development_status:
 
   epic-4: in-progress
   4-1-deadline-für-jeden-request-und-begrenzter-datenbank-pool: done
-  4-2-anmeldung-gegen-cpu-last-von-vielen-adressen-schützen: review
+  4-2-anmeldung-gegen-cpu-last-von-vielen-adressen-schützen: done
   4-3-cache-header-und-komprimierte-statische-dateien: review
   epic-4-retrospective: optional
 action_items:
