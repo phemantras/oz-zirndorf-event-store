@@ -113,5 +113,5 @@
 - source_spec: none
   summary: Deploy-Einstellungen von `railway.json` (Config as Code) nach Infrastructure as Code (`.railway/railway.ts`) überführen, inklusive `drainingSeconds`, `healthcheckPath`, `numReplicas`, `restartPolicyType` und der Prüfung in `cmd/eventstore/railway_test.go`.
   evidence: Railway-Doku „Config as Code“ (https://docs.railway.com/config-as-code/reference): Config as Code ist abgekündigt, bestehende `railway.json` wirken nur bis 2026-12-01. Danach fiele u. a. `drainingSeconds` auf 0 zurück und die Single-Replika-Annahme der Login-Sperre wäre nicht mehr per Code gesichert.
-  status: open
-  target: vor 2026-12-01 (Entscheidung Andreas)
+  status: done
+  target: PR „Railway ohne Config as Code“ (2026-10-07): Andreas hat Infrastructure as Code als zu schwergewichtig verworfen. Health Check, Replika, Restart Policy und Builder stehen im Railway-Dashboard (README-Checkliste), Draining per Service-Variable `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`; `railway.json` und `railway_test.go` entfernt, `checkDrainingTime` warnt beim Start auf Railway

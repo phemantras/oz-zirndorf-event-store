@@ -20,7 +20,8 @@ type failureRecord struct {
 }
 
 // loginLockout tracks failed logins per lockout key (see lockoutKey) in
-// memory. This relies on running exactly one replica (railway.json).
+// memory. This relies on running exactly one replica (Railway service
+// settings, see README).
 type loginLockout struct {
 	mu       sync.Mutex
 	now      func() time.Time

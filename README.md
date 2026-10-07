@@ -286,17 +286,18 @@ Den erzeugten Code mit committen. Die CI erzeugt ihn erneut und scheitert bei ei
 
 ## Deployment auf Railway
 
-Die App läuft auf [Railway](https://railway.com) als ein Service aus diesem Repository, daneben ein PostgreSQL-18-Service, der nur im privaten Netz erreichbar ist. Gebaut wird das `Dockerfile` (Multi-Stage: statisches Go-Binary auf `gcr.io/distroless/static-debian13:nonroot`, ohne Shell, als Nicht-root). Die Deploy-Einstellungen stehen als Code in `railway.json`: Dockerfile-Builder, Health Check auf `/healthz`, genau eine Replika, Neustart bei Absturz, 30 Sekunden zwischen SIGTERM und SIGKILL (`drainingSeconds`; Railways Standard ist 0). Die App braucht beim Herunterfahren bis zu 25 Sekunden, damit ein Request, der bis zu seiner Deadline wartet, noch antwortet.
+Die App läuft auf [Railway](https://railway.com) als ein Service aus diesem Repository, daneben ein PostgreSQL-18-Service, der nur im privaten Netz erreichbar ist. Gebaut wird das `Dockerfile` (Multi-Stage: statisches Go-Binary auf `gcr.io/distroless/static-debian13:nonroot`, ohne Shell, als Nicht-root). Die Deploy-Einstellungen stehen im Railway-Dashboard, nicht im Repository: Railway liest Config as Code (`railway.json`) ab dem 2026-12-01 nicht mehr, und Infrastructure as Code wäre für einen Service zu schwergewichtig. Die Einstellungen sind unten in der einmaligen Einrichtung aufgeführt. Die App braucht beim Herunterfahren bis zu 25 Sekunden, damit ein Request, der bis zu seiner Deadline wartet, noch antwortet. Railway gibt dem alten Deployment standardmäßig 0 Sekunden; deshalb setzt die Variable `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` 30 Sekunden. Fehlt sie oder ist sie zu klein, loggt die App beim Start auf Railway die Warnung „railway draining time does not cover the shutdown timeout“.
 
 ### Einmalige Einrichtung (Railway-Dashboard)
 
 1. Neues Projekt anlegen, Umgebung `production`.
 2. PostgreSQL-Service hinzufügen und das Image auf Major 18 pinnen: unter *Settings → Source* `ghcr.io/railwayapp-templates/postgres-ssl:18` eintragen, nie `:latest` (das ist 16).
 3. Am PostgreSQL-Service unter *Settings → Networking* keinen TCP-Proxy einrichten bzw. einen vorhandenen entfernen. Die Datenbank bleibt so ohne öffentliche Verbindung.
-4. App-Service aus GitHub hinzufügen (dieses Repository, Branch `main`). Railway erkennt `railway.json` und baut das `Dockerfile`.
+4. App-Service aus GitHub hinzufügen (dieses Repository, Branch `main`). Railway erkennt das `Dockerfile` und baut damit.
 5. Am App-Service die Variable `DATABASE_URL=${{Postgres.DATABASE_URL}}` setzen, also die Referenz auf die private URL des Postgres-Services (Service-Name ggf. anpassen). `PORT` setzt Railway selbst.
    Außerdem `ADMIN_USER`, `ADMIN_PASSWORD_HASH` und `SESSION_SECRET` setzen (siehe [Umgebungsvariablen](#umgebungsvariablen)). Neue Pflichtvariablen müssen gesetzt sein, **bevor** der Pull Request gemergt wird, der sie einführt; sonst startet die neue Version nicht und die alte bleibt live.
-6. Unter *Settings → Deploy* „Wait for CI“ einschalten.
+6. Unter *Settings → Deploy* „Wait for CI“ einschalten, den Healthcheck Path `/healthz` eintragen und prüfen: Restart Policy „On Failure“, genau **eine** Replika (die Login-Sperre liegt im Speicher und gilt nur pro Instanz).
+   Außerdem die Variable `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30` setzen (Zeit zwischen SIGTERM und SIGKILL, muss über 25 liegen).
 7. Unter *Settings → Networking* eine Railway-Domain erzeugen.
 
 Prüfen nach dem ersten Deploy:
