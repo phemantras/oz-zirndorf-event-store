@@ -18,16 +18,23 @@ import (
 
 const migrationsDir = "migrations"
 
+// maxConns caps the pool regardless of the CPU count and of pool_max_conns
+// in the database URL, so a slow database or a flood of requests lets
+// requests wait for a connection instead of piling up connections (AD-18).
+const maxConns = 10
+
 //go:embed migrations/*.sql
 var embeddedMigrations embed.FS
 
-// Connect creates a connection pool for databaseURL. The pool connects
-// lazily, so an unreachable database surfaces on first use.
+// Connect creates a connection pool for databaseURL with at most maxConns
+// connections. The pool connects lazily, so an unreachable database
+// surfaces on first use.
 func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
+	config.MaxConns = maxConns
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create connection pool: %w", err)

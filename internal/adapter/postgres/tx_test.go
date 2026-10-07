@@ -226,3 +226,29 @@ func TestRecomputeNameKeysWaitsForTheWriteLockAndReadsAfterIt(t *testing.T) {
 		t.Errorf("location = %+v, %v, want name key %s", stored, err, hallLocation().NameKey)
 	}
 }
+
+// TestTxRunnerRollsBackWhenTheContextExpiresInsideTheTransaction lets the
+// request deadline run out after a write, as a slow admin request would:
+// InTx fails and the write is not stored.
+func TestTxRunnerRollsBackWhenTheContextExpiresInsideTheTransaction(t *testing.T) {
+	const deadline = 100 * time.Millisecond
+	repo, pool := migratedLocationRepo(t)
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
+
+	err := postgres.NewTxRunner(pool).InTx(ctx, func(repos core.Repos) error {
+		if _, err := repos.Locations.Create(ctx, hallLocation()); err != nil {
+			t.Fatalf("Create before the deadline: %v", err)
+		}
+		<-ctx.Done()
+		_, err := repos.Locations.List(ctx)
+		return err
+	})
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("InTx err = %v, want %v", err, context.DeadlineExceeded)
+	}
+	if stored, err := repo.List(context.Background()); err != nil || len(stored) != 0 {
+		t.Errorf("stored = %+v, %v, want no location", stored, err)
+	}
+}

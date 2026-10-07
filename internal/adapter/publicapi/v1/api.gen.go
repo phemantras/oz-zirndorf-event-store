@@ -384,6 +384,10 @@ type BadRequest = Problem
 // `application/problem+json`.
 type InternalServerError = Problem
 
+// ServiceUnavailable Error response according to RFC 9457 (Problem Details), delivered as
+// `application/problem+json`.
+type ServiceUnavailable = Problem
+
 // ListArchivedEventsParams defines parameters for ListArchivedEvents.
 type ListArchivedEventsParams struct {
 	// From Start of the filter period, inclusive: a date `YYYY-MM-DD`
@@ -721,6 +725,8 @@ type BadRequestApplicationProblemPlusJSONResponse Problem
 
 type InternalServerErrorApplicationProblemPlusJSONResponse Problem
 
+type ServiceUnavailableApplicationProblemPlusJSONResponse Problem
+
 type ListArchivedEventsRequestObject struct {
 	Params ListArchivedEventsParams
 }
@@ -775,6 +781,22 @@ func (response ListArchivedEvents500ApplicationProblemPlusJSONResponse) VisitLis
 	return err
 }
 
+type ListArchivedEvents503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response ListArchivedEvents503ApplicationProblemPlusJSONResponse) VisitListArchivedEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListEventTypesRequestObject struct {
 }
 
@@ -808,6 +830,22 @@ func (response ListEventTypes500ApplicationProblemPlusJSONResponse) VisitListEve
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEventTypes503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response ListEventTypes503ApplicationProblemPlusJSONResponse) VisitListEventTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -862,6 +900,22 @@ func (response ListEvents500ApplicationProblemPlusJSONResponse) VisitListEventsR
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEvents503ApplicationProblemPlusJSONResponse struct {
+	ServiceUnavailableApplicationProblemPlusJSONResponse
+}
+
+func (response ListEvents503ApplicationProblemPlusJSONResponse) VisitListEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }

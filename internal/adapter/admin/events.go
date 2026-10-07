@@ -425,7 +425,7 @@ func (h *handler) renderEventNotFound(w http.ResponseWriter) {
 }
 
 func (h *handler) failEventRequest(w http.ResponseWriter, err error) {
-	h.logger.Error(logMsgEventsFailed, "error", err)
+	h.logRequestFailure(logMsgEventsFailed, err)
 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 

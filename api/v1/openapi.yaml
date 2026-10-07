@@ -36,6 +36,8 @@ info:
       `{"type": "about:blank", "title": "Method Not Allowed", "status": 405,
       "detail": "Method POST is not allowed; the API is read-only and
       allows GET, HEAD and OPTIONS."}`.
+      When the server is overloaded and cannot answer in time, it answers
+      `503` (Service Unavailable); try again later.
     - **KON-4 Dates and times.** Start and end are a date `YYYY-MM-DD` plus
       a separate, optional local time `HH:MM` (Europe/Berlin). An unknown
       time is `null`, never `00:00`. Computed instants are ISO 8601 with
@@ -265,6 +267,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /archive/events:
     get:
       operationId: listArchivedEvents
@@ -371,6 +375,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
   /event-types:
     get:
       operationId: listEventTypes
@@ -404,6 +410,8 @@ paths:
                     label: Sonstiges
         '500':
           $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
 components:
   parameters:
     EventTypeFilter:
@@ -496,6 +504,19 @@ components:
             title: Internal Server Error
             status: 500
             detail: The server failed to answer the request.
+    ServiceUnavailable:
+      description: |
+        The server is overloaded or its database is slow, so it could not
+        answer within its deadline. Try again later.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Service Unavailable
+            status: 503
+            detail: The server is overloaded and could not answer in time; try again later.
   schemas:
     EventType:
       type: string

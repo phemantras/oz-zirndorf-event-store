@@ -378,6 +378,26 @@ func TestListEventsCancelledByTheClientIsLoggedAsInfo(t *testing.T) {
 	}
 }
 
+// TestListsPastTheRequestDeadlineAreServiceUnavailableAndLoggedAsWarning
+// lets the lister fail because the request deadline ran out, as with a slow
+// database or an exhausted pool: both lists answer 503 and log a warning.
+func TestListsPastTheRequestDeadlineAreServiceUnavailableAndLoggedAsWarning(t *testing.T) {
+	for _, path := range []string{eventsPath, archivePath} {
+		t.Run(path, func(t *testing.T) {
+			var logs bytes.Buffer
+			timedOut := fmt.Errorf("list events: %w", context.DeadlineExceeded)
+			handler := newEventsHandler(&recordingLister{err: timedOut}, &logs)
+
+			detail := assertProblem(t, serve(handler, http.MethodGet, path), http.StatusServiceUnavailable)
+
+			if want := "The server is overloaded and could not answer in time; try again later."; detail != want {
+				t.Errorf("detail = %q, want %q", detail, want)
+			}
+			assertLogEntry(t, &logs, logEntry{Level: "WARN", Msg: "public api request timed out"})
+		})
+	}
+}
+
 // fullListedEvent uses every field of the read form.
 func fullListedEvent() core.ListedEvent {
 	return core.ListedEvent{

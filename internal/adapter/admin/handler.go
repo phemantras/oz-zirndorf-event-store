@@ -2,8 +2,10 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
+	"errors"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -280,6 +282,17 @@ func (h *handler) logout(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) showHome(w http.ResponseWriter, _ *http.Request) {
 	h.render(w, homeTemplate, http.StatusOK, homePage{})
+}
+
+// logRequestFailure logs err of a failed request under msg. A request that
+// ran out of its deadline met a slow database or an exhausted pool, which
+// is no fault of the code, so it is logged as Warn; anything else as Error.
+func (h *handler) logRequestFailure(msg string, err error) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		h.logger.Warn(msg, "error", err)
+		return
+	}
+	h.logger.Error(msg, "error", err)
 }
 
 // render executes page within the layout.

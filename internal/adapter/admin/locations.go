@@ -349,7 +349,7 @@ func (h *handler) renderLocationNotFound(w http.ResponseWriter) {
 }
 
 func (h *handler) failLocationRequest(w http.ResponseWriter, err error) {
-	h.logger.Error(logMsgLocationsFailed, "error", err)
+	h.logRequestFailure(logMsgLocationsFailed, err)
 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 

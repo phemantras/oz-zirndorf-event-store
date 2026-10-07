@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -316,6 +317,19 @@ func TestImportCommitFailureSavesNothingAndSaysSo(t *testing.T) {
 	if !strings.Contains(ts.logs.String(), logMsgImportCommitFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 		t.Errorf("log %q does not record the failure", ts.logs.String())
 	}
+	assertLoggedAt(t, ts, slog.LevelError, logMsgImportCommitFailed)
+}
+
+func TestImportCommitPastTheDeadlineSaysSoAndIsLoggedAsWarning(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.imports = failingImports{err: errRequestTimedOut}
+
+	rec := ts.postCommit(t, validImportFile, decisionFields(entryDecision{position: 1, class: core.ImportClassNew}))
+
+	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertBodyContains(t, rec, msgImportCommitFailed, `type="file"`)
+	assertBodyLacks(t, rec, msgImportNothingSaved)
+	assertLoggedAsWarningOnly(t, ts, logMsgImportCommitFailed)
 }
 
 func TestImportCommitOfAnUnreadableFileShowsItsMessage(t *testing.T) {

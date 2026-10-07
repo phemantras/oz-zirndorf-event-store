@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -318,6 +319,27 @@ func TestSpecLimitsMatchTheCore(t *testing.T) {
 		if (last == maxLengthKey || last == maxItemsKey) && !slices.Contains(slices.Collect(maps.Keys(specLimits)), path) {
 			t.Errorf("limit %s has no core constant in this test", path)
 		}
+	}
+}
+
+// serviceUnavailableRef is how an operation refers to the shared 503
+// response of the spec.
+const serviceUnavailableRef = "#/components/responses/ServiceUnavailable"
+
+func TestSpecDescribesServiceUnavailableForEveryOperation(t *testing.T) {
+	const examplePath = "components.responses.ServiceUnavailable.content.application/problem+json.example."
+	scalars := yamlScalars(string(apispec.OpenAPISpec))
+
+	for _, path := range []string{"/events", "/archive/events", "/event-types"} {
+		if got := scalars["paths."+path+".get.responses.503.$ref"]; got != serviceUnavailableRef {
+			t.Errorf("503 of %s = %q, want %q", path, got, serviceUnavailableRef)
+		}
+	}
+	if got := scalars[examplePath+"status"]; got != strconv.Itoa(http.StatusServiceUnavailable) {
+		t.Errorf("example status = %q, want %d", got, http.StatusServiceUnavailable)
+	}
+	if got := scalars[examplePath+"detail"]; got != detailServiceUnavailable {
+		t.Errorf("example detail = %q, want %q", got, detailServiceUnavailable)
 	}
 }
 
