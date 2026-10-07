@@ -90,3 +90,8 @@
   evidence: Unverifiziert (maybe-false, wäre medium bei großen Dateien): `templates/import.html` Z. 40 sendet `<input type="hidden" value="{{$.Content}}">`; die HTML-Spezifikation normalisiert Zeilenumbrüche beim Multipart-Kodieren. Klären per Browserprüfung mit einer Datei nahe 2 MiB; die heutigen Dateien (~40 Events) liegen weit darunter. Der Test aus C2 polstert mit Leerzeichen und deckt das nicht ab.
   status: open
   target: Backlog (nächste Retro ordnet zu)
+- source_spec: `_bmad-output/planning-artifacts/sprint-change-proposal-2026-10-07.md`
+  summary: Grenze für `/v1/archive/events` (Standardzeitraum, Höchstspanne oder Paginierung), `type`-Filter in SQL und Orte nur für die Treffer laden.
+  evidence: Ohne `from` lädt jeder Aufruf alle vergangenen Events samt Ablaufplänen und allen Orten, sortiert im Speicher und baut das JSON am Stück (`internal/core/event_query.go:156-187`). Bei einigen hundert Events unkritisch; eine Änderung des Standardzeitraums ist eine Vertragsänderung (NFR-2).
+  status: open
+  target: Wiedervorlage bei einigen tausend archivierten Events (Spine, Deferred „Grenze für das Archiv“)
