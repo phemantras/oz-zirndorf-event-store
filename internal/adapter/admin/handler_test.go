@@ -2,11 +2,15 @@ package admin
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -550,5 +554,49 @@ func TestNewHandlerServesLoginPage(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+// errRequestTimedOut is a failure of a use case whose request ran out of
+// its deadline, as with a slow database or an exhausted pool.
+var errRequestTimedOut = fmt.Errorf("use case: %w", context.DeadlineExceeded)
+
+// logLine is the level and message of a JSON log line.
+type logLine struct {
+	Level string `json:"level"`
+	Msg   string `json:"msg"`
+}
+
+// logLinesOf decodes the JSON log lines of ts.
+func logLinesOf(t *testing.T, ts *testServer) []logLine {
+	t.Helper()
+	var lines []logLine
+	for _, raw := range strings.Split(strings.TrimSpace(ts.logs.String()), "\n") {
+		var line logLine
+		if err := json.Unmarshal([]byte(raw), &line); err != nil {
+			t.Fatalf("decode log line %q: %v", raw, err)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// assertLoggedAt checks that the logs of ts record msg at level.
+func assertLoggedAt(t *testing.T, ts *testServer, level slog.Level, msg string) {
+	t.Helper()
+	if want := (logLine{Level: level.String(), Msg: msg}); !slices.Contains(logLinesOf(t, ts), want) {
+		t.Errorf("log %q has no %s %q", ts.logs.String(), want.Level, msg)
+	}
+}
+
+// assertLoggedAsWarningOnly checks that the logs of ts record msg as a
+// warning and hold no error.
+func assertLoggedAsWarningOnly(t *testing.T, ts *testServer, msg string) {
+	t.Helper()
+	assertLoggedAt(t, ts, slog.LevelWarn, msg)
+	for _, line := range logLinesOf(t, ts) {
+		if line.Level == slog.LevelError.String() {
+			t.Errorf("log line %+v reports an expired deadline as an error", line)
+		}
 	}
 }

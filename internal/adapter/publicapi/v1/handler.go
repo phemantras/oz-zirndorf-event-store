@@ -77,8 +77,8 @@ func newHandler(cfg Config, strictServer StrictServerInterface) http.Handler {
 	respond := responder{logger: cfg.Logger}
 	mux := http.NewServeMux()
 	strict := NewStrictHandlerWithOptions(strictServer, nil, StrictHTTPServerOptions{
-		RequestErrorHandlerFunc:  respond.internalServerError,
-		ResponseErrorHandlerFunc: respond.internalServerError,
+		RequestErrorHandlerFunc:  respond.answerFailedRequest,
+		ResponseErrorHandlerFunc: respond.answerFailedRequest,
 	})
 	HandlerWithOptions(strict, StdHTTPServerOptions{
 		BaseURL:          basePath,
@@ -115,7 +115,7 @@ func (rp responder) serveStaticFile(name, contentType string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := staticFiles.ReadFile(name)
 		if err != nil {
-			rp.internalServerError(w, r, fmt.Errorf("read embedded file %s: %w", name, err))
+			rp.answerFailedRequest(w, r, fmt.Errorf("read embedded file %s: %w", name, err))
 			return
 		}
 		w.Header().Set(headerContentType, contentType)

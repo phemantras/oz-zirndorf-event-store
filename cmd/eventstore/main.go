@@ -38,6 +38,10 @@ const (
 	readTimeout = 15 * time.Second
 	// writeTimeout bounds handling a request and writing its response.
 	writeTimeout = 30 * time.Second
+	// requestTimeout bounds handling a request, its queries and its wait
+	// for a pooled connection. It lies below writeTimeout, so the answer to
+	// an expired request can still be written.
+	requestTimeout = 20 * time.Second
 	// idleTimeout closes keep-alive connections that wait for a next request.
 	idleTimeout = 120 * time.Second
 )
@@ -150,10 +154,11 @@ func newAdminHandler(cfg config, logger *slog.Logger, cases useCases) http.Handl
 	})
 }
 
-// newServer returns the HTTP server with all routes and timeouts.
+// newServer returns the HTTP server with all routes and timeouts; every
+// request gets a deadline of requestTimeout.
 func newServer(db pinger, logger *slog.Logger, handlers routeHandlers) *http.Server {
 	return &http.Server{
-		Handler:           newRouter(db, logger, handlers),
+		Handler:           withRequestDeadline(newRouter(db, logger, handlers), requestTimeout),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,

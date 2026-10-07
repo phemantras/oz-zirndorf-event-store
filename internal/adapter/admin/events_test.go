@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -604,12 +605,23 @@ func TestEventPagesAnswerFailuresWithServerErrorAndLog(t *testing.T) {
 	}
 }
 
+func TestEventPageAnswersAnExpiredDeadlineWithServerErrorAndLogsAWarning(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.events = failingEvents{err: errRequestTimedOut}
+
+	rec := ts.get(eventsPath)
+
+	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertLoggedAsWarningOnly(t, ts, logMsgEventsFailed)
+}
+
 func assertServerErrorLogged(t *testing.T, ts *testServer, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	assertStatusCode(t, rec, http.StatusInternalServerError)
 	if !strings.Contains(ts.logs.String(), logMsgEventsFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 		t.Errorf("log %q does not record the failure", ts.logs.String())
 	}
+	assertLoggedAt(t, ts, slog.LevelError, logMsgEventsFailed)
 }
 
 func TestUnexpectedEventFieldProblemFallsBackToGenericMessage(t *testing.T) {

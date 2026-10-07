@@ -95,3 +95,8 @@
   evidence: Ohne `from` lädt jeder Aufruf alle vergangenen Events samt Ablaufplänen und allen Orten, sortiert im Speicher und baut das JSON am Stück (`internal/core/event_query.go:156-187`). Bei einigen hundert Events unkritisch; eine Änderung des Standardzeitraums ist eine Vertragsänderung (NFR-2).
   status: open
   target: Wiedervorlage bei einigen tausend archivierten Events (Spine, Deferred „Grenze für das Archiv“)
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-1-deadline-fuer-jeden-request-und-begrenzter-datenbank-pool.md`
+  summary: Prüfen, ob eine durch die Request-Deadline abgebrochene Abfrage auf dem Datenbankserver weiterläuft; sonst in `postgres.Connect` `pgconn.CancelRequestContextWatcherHandler` setzen, damit pgx einen Cancel-Request schickt.
+  evidence: Unverifiziert (maybe-false, wäre medium): pgx v5.11 nutzt standardmäßig `DeadlineContextWatcherHandler` (`pgconn/config.go:473`), der nur den Socket schließt. Ein weiterlaufendes Backend würde neben den 10 Pool-Verbindungen weitere DB-Verbindungen binden. Ein lokaler Wegwerf-Test (PG 18 unter Windows, Sperre per `LOCK TABLE`) fand 1 s nach der Deadline kein Backend mehr im Lock-Wait. Klären mit demselben Test unter Linux bzw. gegen Railway (`pg_stat_activity` nach einer abgelaufenen Abfrage).
+  status: open
+  target: Backlog (Retro Epic 4 ordnet zu)

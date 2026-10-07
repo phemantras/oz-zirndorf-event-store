@@ -64,6 +64,21 @@ func TestConnectErrorDoesNotLeakPassword(t *testing.T) {
 	}
 }
 
+// TestConnectCapsThePoolAtMaxConnsRegardlessOfTheURL asks for a larger pool
+// in the URL; the pool connects lazily, so no database is needed.
+func TestConnectCapsThePoolAtMaxConnsRegardlessOfTheURL(t *testing.T) {
+	const wantMaxConns = 10
+	pool, err := postgres.Connect(context.Background(), unreachableDatabaseURL+"&pool_max_conns=50")
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer pool.Close()
+
+	if got := pool.Config().MaxConns; got != wantMaxConns {
+		t.Errorf("MaxConns = %d, want %d", got, wantMaxConns)
+	}
+}
+
 func TestMigrateFailsWhenDatabaseIsUnreachable(t *testing.T) {
 	pool, err := postgres.Connect(context.Background(), unreachableDatabaseURL)
 	if err != nil {

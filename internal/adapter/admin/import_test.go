@@ -5,6 +5,7 @@ import (
 	"context"
 	"html"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -309,6 +310,17 @@ func TestImportFailureIsAServerErrorAndLogged(t *testing.T) {
 	if !strings.Contains(ts.logs.String(), logMsgImportFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 		t.Errorf("log %q does not record the failure", ts.logs.String())
 	}
+	assertLoggedAt(t, ts, slog.LevelError, logMsgImportFailed)
+}
+
+func TestImportPastTheDeadlineIsAServerErrorAndLoggedAsWarning(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.imports = failingImports{err: errRequestTimedOut}
+
+	rec := ts.postImport(t, importFileField, validImportFile)
+
+	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertLoggedAsWarningOnly(t, ts, logMsgImportFailed)
 }
 
 func TestImportRequiresSessionAndSameOrigin(t *testing.T) {

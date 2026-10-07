@@ -21,6 +21,7 @@ const (
 	detailNotFoundFormat         = "No resource exists at path %s."
 	detailMethodNotAllowedFormat = "Method %s is not allowed; the API is read-only and allows GET, HEAD and OPTIONS."
 	detailInternalServerError    = "The server failed to answer the request."
+	detailServiceUnavailable     = "The server is overloaded and could not answer in time; try again later."
 	detailInvalidParameterFormat = "Parameter %s is invalid; each parameter but type may be given only once."
 	detailInvalidParameters      = "The query parameters are invalid."
 )
@@ -29,6 +30,7 @@ const (
 const (
 	logMsgRequestFailed    = "public api request failed"
 	logMsgRequestCancelled = "public api request cancelled by client"
+	logMsgRequestTimedOut  = "public api request timed out"
 	logMsgWriteFailed      = "public api response could not be written"
 )
 
@@ -89,15 +91,22 @@ func problemOf(status int, detail string) Problem {
 	return Problem{Type: problemTypeBlank, Title: http.StatusText(status), Status: status, Detail: detail}
 }
 
-// internalServerError logs err and answers without revealing it. The
+// answerFailedRequest logs err and answers without revealing it. The
 // generated strict server calls it when a request or response fails. A
-// request the client cancelled is no fault of the server, so it is logged
-// as Info, not as Error.
-func (rp responder) internalServerError(w http.ResponseWriter, _ *http.Request, err error) {
-	if errors.Is(err, context.Canceled) {
+// request that ran out of its deadline met a slow database or an exhausted
+// pool, so it answers 503 and is logged as Warn. Any other failure answers
+// 500; a request the client cancelled is no fault of the server, so it is
+// logged as Info, not as Error.
+func (rp responder) answerFailedRequest(w http.ResponseWriter, _ *http.Request, err error) {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		rp.logger.Warn(logMsgRequestTimedOut, "error", err)
+		rp.writeProblem(w, http.StatusServiceUnavailable, detailServiceUnavailable)
+	case errors.Is(err, context.Canceled):
 		rp.logger.Info(logMsgRequestCancelled, "error", err)
-	} else {
+		rp.writeProblem(w, http.StatusInternalServerError, detailInternalServerError)
+	default:
 		rp.logger.Error(logMsgRequestFailed, "error", err)
+		rp.writeProblem(w, http.StatusInternalServerError, detailInternalServerError)
 	}
-	rp.writeProblem(w, http.StatusInternalServerError, detailInternalServerError)
 }

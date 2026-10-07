@@ -395,7 +395,7 @@ func (h *handler) checkImport(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &fileErr):
 		h.renderImportRejected(w, page, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
 	default:
-		h.logger.Error(logMsgImportFailed, "error", err)
+		h.logRequestFailure(logMsgImportFailed, err)
 		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 	}
 }
@@ -421,7 +421,7 @@ func (h *handler) commitImport(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &fileErr):
 		h.renderImportRejected(w, page, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
 	default:
-		h.logger.Error(logMsgImportCommitFailed, "error", err)
+		h.logRequestFailure(logMsgImportCommitFailed, err)
 		h.renderImportRejected(w, page, http.StatusInternalServerError, msgImportCommitFailed)
 	}
 }

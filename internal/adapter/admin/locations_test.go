@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -761,8 +762,19 @@ func TestLocationPagesAnswerStorageFailureWithServerErrorAndLog(t *testing.T) {
 			if !strings.Contains(ts.logs.String(), logMsgLocationsFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 				t.Errorf("log %q does not record the failure", ts.logs.String())
 			}
+			assertLoggedAt(t, ts, slog.LevelError, logMsgLocationsFailed)
 		})
 	}
+}
+
+func TestLocationPageAnswersAnExpiredDeadlineWithServerErrorAndLogsAWarning(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.locations = failingLocations{err: errRequestTimedOut}
+
+	rec := ts.get(locationsPath)
+
+	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertLoggedAsWarningOnly(t, ts, logMsgLocationsFailed)
 }
 
 func TestUnexpectedFieldProblemFallsBackToGenericMessage(t *testing.T) {
