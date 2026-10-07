@@ -56,7 +56,12 @@ const (
 const (
 	msgWrongCredentials = "Benutzername oder Passwort ist falsch."
 	msgLockedOut        = "Zu viele fehlgeschlagene Anmeldeversuche. Die Anmeldung ist für 15 Minuten gesperrt."
+	msgTooManyLogins    = "Gerade laufen zu viele Anmeldeversuche. Bitte versuch es gleich noch einmal."
 )
+
+// maxConcurrentPasswordChecks bounds the bcrypt comparisons running at the
+// same time, so login attempts from many addresses cannot bind every CPU.
+const maxConcurrentPasswordChecks = 2
 
 // Log messages. They never carry user names, passwords, client IPs or
 // cookie values.
@@ -64,6 +69,7 @@ const (
 	logMsgLoginSucceeded = "admin login succeeded"
 	logMsgLoginFailed    = "admin login failed"
 	logMsgLoginLocked    = "admin login rejected during lockout"
+	logMsgLoginBusy      = "admin login rejected, too many password checks running"
 	logMsgRenderFailed   = "admin page render failed"
 )
 
@@ -104,10 +110,12 @@ type handler struct {
 	logger          *slog.Logger
 	now             func() time.Time
 	comparePassword func(hash, password []byte) error
-	locations       LocationUseCases
-	events          EventUseCases
-	clock           core.Clock
-	imports         ImportUseCases
+	// passwordCheckSlots holds one token per running password comparison.
+	passwordCheckSlots chan struct{}
+	locations          LocationUseCases
+	events             EventUseCases
+	clock              core.Clock
+	imports            ImportUseCases
 }
 
 // NewHandler returns the admin interface for all paths below /admin/,
@@ -118,17 +126,18 @@ func NewHandler(cfg Config) http.Handler {
 
 func newHandler(cfg Config) *handler {
 	return &handler{
-		userDigest:      sha256.Sum256([]byte(cfg.User)),
-		passwordHash:    cfg.PasswordHash,
-		sessions:        sessionCodec{secret: cfg.SessionSecret},
-		lockout:         newLoginLockout(cfg.Now),
-		logger:          cfg.Logger,
-		now:             cfg.Now,
-		comparePassword: bcrypt.CompareHashAndPassword,
-		locations:       cfg.Locations,
-		events:          cfg.Events,
-		clock:           cfg.Clock,
-		imports:         cfg.Imports,
+		userDigest:         sha256.Sum256([]byte(cfg.User)),
+		passwordHash:       cfg.PasswordHash,
+		sessions:           sessionCodec{secret: cfg.SessionSecret},
+		lockout:            newLoginLockout(cfg.Now),
+		logger:             cfg.Logger,
+		now:                cfg.Now,
+		comparePassword:    bcrypt.CompareHashAndPassword,
+		passwordCheckSlots: make(chan struct{}, maxConcurrentPasswordChecks),
+		locations:          cfg.Locations,
+		events:             cfg.Events,
+		clock:              cfg.Clock,
+		imports:            cfg.Imports,
 	}
 }
 
@@ -237,26 +246,42 @@ func (h *handler) showLogin(w http.ResponseWriter, r *http.Request) {
 	h.render(w, loginTemplate, http.StatusOK, loginPage{})
 }
 
-// submitLogin checks the credentials unless the client IP is locked out.
+// submitLogin checks the credentials unless too many password checks are
+// running or the client is locked out. The slot check comes before the
+// lockout, so a rejected attempt neither counts as a failure nor creates a
+// lockout entry.
 // Every allowed attempt counts as a failure until it succeeds.
 func (h *handler) submitLogin(w http.ResponseWriter, r *http.Request) {
-	ip := clientIP(r)
-	if !h.lockout.beginAttempt(ip) {
+	// Read the form before taking a slot, so a slowly sent body cannot hold
+	// one. ADMIN_USER is trimmed at startup; mobile keyboards often append a
+	// space.
+	r.Body = http.MaxBytesReader(w, r.Body, maxLoginFormBytes)
+	user := strings.TrimSpace(r.PostFormValue(loginFieldUser))
+	password := r.PostFormValue(loginFieldPassword)
+
+	select {
+	case h.passwordCheckSlots <- struct{}{}:
+		defer func() { <-h.passwordCheckSlots }()
+	default:
+		h.logger.Warn(logMsgLoginBusy)
+		h.render(w, loginTemplate, http.StatusServiceUnavailable, loginPage{Username: user, Error: msgTooManyLogins})
+		return
+	}
+
+	key := lockoutKey(clientIP(r))
+	if !h.lockout.beginAttempt(key) {
 		h.logger.Warn(logMsgLoginLocked)
 		h.render(w, loginTemplate, http.StatusTooManyRequests, loginPage{Error: msgLockedOut})
 		return
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxLoginFormBytes)
-	// ADMIN_USER is trimmed at startup; mobile keyboards often append a space.
-	user := strings.TrimSpace(r.PostFormValue(loginFieldUser))
-	if !h.credentialsMatch(user, r.PostFormValue(loginFieldPassword)) {
+	if !h.credentialsMatch(user, password) {
 		h.logger.Warn(logMsgLoginFailed)
 		h.render(w, loginTemplate, http.StatusOK, loginPage{Username: user, Error: msgWrongCredentials})
 		return
 	}
 
-	h.lockout.reset(ip)
+	h.lockout.reset(key)
 	now := h.currentTime()
 	http.SetCookie(w, h.sessions.cookie(session{LoginAt: now, ActiveAt: now}, now))
 	h.logger.Info(logMsgLoginSucceeded)

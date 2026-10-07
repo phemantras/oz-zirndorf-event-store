@@ -38,3 +38,29 @@ func TestClientIPPrefersLeftmostForwardedForEntry(t *testing.T) {
 		})
 	}
 }
+
+func TestLockoutKeyGroupsIPv6ByNetworkAndKeepsIPv4Exact(t *testing.T) {
+	tests := []struct {
+		name string
+		ip   string
+		want string
+	}{
+		{name: "ipv4", ip: "203.0.113.7", want: "203.0.113.7"},
+		{name: "neighbouring ipv4", ip: "203.0.113.8", want: "203.0.113.8"},
+		{name: "ipv6", ip: "2001:db8:1:2::1", want: "2001:db8:1:2::/64"},
+		{name: "same ipv6 network", ip: "2001:db8:1:2::ffff", want: "2001:db8:1:2::/64"},
+		{name: "full ipv6 address", ip: "2001:db8:1:2:aaaa:bbbb:cccc:dddd", want: "2001:db8:1:2::/64"},
+		{name: "other ipv6 network", ip: "2001:db8:1:3::1", want: "2001:db8:1:3::/64"},
+		{name: "ipv4 in ipv6", ip: "::ffff:203.0.113.7", want: "203.0.113.7"},
+		{name: "ipv6 zone dropped", ip: "fe80::1%eth0", want: "fe80::/64"},
+		{name: "invalid", ip: "unknown", want: "unknown"},
+		{name: "empty", ip: "", want: ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := lockoutKey(tt.ip); got != tt.want {
+				t.Errorf("lockoutKey(%q) = %q, want %q", tt.ip, got, tt.want)
+			}
+		})
+	}
+}

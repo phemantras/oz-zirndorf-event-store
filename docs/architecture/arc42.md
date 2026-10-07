@@ -275,7 +275,7 @@ Alle Entscheidungen stehen mit Regel und Begründung („Prevents“) im [Archit
 | QS-4 | Datenqualität | Dieselbe Import-Datei wird ein zweites Mal importiert. | 0 zusätzliche Events; alle Einträge sind `unchanged` (SM-2). |
 | QS-5 | Datenqualität | Zwischen Upload und Speichern ändert der Admin ein betroffenes Event im Formular. | Der Import-Eintrag wird als `stale` gemeldet und nicht übernommen. |
 | QS-6 | Robustheit | Die Datenbank antwortet nicht mehr. | Requests enden nach spätestens 20 Sekunden mit 503; `/healthz` meldet 503; der Prozess bleibt stabil. |
-| QS-7 | Sicherheit | Ein Angreifer probiert Passwörter von einer Adresse. | Nach 5 Fehlversuchen ist die Adresse 15 Minuten gesperrt; höchstens zwei bcrypt-Vergleiche laufen gleichzeitig. |
+| QS-7 | Sicherheit | Ein Angreifer probiert Passwörter von einer Adresse. | Nach 5 Fehlversuchen ist die IPv4-Adresse bzw. das IPv6-/64-Netz 15 Minuten gesperrt; höchstens zwei bcrypt-Vergleiche laufen gleichzeitig. |
 | QS-8 | Wartbarkeit | Eine Regel im Zeitmodell ändert sich. | Die Änderung erfolgt an einer Stelle im Kern; der nächste Start rechnet alle gespeicherten Werte neu. |
 | QS-9 | Vorlage-Tauglichkeit | Eine Entwicklerin baut ein neues OZ-Backend. | Sie kann Versionierung, Fehler-, Zeit- und Filterkonventionen aus `/v1/docs` ohne Rückfrage übernehmen (SM-4). |
 
