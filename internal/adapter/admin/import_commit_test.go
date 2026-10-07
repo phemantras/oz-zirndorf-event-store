@@ -3,6 +3,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -254,27 +255,42 @@ func TestImportCommitListsTheEntriesItDidNotTake(t *testing.T) {
 }
 
 // The cap on entries keeps the commit form within the parts a multipart
-// form may have; a file of the most entries, each sending the most fields
-// an entry can have, is still read. An entry that brings a new location
-// never has stored candidates, so at most a duplicate suspect sends 6
-// fields and an update with a new location 5.
-func TestImportCommitReadsTheFormOfTheMostEntries(t *testing.T) {
+// form may have, and maxImportCommitBytes leaves room for the decisions
+// next to a file of the largest size: a file of exactly that size with the
+// most entries, each sending the most fields an entry can have with IDs
+// and fingerprints of their real length, is still read. An entry that
+// brings a new location never has stored candidates, so at most a
+// duplicate suspect sends 6 fields and an update with a new location 5.
+func TestImportCommitReadsTheLargestFileWithTheMostEntries(t *testing.T) {
 	ts := newTestServer(t)
-	content := `{"formatVersion":1,"events":[` + strings.TrimSuffix(strings.Repeat("{},", core.MaxImportEntries), ",") + `]}`
+	entries := `{"formatVersion":1,"events":[` + strings.TrimSuffix(strings.Repeat("{},", core.MaxImportEntries), ",")
+	const closing = "]}"
+	content := entries + strings.Repeat(" ", core.MaxImportFileBytes-len(entries)-len(closing)) + closing
+	if len(content) != core.MaxImportFileBytes {
+		t.Fatalf("content has %d bytes, want %d", len(content), core.MaxImportFileBytes)
+	}
 	var decisions [][]formField
 	for position := 1; position <= core.MaxImportEntries; position++ {
+		first, second := fmt.Sprintf(uuidFormat, 2*position), fmt.Sprintf(uuidFormat, 2*position+1)
 		decisions = append(decisions, decisionFields(entryDecision{
-			position: position, class: core.ImportClassDuplicateSuspect, targetID: "ziel",
-			candidates: []string{"erster", "zweiter"}, choice: string(core.ImportChoiceSkip),
-			fingerprints: map[string]string{"erster": strings.Repeat("a", 64), "zweiter": strings.Repeat("b", 64)},
+			position: position, class: core.ImportClassDuplicateSuspect, targetID: fmt.Sprintf(uuidFormat, position),
+			candidates: []string{first, second}, choice: string(core.ImportChoiceOverwrite) + importChoiceValueSeparator + second,
+			fingerprints: map[string]string{first: strings.Repeat("a", fingerprintLength), second: strings.Repeat("b", fingerprintLength)},
 		}))
 	}
 
 	rec := ts.postCommit(t, content, decisions...)
 
 	assertStatusCode(t, rec, http.StatusOK)
-	assertBodyContains(t, rec, "<h2>"+msgImportSummaryHeading+"</h2>")
+	assertBodyContains(t, rec, "<h2>"+msgImportSummaryHeading+"</h2>", "<tr><td>"+strconv.Itoa(core.MaxImportEntries)+"</td>")
 }
+
+// Real lengths of what a decision sends: event IDs are UUIDs, fingerprints
+// hex-encoded SHA-256 sums.
+const (
+	uuidFormat        = "0192f0b1-0000-7000-9000-%012d"
+	fingerprintLength = 64
+)
 
 func TestImportCommitStaleWhenTheFormShowedNoStoredCandidate(t *testing.T) {
 	ts := newTestServer(t)

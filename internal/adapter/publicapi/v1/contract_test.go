@@ -23,11 +23,15 @@ import (
 const coreSourceGlob = "../../../core/*.go"
 
 // Prefixes of the core constants that name fields. Struct fields are
-// compared with the schemas, filter fields with the query parameters.
+// compared with the schemas, filter fields with the query parameters. The
+// import reads the fields of the object source by the unexported
+// sourceField constants, which name them without the prefix "source."; so
+// they are checked against the schema Source.
 const (
 	eventFieldPrefix     = "EventField"
 	locationFieldPrefix  = "LocationField"
 	timetableFieldPrefix = "TimetableField"
+	sourceFieldPrefix    = "sourceField"
 	filterFieldPrefix    = "FilterField"
 )
 
@@ -43,6 +47,7 @@ var fieldSchemas = map[string]string{
 	eventFieldPrefix:     "EventInput",
 	locationFieldPrefix:  "EventInputLocation",
 	timetableFieldPrefix: "TimetableEntry",
+	sourceFieldPrefix:    "Source",
 }
 
 // locationAddressPrefix is where the location schema nests the address
@@ -215,7 +220,7 @@ func TestCoreFieldNamesAreFieldsOfTheSpec(t *testing.T) {
 	for prefix, schema := range fieldSchemas {
 		known[prefix] = namesOf(jsonStructs, []string{schema})
 	}
-	prefixes := []string{eventFieldPrefix, locationFieldPrefix, timetableFieldPrefix, filterFieldPrefix}
+	prefixes := []string{eventFieldPrefix, locationFieldPrefix, timetableFieldPrefix, sourceFieldPrefix, filterFieldPrefix}
 	constants := stringConstants(t, coreSourceFiles(t), prefixes...)
 
 	for _, prefix := range prefixes {
