@@ -17,6 +17,7 @@ const (
 	locationsFile    = templateDir + "locations.html"
 	locationFormFile = templateDir + "location_form.html"
 	notFoundFile     = templateDir + "not_found.html"
+	failureFile      = templateDir + "failure.html"
 	eventsFile       = templateDir + "events.html"
 	eventFormFile    = templateDir + "event_form.html"
 	// The partials hold the location fields, shared by the location form
@@ -48,6 +49,7 @@ var (
 	locationsTemplate    = parsePage(locationsFile)
 	locationFormTemplate = parsePage(locationFormFile, locationFieldsFile, deleteFormFile)
 	notFoundTemplate     = parsePage(notFoundFile)
+	failureTemplate      = parsePage(failureFile)
 	eventsTemplate       = parsePage(eventsFile)
 	eventFormTemplate    = parsePage(eventFormFile, locationFieldsFile, newLocationFile, timetableEntryFile, deleteFormFile)
 	// newLocationTemplate holds the fragments that htmx swaps into the

@@ -306,21 +306,26 @@ func TestImportFailureIsAServerErrorAndLogged(t *testing.T) {
 
 	rec := ts.postImport(t, importFileField, validImportFile)
 
-	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertFailurePage(t, rec, http.StatusInternalServerError, importFailurePage(msgRequestFailed))
 	if !strings.Contains(ts.logs.String(), logMsgImportFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 		t.Errorf("log %q does not record the failure", ts.logs.String())
 	}
 	assertLoggedAt(t, ts, slog.LevelError, logMsgImportFailed)
 }
 
-func TestImportPastTheDeadlineIsAServerErrorAndLoggedAsWarning(t *testing.T) {
+func TestImportPastTheDeadlineIsServiceUnavailableAndLoggedAsWarning(t *testing.T) {
 	ts := newTestServer(t)
 	ts.handler.imports = failingImports{err: errRequestTimedOut}
 
 	rec := ts.postImport(t, importFileField, validImportFile)
 
-	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertFailurePage(t, rec, http.StatusServiceUnavailable, importFailurePage(msgRequestTimedOut))
 	assertLoggedAsWarningOnly(t, ts, logMsgImportFailed)
+}
+
+// importFailurePage is the failure page of the import page with message.
+func importFailurePage(message string) failurePage {
+	return failurePage{Message: message, BackURL: importPath, BackLabel: backToImport}
 }
 
 func TestImportRequiresSessionAndSameOrigin(t *testing.T) {

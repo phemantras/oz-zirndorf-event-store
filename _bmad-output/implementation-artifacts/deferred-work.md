@@ -98,5 +98,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-1-deadline-fuer-jeden-request-und-begrenzter-datenbank-pool.md`
   summary: Prüfen, ob eine durch die Request-Deadline abgebrochene Abfrage auf dem Datenbankserver weiterläuft; sonst in `postgres.Connect` `pgconn.CancelRequestContextWatcherHandler` setzen, damit pgx einen Cancel-Request schickt.
   evidence: Unverifiziert (maybe-false, wäre medium): pgx v5.11 nutzt standardmäßig `DeadlineContextWatcherHandler` (`pgconn/config.go:473`), der nur den Socket schließt. Ein weiterlaufendes Backend würde neben den 10 Pool-Verbindungen weitere DB-Verbindungen binden. Ein lokaler Wegwerf-Test (PG 18 unter Windows, Sperre per `LOCK TABLE`) fand 1 s nach der Deadline kein Backend mehr im Lock-Wait. Klären mit demselben Test unter Linux bzw. gegen Railway (`pg_stat_activity` nach einer abgelaufenen Abfrage).
+  status: done
+  target: Retro Epic 4, D1 (`spec-d1-epic-4-nahtstellen.md`): `postgres.Connect` setzt `pgconn.CancelRequestContextWatcherHandler`, `TestQueryPastItsDeadlineEndsOnTheServer` prüft per `pg_stat_activity`, dass kein Backend des Pools nach der Deadline noch auf die Sperre wartet; Messung gegen Railway entfällt, die Linux-CI misst
+- source_spec: `_bmad-output/implementation-artifacts/spec-d1-epic-4-nahtstellen.md`
+  summary: Railway gibt einem alten Deployment standardmäßig 0 s zwischen SIGTERM und SIGKILL (`RAILWAY_DEPLOYMENT_DRAINING_SECONDS`); damit wirkt `shutdownTimeout` (25 s) in Produktion nicht. `deploy.drainingSeconds` in `railway.json` (bzw. die Service-Variable) auf mindestens 25 setzen.
+  evidence: Railway-Doku „Deployment Teardown“ (https://docs.railway.com/deployments/deployment-teardown): Standard 0 s. `railway.json` setzt keinen Wert. D1 schließt Änderungen an Railway-Einstellungen aus (Frozen-Block), Review D1 (Edge-Case, Blind, Seam).
   status: open
-  target: Backlog (Retro Epic 4 ordnet zu)
+  target: Backlog (eigener kleiner PR, Entscheidung Andreas)
+- source_spec: `_bmad-output/implementation-artifacts/spec-d1-epic-4-nahtstellen.md`
+  summary: Scheitert das Anlegen eines Orts im Event-Formular (htmx, `/admin/events/new-location`) mit 500/503, sieht Andreas nichts: Die Fehlerseite wird wegen `responseHandling` (`[45]..` → `swap:false`) nicht eingesetzt.
+  evidence: Vorbestehend (vorher englischer Klartext, ebenfalls nicht eingesetzt); D1 lässt `responseHandling` laut Frozen-Block unverändert. Lösung z. B. per `HX-Retarget`/`HX-Reswap` mit einem Fragment oder per htmx-Fehlerereignis.
+  status: open
+  target: Backlog (nächste Retro ordnet zu)

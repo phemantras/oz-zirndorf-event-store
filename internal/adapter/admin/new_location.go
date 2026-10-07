@@ -83,7 +83,7 @@ func (h *handler) createInlineLocation(w http.ResponseWriter, r *http.Request) {
 		area.Conflict = locationConflictOf(conflict)
 		h.renderFragment(w, newLocationTemplate, newLocationOpenTemplate, http.StatusConflict, area)
 	default:
-		h.failLocationRequest(w, err)
+		h.failLocationRequest(w, r, err)
 	}
 }
 
@@ -92,7 +92,7 @@ func (h *handler) createInlineLocation(w http.ResponseWriter, r *http.Request) {
 func (h *handler) renderSavedLocation(w http.ResponseWriter, r *http.Request, saved core.Location) {
 	locations, err := h.locations.ListLocations(r.Context())
 	if err != nil {
-		h.failLocationRequest(w, err)
+		h.failLocationRequest(w, r, err)
 		return
 	}
 	choice := locationChoiceOf(locations, saved.ID, "")

@@ -758,7 +758,7 @@ func TestLocationPagesAnswerStorageFailureWithServerErrorAndLog(t *testing.T) {
 
 			rec := request(ts)
 
-			assertStatusCode(t, rec, http.StatusInternalServerError)
+			assertFailurePage(t, rec, http.StatusInternalServerError, locationFailurePage(msgRequestFailed))
 			if !strings.Contains(ts.logs.String(), logMsgLocationsFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 				t.Errorf("log %q does not record the failure", ts.logs.String())
 			}
@@ -767,14 +767,30 @@ func TestLocationPagesAnswerStorageFailureWithServerErrorAndLog(t *testing.T) {
 	}
 }
 
-func TestLocationPageAnswersAnExpiredDeadlineWithServerErrorAndLogsAWarning(t *testing.T) {
+func TestLocationPageAnswersAnExpiredDeadlineWithServiceUnavailableAndLogsAWarning(t *testing.T) {
 	ts := newTestServer(t)
 	ts.handler.locations = failingLocations{err: errRequestTimedOut}
 
 	rec := ts.get(locationsPath)
 
-	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertFailurePage(t, rec, http.StatusServiceUnavailable, locationFailurePage(msgRequestTimedOut))
 	assertLoggedAsWarningOnly(t, ts, logMsgLocationsFailed)
+}
+
+func TestLocationPageCancelledByTheClientIsLoggedAsInfo(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.locations = failingLocations{err: errRequestCancelled}
+
+	rec := ts.get(locationsPath)
+
+	assertFailurePage(t, rec, http.StatusInternalServerError, locationFailurePage(msgRequestFailed))
+	assertLoggedAsInfoOnly(t, ts, logMsgLocationsFailed)
+}
+
+// locationFailurePage is the failure page of the location pages with
+// message.
+func locationFailurePage(message string) failurePage {
+	return failurePage{Message: message, BackURL: locationsPath, BackLabel: backToLocationList}
 }
 
 func TestUnexpectedFieldProblemFallsBackToGenericMessage(t *testing.T) {

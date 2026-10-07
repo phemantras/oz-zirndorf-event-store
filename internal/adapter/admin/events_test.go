@@ -605,19 +605,66 @@ func TestEventPagesAnswerFailuresWithServerErrorAndLog(t *testing.T) {
 	}
 }
 
-func TestEventPageAnswersAnExpiredDeadlineWithServerErrorAndLogsAWarning(t *testing.T) {
+func TestEventPageAnswersAnExpiredDeadlineWithServiceUnavailableAndLogsAWarning(t *testing.T) {
 	ts := newTestServer(t)
 	ts.handler.events = failingEvents{err: errRequestTimedOut}
 
 	rec := ts.get(eventsPath)
 
-	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertFailurePage(t, rec, http.StatusServiceUnavailable, eventFailurePage(msgRequestTimedOut))
+	assertBodyContains(t, rec, "Die Datenbank antwortet gerade zu langsam. Bitte versuch es gleich noch einmal.")
 	assertLoggedAsWarningOnly(t, ts, logMsgEventsFailed)
+}
+
+// TestEventPageAnswersAServerCancelledQueryAtTheDeadlineWithServiceUnavailable
+// fails the use case with an error that wraps no context error, as pgx
+// reports a query the server cancelled, while the request deadline has
+// passed: the request context makes it a deadline failure.
+func TestEventPageAnswersAServerCancelledQueryAtTheDeadlineWithServiceUnavailable(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.events = failingEvents{err: errStatementCanceled}
+	req := withCookie(httptest.NewRequest(http.MethodGet, eventsPath, nil), ts.validCookie())
+
+	rec := ts.do(withExpiredDeadline(t, req))
+
+	assertFailurePage(t, rec, http.StatusServiceUnavailable, eventFailurePage(msgRequestTimedOut))
+	assertLoggedAsWarningOnly(t, ts, logMsgEventsFailed)
+}
+
+func TestEventPageCancelledByTheClientIsLoggedAsInfo(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.events = failingEvents{err: errRequestCancelled}
+
+	rec := ts.get(eventsPath)
+
+	assertFailurePage(t, rec, http.StatusInternalServerError, eventFailurePage(msgRequestFailed))
+	assertLoggedAsInfoOnly(t, ts, logMsgEventsFailed)
+}
+
+// TestEventPageOfAServerCancelledQueryCancelledByTheClientIsLoggedAsInfo
+// fails the use case with an error that wraps no context error while the
+// client has cancelled the request: the request context makes it a
+// cancellation.
+func TestEventPageOfAServerCancelledQueryCancelledByTheClientIsLoggedAsInfo(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.events = failingEvents{err: errStatementCanceled}
+	req := withCookie(httptest.NewRequest(http.MethodGet, eventsPath, nil), ts.validCookie())
+
+	rec := ts.do(withCancelledContext(t, req))
+
+	assertFailurePage(t, rec, http.StatusInternalServerError, eventFailurePage(msgRequestFailed))
+	assertLoggedAsInfoOnly(t, ts, logMsgEventsFailed)
+}
+
+// eventFailurePage is the failure page of the event pages with message.
+func eventFailurePage(message string) failurePage {
+	return failurePage{Message: message, BackURL: eventsPath, BackLabel: backToEventList}
 }
 
 func assertServerErrorLogged(t *testing.T, ts *testServer, rec *httptest.ResponseRecorder) {
 	t.Helper()
-	assertStatusCode(t, rec, http.StatusInternalServerError)
+	assertFailurePage(t, rec, http.StatusInternalServerError, eventFailurePage(msgRequestFailed))
+	assertBodyContains(t, rec, "Etwas ist schiefgegangen.")
 	if !strings.Contains(ts.logs.String(), logMsgEventsFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 		t.Errorf("log %q does not record the failure", ts.logs.String())
 	}

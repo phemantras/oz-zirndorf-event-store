@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -271,4 +272,87 @@ func TestMigrateKeepsLegacyLocationsWhenSplittingAddress(t *testing.T) {
 	if address != "Fürther Straße 10, 90513 Zirndorf" || street != "" || postalCode != "" || city != "" {
 		t.Errorf("legacy location = %q, %q, %q, %q, want address kept and empty parts", address, street, postalCode, city)
 	}
+}
+
+// cancelTestApplicationName marks the connections of the pool whose query
+// TestQueryPastItsDeadlineEndsOnTheServer cancels, so the test finds their
+// backends in pg_stat_activity.
+const cancelTestApplicationName = "eventstore-cancel-test"
+
+// queryCanceledCode is the SQLSTATE of a query the database server
+// cancelled on a cancel request (query_canceled).
+const queryCanceledCode = "57014"
+
+// TestQueryPastItsDeadlineEndsOnTheServer locks the events table, so a
+// query on a pool from Connect waits until its deadline. The server must
+// cancel the query (57014), not merely lose the client, and afterwards no
+// backend of that pool may still wait for the lock. pg_stat_activity is
+// read through the observer pool, outside the locking transaction, which
+// would see one snapshot of it only.
+func TestQueryPastItsDeadlineEndsOnTheServer(t *testing.T) {
+	const (
+		queryTimeout = 200 * time.Millisecond
+		serverGrace  = 2 * time.Second
+		pollInterval = 50 * time.Millisecond
+	)
+	ctx := context.Background()
+	observer, err := postgres.Connect(ctx, testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(observer.Close)
+	if _, err := postgres.Migrate(ctx, observer); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	locker, err := observer.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer func() { _ = locker.Rollback(ctx) }()
+	if _, err := locker.Exec(ctx, "LOCK TABLE events IN ACCESS EXCLUSIVE MODE"); err != nil {
+		t.Fatalf("lock events: %v", err)
+	}
+	pool := poolWithApplicationName(t, cancelTestApplicationName)
+
+	queryCtx, cancel := context.WithTimeout(ctx, queryTimeout)
+	defer cancel()
+	_, err = pool.Exec(queryCtx, "SELECT count(*) FROM events")
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != queryCanceledCode {
+		t.Fatalf("query on the locked table err = %v, want SQLSTATE %s from the server", err, queryCanceledCode)
+	}
+
+	waiting := -1
+	for deadline := time.Now().Add(serverGrace); time.Now().Before(deadline); time.Sleep(pollInterval) {
+		err := observer.QueryRow(ctx,
+			"SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND application_name = $1 AND wait_event_type = 'Lock'",
+			cancelTestApplicationName,
+		).Scan(&waiting)
+		if err != nil {
+			t.Fatalf("count waiting backends: %v", err)
+		}
+		if waiting == 0 {
+			return
+		}
+	}
+	t.Errorf("%d backends of the pool still wait for the lock %v after the deadline, want 0", waiting, serverGrace)
+}
+
+// poolWithApplicationName returns a pool from Connect on the test database
+// whose connections report applicationName.
+func poolWithApplicationName(t *testing.T, applicationName string) *pgxpool.Pool {
+	t.Helper()
+	databaseURL, err := url.Parse(testDatabaseURL(t))
+	if err != nil {
+		t.Fatalf("parse database url: %v", err)
+	}
+	query := databaseURL.Query()
+	query.Set("application_name", applicationName)
+	databaseURL.RawQuery = query.Encode()
+	pool, err := postgres.Connect(context.Background(), databaseURL.String())
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(pool.Close)
+	return pool
 }

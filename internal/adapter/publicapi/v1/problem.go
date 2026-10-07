@@ -100,17 +100,25 @@ func problemOf(status int, detail string) Problem {
 // request that ran out of its deadline met a slow database or an exhausted
 // pool, so it answers 503 and is logged as Warn. Any other failure answers
 // 500; a request the client cancelled is no fault of the server, so it is
-// logged as Info, not as Error.
-func (rp responder) answerFailedRequest(w http.ResponseWriter, _ *http.Request, err error) {
+// logged as Info, not as Error. The request context counts as well as err:
+// a query the database server cancelled at the deadline fails with an
+// error that wraps no context error.
+func (rp responder) answerFailedRequest(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
-	case errors.Is(err, context.DeadlineExceeded):
+	case endedWith(r, err, context.DeadlineExceeded):
 		rp.logger.Warn(logMsgRequestTimedOut, "error", err)
 		rp.writeProblem(w, http.StatusServiceUnavailable, detailServiceUnavailable)
-	case errors.Is(err, context.Canceled):
+	case endedWith(r, err, context.Canceled):
 		rp.logger.Info(logMsgRequestCancelled, "error", err)
 		rp.writeProblem(w, http.StatusInternalServerError, detailInternalServerError)
 	default:
 		rp.logger.Error(logMsgRequestFailed, "error", err)
 		rp.writeProblem(w, http.StatusInternalServerError, detailInternalServerError)
 	}
+}
+
+// endedWith reports whether err or the context of r carries the context
+// error cause.
+func endedWith(r *http.Request, err, cause error) bool {
+	return errors.Is(err, cause) || errors.Is(r.Context().Err(), cause)
 }

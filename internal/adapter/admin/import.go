@@ -126,8 +126,12 @@ const (
 	msgImportSummaryHeading  = "Ergebnis des Imports"
 	// msgImportNotTakenHint explains the list of entries a commit did not
 	// take.
-	msgImportNotTakenHint     = "Diese Einträge wurden nicht übernommen. Die Datei erneut prüfen, um sie zu übernehmen."
-	msgImportCommitFailed     = "Der Import ist fehlgeschlagen; es wurde nichts übernommen."
+	msgImportNotTakenHint = "Diese Einträge wurden nicht übernommen. Die Datei erneut prüfen, um sie zu übernehmen."
+	msgImportCommitFailed = "Der Import ist fehlgeschlagen; es wurde nichts übernommen."
+	// msgImportCommitTimedOut is the message of a commit that ran out of
+	// its deadline.
+	msgImportCommitTimedOut   = "Die Datenbank antwortet gerade zu langsam; es wurde nichts übernommen. Bitte versuch es gleich noch einmal."
+	backToImport              = "Zurück zum Import"
 	msgImportCreatedLocations = "neu angelegte Orte"
 	// importChoiceOverwriteFormat names the stored event to overwrite.
 	importChoiceOverwriteFormat = msgImportChoiceOverwrite + " %s"
@@ -395,15 +399,14 @@ func (h *handler) checkImport(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &fileErr):
 		h.renderImportRejected(w, page, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
 	default:
-		h.logRequestFailure(logMsgImportFailed, err)
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		h.failRequest(w, r, err, failedArea{logMsg: logMsgImportFailed, backURL: importPath, backLabel: backToImport})
 	}
 }
 
 // commitImport has the core commit the file sent back with the decisions
 // on its entries and shows what it did. A file rejected as a whole shows
 // its message (422, 413 when far too large); a failed commit stored
-// nothing and says so (500).
+// nothing and says so (503 past the deadline, else 500).
 func (h *handler) commitImport(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxImportCommitBytes)
 	page := newImportPage()
@@ -421,9 +424,18 @@ func (h *handler) commitImport(w http.ResponseWriter, r *http.Request) {
 	case errors.As(err, &fileErr):
 		h.renderImportRejected(w, page, http.StatusUnprocessableEntity, importFileMessage(fileErr.Problem))
 	default:
-		h.logRequestFailure(logMsgImportCommitFailed, err)
-		h.renderImportRejected(w, page, http.StatusInternalServerError, msgImportCommitFailed)
+		failure := h.logRequestFailure(r, logMsgImportCommitFailed, err)
+		h.renderImportRejected(w, page, failure.status, importCommitFailureMessage(failure))
 	}
+}
+
+// importCommitFailureMessage returns the message of a failed commit, which
+// stored nothing.
+func importCommitFailureMessage(failure requestFailure) string {
+	if failure.timedOut() {
+		return msgImportCommitTimedOut
+	}
+	return msgImportCommitFailed
 }
 
 // importDecisionsOf reads the decision on every entry the form names by

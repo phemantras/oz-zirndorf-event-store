@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -394,6 +395,55 @@ func TestListsPastTheRequestDeadlineAreServiceUnavailableAndLoggedAsWarning(t *t
 				t.Errorf("detail = %q, want %q", detail, want)
 			}
 			assertLogEntry(t, &logs, logEntry{Level: "WARN", Msg: "public api request timed out"})
+		})
+	}
+}
+
+// errStatementCanceled is how pgx reports a query the database server
+// cancelled at the request deadline (SQLSTATE 57014). It wraps neither
+// context error, so only the ended request context tells what happened.
+var errStatementCanceled = errors.New("list events: ERROR: canceling statement due to user request (SQLSTATE 57014)")
+
+// TestListFailureAfterTheRequestContextEndedIsClassifiedByTheContext lets
+// the lister fail with an error that wraps no context error while the
+// request context has already ended: the request context decides status
+// and log level.
+func TestListFailureAfterTheRequestContextEndedIsClassifiedByTheContext(t *testing.T) {
+	tests := map[string]struct {
+		endContext func(context.Context) (context.Context, context.CancelFunc)
+		status     int
+		log        logEntry
+	}{
+		"deadline": {
+			endContext: func(ctx context.Context) (context.Context, context.CancelFunc) {
+				return context.WithDeadline(ctx, time.Unix(0, 0))
+			},
+			status: http.StatusServiceUnavailable,
+			log:    logEntry{Level: "WARN", Msg: "public api request timed out"},
+		},
+		"cancelled": {
+			endContext: func(ctx context.Context) (context.Context, context.CancelFunc) {
+				ctx, cancel := context.WithCancel(ctx)
+				cancel()
+				return ctx, cancel
+			},
+			status: http.StatusInternalServerError,
+			log:    logEntry{Level: "INFO", Msg: "public api request cancelled by client"},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var logs bytes.Buffer
+			handler := newEventsHandler(&recordingLister{err: errStatementCanceled}, &logs)
+			req := httptest.NewRequest(http.MethodGet, eventsPath, nil)
+			ctx, cancel := tt.endContext(req.Context())
+			defer cancel()
+			rec := httptest.NewRecorder()
+
+			handler.ServeHTTP(rec, req.WithContext(ctx))
+
+			assertProblem(t, rec, tt.status)
+			assertLogEntry(t, &logs, tt.log)
 		})
 	}
 }

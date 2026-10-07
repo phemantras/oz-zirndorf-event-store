@@ -196,7 +196,7 @@ type locationChoice struct {
 func (h *handler) showEvents(w http.ResponseWriter, r *http.Request) {
 	entries, err := h.events.ListEvents(r.Context(), h.clock)
 	if err != nil {
-		h.failEventRequest(w, err)
+		h.failEventRequest(w, r, err)
 		return
 	}
 	rows := make([]eventRow, 0, len(entries))
@@ -217,7 +217,7 @@ func (h *handler) showEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.failEventRequest(w, err)
+		h.failEventRequest(w, r, err)
 		return
 	}
 	h.renderEventForm(w, r, http.StatusOK, eventForm{
@@ -269,7 +269,7 @@ func (h *handler) saveEvent(w http.ResponseWriter, r *http.Request, id string) {
 	case errors.Is(err, core.ErrNotFound):
 		h.renderEventNotFound(w)
 	default:
-		h.failEventRequest(w, err)
+		h.failEventRequest(w, r, err)
 	}
 }
 
@@ -288,7 +288,7 @@ func (h *handler) deleteEvent(w http.ResponseWriter, r *http.Request) {
 			Message: msgEventGone, BackURL: eventsPath, BackLabel: backToEventList,
 		})
 	default:
-		h.failEventRequest(w, err)
+		h.failEventRequest(w, r, err)
 	}
 }
 
@@ -307,7 +307,7 @@ func (h *handler) removeImportKey(w http.ResponseWriter, r *http.Request) {
 			Message: msgEventGone, BackURL: eventsPath, BackLabel: backToEventList,
 		})
 	default:
-		h.failEventRequest(w, err)
+		h.failEventRequest(w, r, err)
 	}
 }
 
@@ -336,7 +336,7 @@ func (h *handler) renderEventFormAgain(w http.ResponseWriter, r *http.Request, s
 			return
 		}
 		if err != nil {
-			h.failEventRequest(w, fmt.Errorf("load event refused for saving: %w", err))
+			h.failEventRequest(w, r, fmt.Errorf("load event refused for saving: %w", err))
 			return
 		}
 		form.storedTitle, form.importKey = stored.Title, stored.ImportKey
@@ -348,7 +348,7 @@ func (h *handler) renderEventFormAgain(w http.ResponseWriter, r *http.Request, s
 func (h *handler) renderEventForm(w http.ResponseWriter, r *http.Request, status int, form eventForm) {
 	locations, err := h.locations.ListLocations(r.Context())
 	if err != nil {
-		h.failEventRequest(w, err)
+		h.failEventRequest(w, r, err)
 		return
 	}
 	page := eventFormPage{
@@ -424,9 +424,8 @@ func (h *handler) renderEventNotFound(w http.ResponseWriter) {
 	})
 }
 
-func (h *handler) failEventRequest(w http.ResponseWriter, err error) {
-	h.logRequestFailure(logMsgEventsFailed, err)
-	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+func (h *handler) failEventRequest(w http.ResponseWriter, r *http.Request, err error) {
+	h.failRequest(w, r, err, failedArea{logMsg: logMsgEventsFailed, backURL: eventsPath, backLabel: backToEventList})
 }
 
 // eventInputFromForm reads the event fields exactly as entered, the
