@@ -134,7 +134,7 @@ action_items:
     action: "B1 Fix-PR Epic-2-Kleinigkeiten: context.Canceled in Public API nicht
       als Error loggen, /v1/docs/ umleiten, Selbsttest für check-coverage.sh"
     owner: "Andreas / Dev-Agent"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-2-retro-2026-10-05.md"
   - id: "epic-2-retro-item-9-b2-epic-2-auf-done-setzen-deferred-eintr"
     epic: 2
