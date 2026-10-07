@@ -75,6 +75,7 @@ func run(ctx context.Context, logger *slog.Logger, getenv func(string) string) e
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
+	checkDrainingTime(logger, getenv)
 
 	pool, err := postgres.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
