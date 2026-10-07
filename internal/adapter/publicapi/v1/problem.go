@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -26,8 +27,9 @@ const (
 
 // Log messages of the public API.
 const (
-	logMsgRequestFailed = "public api request failed"
-	logMsgWriteFailed   = "public api response could not be written"
+	logMsgRequestFailed    = "public api request failed"
+	logMsgRequestCancelled = "public api request cancelled by client"
+	logMsgWriteFailed      = "public api response could not be written"
 )
 
 // responder writes the bodies of the public API, the spec and RFC 9457
@@ -88,8 +90,14 @@ func problemOf(status int, detail string) Problem {
 }
 
 // internalServerError logs err and answers without revealing it. The
-// generated strict server calls it when a request or response fails.
+// generated strict server calls it when a request or response fails. A
+// request the client cancelled is no fault of the server, so it is logged
+// as Info, not as Error.
 func (rp responder) internalServerError(w http.ResponseWriter, _ *http.Request, err error) {
-	rp.logger.Error(logMsgRequestFailed, "error", err)
+	if errors.Is(err, context.Canceled) {
+		rp.logger.Info(logMsgRequestCancelled, "error", err)
+	} else {
+		rp.logger.Error(logMsgRequestFailed, "error", err)
+	}
 	rp.writeProblem(w, http.StatusInternalServerError, detailInternalServerError)
 }

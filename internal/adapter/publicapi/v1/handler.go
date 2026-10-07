@@ -24,6 +24,10 @@ const (
 	// page loads the Redoc script from docsScriptPath.
 	docsPath       = basePath + "/docs"
 	docsScriptPath = docsPath + "/redoc.standalone.js"
+	// docsSlashPath matches only the docs path with a trailing slash, which
+	// is redirected to docsPath, since the page loads its script and the
+	// spec relative to docsPath.
+	docsSlashPath = docsPath + "/{$}"
 	// docsPageFile and docsScriptFile are the files behind the docs paths
 	// in staticFiles.
 	docsPageFile   = "static/docs.html"
@@ -84,9 +88,15 @@ func newHandler(cfg Config, strictServer StrictServerInterface) http.Handler {
 	mux.HandleFunc(http.MethodGet+" "+specPath, respond.serveEmbedded(apispec.OpenAPISpec, specContentType))
 	mux.HandleFunc(http.MethodGet+" "+importSchemaPath, respond.serveEmbedded(apispec.ImportSchemaV1, importSchemaContentType))
 	mux.HandleFunc(http.MethodGet+" "+docsPath, respond.serveStaticFile(docsPageFile, htmlContentType))
+	mux.HandleFunc(http.MethodGet+" "+docsSlashPath, redirectToDocs)
 	mux.HandleFunc(http.MethodGet+" "+docsScriptPath, respond.serveStaticFile(docsScriptFile, javaScriptContentType))
 	mux.HandleFunc(basePath+"/", respond.notFound)
 	return readOnlyCORS(mux, respond)
+}
+
+// redirectToDocs sends the client permanently to the docs page.
+func redirectToDocs(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, docsPath, http.StatusMovedPermanently)
 }
 
 // serveEmbedded returns a handler that serves body with the given

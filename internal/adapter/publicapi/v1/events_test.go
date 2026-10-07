@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -341,6 +342,39 @@ func TestListEventsFailureIsAnInternalServerErrorAndLogged(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), errAnswerFailed.Error()) {
 		t.Errorf("log %q does not contain the error", logs.String())
+	}
+	assertLogEntry(t, &logs, logEntry{Level: "ERROR", Msg: "public api request failed"})
+}
+
+// logEntry is the level and message of a JSON log line.
+type logEntry struct {
+	Level string `json:"level"`
+	Msg   string `json:"msg"`
+}
+
+// assertLogEntry checks that logs holds one JSON entry with want's level
+// and message.
+func assertLogEntry(t *testing.T, logs *bytes.Buffer, want logEntry) {
+	t.Helper()
+	var entry logEntry
+	if err := json.Unmarshal(logs.Bytes(), &entry); err != nil {
+		t.Fatalf("decode log %q: %v", logs.String(), err)
+	}
+	if entry != want {
+		t.Errorf("log entry = %+v, want %+v", entry, want)
+	}
+}
+
+func TestListEventsCancelledByTheClientIsLoggedAsInfo(t *testing.T) {
+	var logs bytes.Buffer
+	cancelled := fmt.Errorf("list events: %w", context.Canceled)
+	handler := newEventsHandler(&recordingLister{err: cancelled}, &logs)
+
+	assertProblem(t, serve(handler, http.MethodGet, eventsPath), http.StatusInternalServerError)
+
+	assertLogEntry(t, &logs, logEntry{Level: "INFO", Msg: "public api request cancelled by client"})
+	if strings.Contains(logs.String(), `"level":"ERROR"`) {
+		t.Errorf("log %q reports a cancelled request as an error", logs.String())
 	}
 }
 

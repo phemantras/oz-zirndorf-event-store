@@ -3,6 +3,11 @@
 # be fully tested reach 100 % statement coverage. A package without
 # statements (only a package comment) counts as fully covered. Generated
 # files (header "// Code generated ... DO NOT EDIT.") do not count.
+#
+# Usage: check-coverage.sh [package pattern ...]
+# Without arguments the gate checks the required packages, as the CI does;
+# with arguments it checks the given packages instead, which the self-test
+# in scripts/check_coverage_test.go uses on a fixture module.
 set -euo pipefail
 
 readonly REQUIRED_PACKAGES=(
@@ -20,7 +25,13 @@ profile="$(mktemp)"
 generated="$(mktemp)"
 trap 'rm -f "$profile" "$generated"' EXIT
 
-go test -covermode=set -coverprofile="$profile" "${REQUIRED_PACKAGES[@]}"
+if (($# > 0)); then
+  packages=("$@")
+else
+  packages=("${REQUIRED_PACKAGES[@]}")
+fi
+
+go test -covermode=set -coverprofile="$profile" "${packages[@]}"
 
 # Profile paths start with the module path; the file lies below the module
 # root at the rest of the path.
