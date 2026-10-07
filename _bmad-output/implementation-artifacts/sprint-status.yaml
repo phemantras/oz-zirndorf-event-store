@@ -181,7 +181,7 @@ action_items:
       nahe 2 MiB mit 150 Entscheidungen ohne 413, Abnahmetest 3.5 mit RecomputeDerived/RecomputeNameKeys
       nach dem Import"
     owner: "Andreas / Dev-Agent"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
   - id: "epic-3-retro-item-16-c3-deferred-work-md-pflegen-browser-test"
     epic: 3
