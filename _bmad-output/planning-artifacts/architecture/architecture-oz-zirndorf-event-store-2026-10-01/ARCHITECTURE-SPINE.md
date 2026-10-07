@@ -259,7 +259,7 @@ flowchart LR
 ```
 
 - **Railway:** ein Projekt mit der Umgebung `production` und zwei Services: der App (genau eine Replika, AD-12 und AD-16 halten Zustand im Speicher) und PostgreSQL 18. Die Datenbank ist nur über das private Netz erreichbar.
-- **Deploy:** „Wait for CI“ ist aktiviert, Railway deployt also erst, wenn die GitHub Actions grün sind. In `railway.json` sind `healthcheckPath: /healthz` und das Dockerfile eingetragen.
+- **Deploy:** „Wait for CI“ ist aktiviert, Railway deployt also erst, wenn die GitHub Actions grün sind. Railway baut das `Dockerfile`. Die Deploy-Einstellungen stehen im Railway-Dashboard am App-Service, nicht im Repository: Health Check `/healthz`, Restart Policy „On Failure“, genau eine Replika und die Service-Variable `RAILWAY_DEPLOYMENT_DRAINING_SECONDS=30`. Die Variable muss über `shutdownTimeout` (25 s) liegen, sonst killt Railway das alte Deployment, bevor ein Request an seiner Deadline antworten kann. Die App warnt beim Start, wenn sie fehlt oder zu klein ist. Die README führt die Einstellungen als Checkliste. Config as Code (`railway.json`) liest Railway ab dem 2026-12-01 nicht mehr; Infrastructure as Code (`.railway/railway.ts`) ist für einen einzelnen Service zu schwergewichtig.
 - **Health Check:** `GET /healthz` prüft, ob die Datenbank erreichbar ist. Migrationen und die Neuberechnung beim Start müssen innerhalb des Railway-Zeitlimits fertig sein, bei einigen hundert Events ist das unkritisch.
 - **Lokal:** PostgreSQL 18 per Docker Compose, das Volume liegt unter `/var/lib/postgresql`. Migrationen und Umgebungsvariablen sind dieselben wie in Produktion.
 
@@ -276,7 +276,6 @@ internal/
     postgres/             # queries/, migrations/, sqlc-Code
     cleanup/              # Bereinigungsjob
 Dockerfile
-railway.json
 compose.yaml              # lokales PostgreSQL 18
 .github/workflows/ci.yaml
 ```
