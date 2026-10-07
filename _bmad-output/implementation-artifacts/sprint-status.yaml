@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 10-07-2026 09:06
+last_updated: 10-07-2026 09:09
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -188,7 +188,7 @@ action_items:
     action: "C3 deferred-work.md pflegen: Browser-Tests (target Epic 3) neu zuordnen
       oder schließen, Eintrag aus Spec 2.8 mit status und target"
     owner: "Andreas"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
   - id: "epic-3-retro-item-17-c4-bmad-correct-course-story-für-stale-b"
     epic: 3
