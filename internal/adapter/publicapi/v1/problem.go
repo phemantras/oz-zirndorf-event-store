@@ -32,6 +32,9 @@ const (
 	logMsgRequestCancelled = "public api request cancelled by client"
 	logMsgRequestTimedOut  = "public api request timed out"
 	logMsgWriteFailed      = "public api response could not be written"
+	// logMsgCompressionFailed is logged when the handler is built; the
+	// file is then served uncompressed only.
+	logMsgCompressionFailed = "public api static file could not be compressed"
 )
 
 // responder writes the bodies of the public API, the spec and RFC 9457
@@ -41,9 +44,10 @@ type responder struct {
 }
 
 // writeProblem answers with status and an English detail as
-// application/problem+json.
+// application/problem+json. No cache may store an error (AD-18).
 func (rp responder) writeProblem(w http.ResponseWriter, status int, detail string) {
 	w.Header().Set(headerContentType, problemContentType)
+	w.Header().Set(headerCacheControl, cacheControlNoStore)
 	w.WriteHeader(status)
 	// Encoding a Problem cannot fail, so an error is a failed write.
 	err := json.NewEncoder(w).Encode(problemOf(status, detail))

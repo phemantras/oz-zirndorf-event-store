@@ -51,6 +51,20 @@ const (
 	anyOrigin              = "*"
 	allowedMethods         = "GET, HEAD, OPTIONS"
 	preflightMaxAgeSeconds = "86400"
+	headerCacheControl     = "Cache-Control"
+	headerContentEncoding  = "Content-Encoding"
+	headerAcceptEncoding   = "Accept-Encoding"
+)
+
+// Cache-Control values of AD-18. Lists change with time, so they are kept
+// shortest; the spec, the import schema and the docs page change only with
+// a deployment; the Redoc script only with a Redoc update. No cache may
+// store an error.
+const (
+	cacheControlLists      = "public, max-age=60"
+	cacheControlDocuments  = "public, max-age=300"
+	cacheControlDocsScript = "public, max-age=86400"
+	cacheControlNoStore    = "no-store"
 )
 
 // Config holds what the public API needs from its surroundings.
@@ -83,13 +97,18 @@ func newHandler(cfg Config, strictServer StrictServerInterface) http.Handler {
 	HandlerWithOptions(strict, StdHTTPServerOptions{
 		BaseURL:          basePath,
 		BaseRouter:       mux,
+		Middlewares:      []MiddlewareFunc{cacheFor(cacheControlLists)},
 		ErrorHandlerFunc: respond.invalidParameter,
 	})
-	mux.HandleFunc(http.MethodGet+" "+specPath, respond.serveEmbedded(apispec.OpenAPISpec, specContentType))
-	mux.HandleFunc(http.MethodGet+" "+importSchemaPath, respond.serveEmbedded(apispec.ImportSchemaV1, importSchemaContentType))
-	mux.HandleFunc(http.MethodGet+" "+docsPath, respond.serveStaticFile(docsPageFile, htmlContentType))
+	mux.HandleFunc(http.MethodGet+" "+specPath, respond.serveEmbedded(apispec.OpenAPISpec,
+		staticAnswer{contentType: specContentType, cacheControl: cacheControlDocuments, compress: true}))
+	mux.HandleFunc(http.MethodGet+" "+importSchemaPath, respond.serveEmbedded(apispec.ImportSchemaV1,
+		staticAnswer{contentType: importSchemaContentType, cacheControl: cacheControlDocuments, compress: true}))
+	mux.HandleFunc(http.MethodGet+" "+docsPath, respond.serveStaticFile(docsPageFile,
+		staticAnswer{contentType: htmlContentType, cacheControl: cacheControlDocuments}))
 	mux.HandleFunc(http.MethodGet+" "+docsSlashPath, redirectToDocs)
-	mux.HandleFunc(http.MethodGet+" "+docsScriptPath, respond.serveStaticFile(docsScriptFile, javaScriptContentType))
+	mux.HandleFunc(http.MethodGet+" "+docsScriptPath, respond.serveStaticFile(docsScriptFile,
+		staticAnswer{contentType: javaScriptContentType, cacheControl: cacheControlDocsScript, compress: true}))
 	mux.HandleFunc(basePath+"/", respond.notFound)
 	return readOnlyCORS(mux, respond)
 }
@@ -99,28 +118,69 @@ func redirectToDocs(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, docsPath, http.StatusMovedPermanently)
 }
 
-// serveEmbedded returns a handler that serves body with the given
-// Content-Type.
-func (rp responder) serveEmbedded(body []byte, contentType string) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set(headerContentType, contentType)
+// staticAnswer says how a static file is served.
+type staticAnswer struct {
+	contentType  string
+	cacheControl string
+	// compress serves the file gzip-compressed to clients that accept it.
+	compress bool
+}
+
+// serveEmbedded returns a handler that serves body as answer says. Like
+// every static file, it answers every GET with the whole body, so no range
+// or precondition answer bypasses Problem Details.
+func (rp responder) serveEmbedded(body []byte, answer staticAnswer) http.HandlerFunc {
+	return rp.serveBodyCompressedAt(body, answer, gzipLevel)
+}
+
+// serveStaticFile returns a handler that serves the embedded file name as
+// answer says. The file is read once here; if it is missing, the handler
+// answers every request with 500 and logs the file.
+func (rp responder) serveStaticFile(name string, answer staticAnswer) http.HandlerFunc {
+	body, err := staticFiles.ReadFile(name)
+	if err != nil {
+		readErr := fmt.Errorf("read embedded file %s: %w", name, err)
+		return func(w http.ResponseWriter, r *http.Request) {
+			rp.answerFailedRequest(w, r, readErr)
+		}
+	}
+	return rp.serveEmbedded(body, answer)
+}
+
+// serveBodyCompressedAt is serveEmbedded with the gzip level replaceable
+// for tests. It compresses body once, not per request; if that fails, it
+// warns and serves body uncompressed only.
+func (rp responder) serveBodyCompressedAt(body []byte, answer staticAnswer, level int) http.HandlerFunc {
+	var compressed []byte
+	if answer.compress {
+		compressed = rp.gzipOrWarn(body, level)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		header := w.Header()
+		header.Set(headerContentType, answer.contentType)
+		header.Set(headerCacheControl, answer.cacheControl)
+		if answer.compress {
+			// Caches must keep the compressed and the plain answer apart.
+			header.Add(headerVary, headerAcceptEncoding)
+		}
+		if compressed != nil && acceptsGzip(r) {
+			header.Set(headerContentEncoding, encodingGzip)
+			rp.writeBody(w, compressed)
+			return
+		}
 		rp.writeBody(w, body)
 	}
 }
 
-// serveStaticFile returns a handler that serves the embedded file name
-// with the given Content-Type. Like the spec, it answers every GET with the
-// whole file, so no range or precondition answer bypasses Problem Details.
-func (rp responder) serveStaticFile(name, contentType string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		body, err := staticFiles.ReadFile(name)
-		if err != nil {
-			rp.answerFailedRequest(w, r, fmt.Errorf("read embedded file %s: %w", name, err))
-			return
-		}
-		w.Header().Set(headerContentType, contentType)
-		rp.writeBody(w, body)
+// gzipOrWarn returns body compressed at level, or nil after a warning if
+// that fails.
+func (rp responder) gzipOrWarn(body []byte, level int) []byte {
+	compressed, err := gzipOf(body, level)
+	if err != nil {
+		rp.logger.Warn(logMsgCompressionFailed, "error", err)
+		return nil
 	}
+	return compressed
 }
 
 // readOnlyCORS allows every origin on every answer, answers preflight
