@@ -41,6 +41,16 @@ func assertAllowsAnyOrigin(t *testing.T, header http.Header) {
 	}
 }
 
+// assertCacheControl checks that an answer carries exactly one
+// Cache-Control with value want; want "" means the header must be absent.
+func assertCacheControl(t *testing.T, header http.Header, want string) {
+	t.Helper()
+	got := header.Values("Cache-Control")
+	if want == "" && len(got) != 0 || want != "" && !slices.Equal(got, []string{want}) {
+		t.Errorf("Cache-Control = %q, want %q", got, want)
+	}
+}
+
 // assertProblem checks an RFC 9457 response with the given status and
 // returns its detail.
 func assertProblem(t *testing.T, rec *httptest.ResponseRecorder, status int) string {
@@ -52,6 +62,7 @@ func assertProblem(t *testing.T, rec *httptest.ResponseRecorder, status int) str
 		t.Errorf("Content-Type = %q, want application/problem+json", got)
 	}
 	assertAllowsAnyOrigin(t, rec.Header())
+	assertCacheControl(t, rec.Header(), "no-store")
 	var problem Problem
 	if err := json.Unmarshal(rec.Body.Bytes(), &problem); err != nil {
 		t.Fatalf("decode problem %q: %v", rec.Body.String(), err)
@@ -201,14 +212,20 @@ func TestMissingStaticFileIsAnInternalServerErrorAndLogged(t *testing.T) {
 	var logs bytes.Buffer
 	respond := responder{logger: slog.New(slog.NewJSONHandler(&logs, nil))}
 
+	answer := staticAnswer{contentType: htmlContentType, cacheControl: cacheControlDocuments}
+	serveMissing := respond.serveStaticFile("static/missing.html", answer)
 	rec := httptest.NewRecorder()
-	respond.serveStaticFile("static/missing.html", htmlContentType)(rec, httptest.NewRequest(http.MethodGet, docsPath, nil))
+	serveMissing(rec, httptest.NewRequest(http.MethodGet, docsPath, nil))
 
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
 	if got := rec.Header().Get("Content-Type"); got != "application/problem+json" {
 		t.Errorf("Content-Type = %q, want application/problem+json", got)
+	}
+	assertCacheControl(t, rec.Header(), "no-store")
+	if !strings.Contains(logs.String(), `"level":"ERROR"`) {
+		t.Errorf("log %q is not an error", logs.String())
 	}
 	if !strings.Contains(logs.String(), "missing.html") {
 		t.Errorf("log %q does not name the missing file", logs.String())
@@ -299,6 +316,9 @@ func TestPreflightIsAnsweredOnEveryPath(t *testing.T) {
 				t.Errorf("OPTIONS %s %s = %q, want %q", path, name, got, want)
 			}
 		}
+		t.Run("OPTIONS "+path, func(t *testing.T) {
+			assertCacheControl(t, rec.Header(), "")
+		})
 		if !slices.Contains(rec.Header().Values("Vary"), "Access-Control-Request-Headers") {
 			t.Errorf("OPTIONS %s Vary = %q, want it to contain Access-Control-Request-Headers", path, rec.Header().Values("Vary"))
 		}
@@ -403,13 +423,41 @@ func TestFailedWritesAreLogged(t *testing.T) {
 	}
 }
 
-func TestEveryAnswerAllowsAnyOrigin(t *testing.T) {
+// readCacheControls maps each path to the Cache-Control of AD-18 that a
+// GET or HEAD gets there; "" means none, as on the redirect.
+var readCacheControls = map[string]string{
+	eventTypesPath:   "public, max-age=60",
+	specPath:         "public, max-age=300",
+	importSchemaPath: "public, max-age=300",
+	docsPath:         "public, max-age=300",
+	"/v1/docs/":      "",
+	docsScriptPath:   "public, max-age=86400",
+	unknownPath:      "no-store",
+}
+
+// wantCacheControl returns the Cache-Control of AD-18 for method on a path
+// whose read answer carries readCacheControl: a preflight gets none, a
+// rejected write method no-store.
+func wantCacheControl(method, readCacheControl string) string {
+	switch method {
+	case http.MethodGet, http.MethodHead:
+		return readCacheControl
+	case http.MethodOptions:
+		return ""
+	default:
+		return "no-store"
+	}
+}
+
+func TestEveryAnswerAllowsAnyOriginAndCarriesItsCacheControl(t *testing.T) {
 	for _, method := range slices.Concat([]string{http.MethodGet, http.MethodHead, http.MethodOptions}, writeMethods) {
-		for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, "/v1/docs/", docsScriptPath, unknownPath} {
-			rec := serve(newTestHandler(), method, path)
-			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
-				t.Errorf("%s %s Access-Control-Allow-Origin = %q, want *", method, path, got)
-			}
+		for path, readCacheControl := range readCacheControls {
+			t.Run(method+" "+path, func(t *testing.T) {
+				rec := serve(newTestHandler(), method, path)
+
+				assertAllowsAnyOrigin(t, rec.Header())
+				assertCacheControl(t, rec.Header(), wantCacheControl(method, readCacheControl))
+			})
 		}
 	}
 }

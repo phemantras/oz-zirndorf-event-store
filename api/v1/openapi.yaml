@@ -60,6 +60,14 @@ info:
     - **KON-8 List envelope.** Lists are delivered in an envelope
       `{ "data": [ … ] }`, never as a bare array, so metadata can be added
       later without a breaking change.
+    - **KON-9 Caching.** Lists may be cached for up to 60 seconds
+      (`Cache-Control: public, max-age=60`). An event may therefore still
+      appear in `/v1/events` up to one minute after its end; `effectiveEnd`
+      remains authoritative. The spec, the import schema and the docs
+      page may be cached for 5 minutes, the Redoc script for a day. Errors
+      are never cached (`no-store`). The spec, the import schema and the
+      Redoc script are served gzip-compressed to clients that send
+      `Accept-Encoding: gzip`.
 
     ## Time model
 
