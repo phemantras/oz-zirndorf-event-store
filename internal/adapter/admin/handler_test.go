@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -28,6 +29,9 @@ const (
 	wrongPassword = "geheim123"
 	// testRemoteAddress is what Railway's edge looks like from the app.
 	testRemoteAddress = "100.64.0.2:41000"
+	// testEdgeIP is the Railway edge node that follows the client IP in
+	// X-Forwarded-For.
+	testEdgeIP = "192.0.2.254"
 )
 
 // testServer bundles a handler under test with its observable side effects.
@@ -93,7 +97,7 @@ func loginRequest(user, password string) *http.Request {
 	form := url.Values{loginFieldUser: {user}, loginFieldPassword: {password}}
 	req := httptest.NewRequest(http.MethodPost, loginPath, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("X-Forwarded-For", testIP+", 198.51.100.4")
+	req.Header.Set("X-Forwarded-For", testIP+", "+testEdgeIP)
 	req.RemoteAddr = testRemoteAddress
 	return req
 }
@@ -239,44 +243,329 @@ func TestLoginLockoutIsKeyedOnForwardedClientIP(t *testing.T) {
 	}
 
 	other := loginRequest(testUser, testPassword)
-	other.Header.Set("X-Forwarded-For", otherTestIP+", 198.51.100.4")
+	other.Header.Set("X-Forwarded-For", otherTestIP+", "+testEdgeIP)
 
 	assertRedirect(t, ts.do(other), homePath)
 }
 
-func TestLoginRejectsSixthAttemptWhileEarlierAttemptsAreInFlight(t *testing.T) {
+func TestLoginCountsAttemptsAsFailuresWhileInFlight(t *testing.T) {
 	ts := newTestServer(t)
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	var calls atomic.Int32
-	ts.handler.comparePassword = func(_, _ []byte) error {
-		// Only the first attempts block, so a lockout bypass fails the test
-		// instead of hanging it.
-		if calls.Add(1) <= maxFailedLogins {
-			entered <- struct{}{}
-			<-release
-		}
-		return bcrypt.ErrMismatchedHashAndPassword
+	for range maxFailedLogins - maxConcurrentPasswordChecks {
+		ts.do(loginRequest(testUser, wrongPassword))
 	}
-	done := make(chan struct{})
-	for range maxFailedLogins {
-		go func() {
-			ts.do(loginRequest(testUser, wrongPassword))
-			done <- struct{}{}
-		}()
-	}
-	for range maxFailedLogins {
-		<-entered
-	}
+	held := holdPasswordChecks(ts, maxConcurrentPasswordChecks, func() *http.Request {
+		return loginRequest(testUser, wrongPassword)
+	})
 
+	// Both slots are taken now, so a further attempt would get 503 before the
+	// lockout check; the map shows that the running attempts already count.
+	countInFlight := ts.lockoutFailures(testIP)
+	held.release()
 	rec := ts.do(loginRequest(testUser, testPassword))
 
-	close(release)
-	for range maxFailedLogins {
-		<-done
+	if countInFlight != maxFailedLogins {
+		t.Errorf("failure count while in flight = %d, want %d", countInFlight, maxFailedLogins)
 	}
 	if rec.Code != http.StatusTooManyRequests {
 		t.Errorf("status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+	}
+}
+
+// lockoutFailures returns the failure count stored under key.
+func (ts *testServer) lockoutFailures(key string) int {
+	ts.handler.lockout.mu.Lock()
+	defer ts.handler.lockout.mu.Unlock()
+	return ts.handler.lockout.failures[key].count
+}
+
+// hasLockoutEntry reports whether the lockout stores a record under key.
+func (ts *testServer) hasLockoutEntry(key string) bool {
+	ts.handler.lockout.mu.Lock()
+	defer ts.handler.lockout.mu.Unlock()
+	_, ok := ts.handler.lockout.failures[key]
+	return ok
+}
+
+// heldLogins are logins whose password comparisons block until release.
+type heldLogins struct {
+	calls   *atomic.Int32
+	release func()
+}
+
+// holdPasswordChecks starts count logins from newRequest and returns once
+// exactly their count password comparisons block. Comparisons after those
+// fail at once; every comparison is counted. release lets the held
+// comparisons finish and waits for their logins.
+func holdPasswordChecks(ts *testServer, count int, newRequest func() *http.Request) *heldLogins {
+	calls := &atomic.Int32{}
+	entered := make(chan struct{})
+	unblock := make(chan struct{})
+	ts.handler.comparePassword = func(_, _ []byte) error {
+		// Only the held calls block, so an unexpected extra check fails the
+		// test instead of hanging it.
+		if int(calls.Add(1)) <= count {
+			entered <- struct{}{}
+			<-unblock
+		}
+		return bcrypt.ErrMismatchedHashAndPassword
+	}
+	done := make(chan struct{}, count)
+	for range count {
+		go func() {
+			ts.do(newRequest())
+			done <- struct{}{}
+		}()
+	}
+	for range count {
+		<-entered
+	}
+	return &heldLogins{calls: calls, release: func() {
+		close(unblock)
+		for range count {
+			<-done
+		}
+	}}
+}
+
+// countPasswordChecks replaces the password comparison of ts with bcrypt
+// and counts its calls safely across goroutines.
+func countPasswordChecks(ts *testServer) *atomic.Int32 {
+	calls := &atomic.Int32{}
+	ts.handler.comparePassword = func(hash, password []byte) error {
+		calls.Add(1)
+		return bcrypt.CompareHashAndPassword(hash, password)
+	}
+	return calls
+}
+
+func loginRequestFrom(ip, user, password string) *http.Request {
+	req := loginRequest(user, password)
+	req.Header.Set("X-Forwarded-For", ip+", "+testEdgeIP)
+	return req
+}
+
+// stalledBody is a login form body whose first read signals on reading and
+// then blocks until resume is closed, like a client that sends slowly.
+type stalledBody struct {
+	reading chan<- struct{}
+	resume  <-chan struct{}
+	form    *strings.Reader
+	started bool
+}
+
+func (b *stalledBody) Read(p []byte) (int, error) {
+	if !b.started {
+		b.started = true
+		b.reading <- struct{}{}
+		<-b.resume
+	}
+	return b.form.Read(p)
+}
+
+func TestLoginRejectsAttemptBeyondConcurrentPasswordChecksWithoutBcrypt(t *testing.T) {
+	ts := newTestServer(t)
+	held := holdPasswordChecks(ts, maxConcurrentPasswordChecks, func() *http.Request {
+		return loginRequest(testUser, wrongPassword)
+	})
+
+	rec := ts.do(loginRequestFrom(otherTestIP, testUser, testPassword))
+
+	held.release()
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, msgTooManyLogins) {
+		t.Errorf("body does not contain %q", msgTooManyLogins)
+	}
+	if !strings.Contains(body, `value="`+testUser+`"`) {
+		t.Errorf("body does not keep the user name %q", testUser)
+	}
+	if strings.Contains(body, msgLockedOut) {
+		t.Errorf("body shows the lockout message %q", msgLockedOut)
+	}
+	if got := held.calls.Load(); got != maxConcurrentPasswordChecks {
+		t.Errorf("password checks = %d, want %d", got, maxConcurrentPasswordChecks)
+	}
+	if ts.hasLockoutEntry(otherTestIP) {
+		t.Error("rejected attempt created a lockout entry")
+	}
+	if sessionCookieFrom(t, rec) != nil {
+		t.Error("rejected login set a session cookie")
+	}
+}
+
+func TestLoginRejectedForBusyPasswordChecksDoesNotCountAsFailure(t *testing.T) {
+	ts := newTestServer(t)
+	held := holdPasswordChecks(ts, maxConcurrentPasswordChecks, func() *http.Request {
+		return loginRequest(testUser, wrongPassword)
+	})
+
+	ts.do(loginRequest(testUser, wrongPassword))
+
+	held.release()
+	if got := ts.lockoutFailures(testIP); got != maxConcurrentPasswordChecks {
+		t.Errorf("failure count = %d, want %d", got, maxConcurrentPasswordChecks)
+	}
+}
+
+func TestLoginAnswersLockedKeyWithBusyStatusWhileSlotsAreTaken(t *testing.T) {
+	ts := newTestServer(t)
+	for range maxFailedLogins {
+		ts.do(loginRequest(testUser, wrongPassword))
+	}
+	held := holdPasswordChecks(ts, maxConcurrentPasswordChecks, func() *http.Request {
+		return loginRequestFrom(otherTestIP, testUser, wrongPassword)
+	})
+
+	rec := ts.do(loginRequest(testUser, testPassword))
+
+	held.release()
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	if got := ts.lockoutFailures(testIP); got != maxFailedLogins {
+		t.Errorf("failure count = %d, want %d", got, maxFailedLogins)
+	}
+}
+
+func TestLoginChecksPasswordAgainOnceSlotsAreFree(t *testing.T) {
+	ts := newTestServer(t)
+	held := holdPasswordChecks(ts, maxConcurrentPasswordChecks, func() *http.Request {
+		return loginRequest(testUser, wrongPassword)
+	})
+	held.release()
+
+	rec := ts.do(loginRequestFrom(otherTestIP, testUser, wrongPassword))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := held.calls.Load(); got != maxConcurrentPasswordChecks+1 {
+		t.Errorf("password checks = %d, want %d", got, maxConcurrentPasswordChecks+1)
+	}
+}
+
+func TestLoginFreesSlotsAfterLockedAndSuccessfulAttempts(t *testing.T) {
+	ts := newTestServer(t)
+	for range maxFailedLogins {
+		ts.do(loginRequest(testUser, wrongPassword))
+	}
+	for range maxConcurrentPasswordChecks {
+		if rec := ts.do(loginRequest(testUser, testPassword)); rec.Code != http.StatusTooManyRequests {
+			t.Fatalf("locked attempt: status = %d, want %d", rec.Code, http.StatusTooManyRequests)
+		}
+	}
+	for range maxConcurrentPasswordChecks {
+		assertRedirect(t, ts.do(loginRequestFrom(otherTestIP, testUser, testPassword)), homePath)
+	}
+	calls := countPasswordChecks(ts)
+
+	rec := ts.do(loginRequestFrom(otherTestIP, testUser, wrongPassword))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("password checks = %d, want 1", got)
+	}
+}
+
+func TestLoginReadsFormBeforeTakingPasswordCheckSlot(t *testing.T) {
+	ts := newTestServer(t)
+	calls := countPasswordChecks(ts)
+	reading := make(chan struct{})
+	resume := make(chan struct{})
+	done := make(chan struct{}, maxConcurrentPasswordChecks)
+	form := url.Values{loginFieldUser: {testUser}, loginFieldPassword: {wrongPassword}}.Encode()
+	for range maxConcurrentPasswordChecks {
+		req := loginRequest(testUser, wrongPassword)
+		req.Body = io.NopCloser(&stalledBody{reading: reading, resume: resume, form: strings.NewReader(form)})
+		go func() {
+			ts.do(req)
+			done <- struct{}{}
+		}()
+	}
+	for range maxConcurrentPasswordChecks {
+		<-reading
+	}
+
+	rec := ts.do(loginRequestFrom(otherTestIP, testUser, wrongPassword))
+
+	close(resume)
+	for range maxConcurrentPasswordChecks {
+		<-done
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if got := calls.Load(); got != maxConcurrentPasswordChecks+1 {
+		t.Errorf("password checks = %d, want %d", got, maxConcurrentPasswordChecks+1)
+	}
+}
+
+func TestLoginRejectedForBusyPasswordChecksLogsWarningWithoutSecrets(t *testing.T) {
+	ts := newTestServer(t)
+	held := holdPasswordChecks(ts, maxConcurrentPasswordChecks, func() *http.Request {
+		return loginRequest("mallory", wrongPassword)
+	})
+
+	ts.do(loginRequestFrom(otherTestIP, "trudy", wrongPassword))
+
+	held.release()
+	assertLoggedAt(t, ts, slog.LevelWarn, logMsgLoginBusy)
+	logs := ts.logs.String()
+	for _, secret := range []string{wrongPassword, "mallory", "trudy", testIP, otherTestIP, testEdgeIP, "100.64.0.2"} {
+		if strings.Contains(logs, secret) {
+			t.Errorf("log contains %q", secret)
+		}
+	}
+}
+
+func TestLoginLockoutCoversWholeIPv6Network(t *testing.T) {
+	ts := newTestServer(t)
+	for i := range maxFailedLogins {
+		ts.do(loginRequestFrom(fmt.Sprintf("2001:db8:1:2::%d", i+1), testUser, wrongPassword))
+	}
+
+	sameNetwork := ts.do(loginRequestFrom("2001:db8:1:2::ffff", testUser, testPassword))
+	otherNetwork := ts.do(loginRequestFrom("2001:db8:1:3::1", testUser, testPassword))
+
+	if sameNetwork.Code != http.StatusTooManyRequests {
+		t.Errorf("same /64: status = %d, want %d", sameNetwork.Code, http.StatusTooManyRequests)
+	}
+	assertRedirect(t, otherNetwork, homePath)
+}
+
+func TestSuccessfulLoginResetsFailureCountOfWholeIPv6Network(t *testing.T) {
+	ts := newTestServer(t)
+	for range maxFailedLogins - 1 {
+		ts.do(loginRequestFrom("2001:db8:1:2::1", testUser, wrongPassword))
+	}
+
+	assertRedirect(t, ts.do(loginRequestFrom("2001:db8:1:2::2", testUser, testPassword)), homePath)
+
+	if ts.hasLockoutEntry("2001:db8:1:2::/64") {
+		t.Error("successful login kept the failures of its /64 network")
+	}
+}
+
+func TestLoginLockoutKeepsIPv4AddressesApart(t *testing.T) {
+	ts := newTestServer(t)
+	for range maxFailedLogins {
+		ts.do(loginRequestFrom("203.0.113.7", testUser, wrongPassword))
+	}
+
+	assertRedirect(t, ts.do(loginRequestFrom("203.0.113.8", testUser, testPassword)), homePath)
+}
+
+func TestLoginLockoutCountsInvalidClientIPUnchanged(t *testing.T) {
+	ts := newTestServer(t)
+
+	ts.do(loginRequestFrom("unknown", testUser, wrongPassword))
+
+	if got := ts.lockoutFailures("unknown"); got != 1 {
+		t.Errorf("failure count for %q = %d, want 1", "unknown", got)
 	}
 }
 

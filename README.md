@@ -238,7 +238,7 @@ Die Bereinigung markiert vergangene Events (`effective_end` erreicht) in der Spa
 curl -i localhost:8080/healthz   # 200, solange die Datenbank erreichbar ist, sonst 503
 ```
 
-Die Admin-Oberfläche liegt unter <http://localhost:8080/admin/>. Ohne Session leitet sie zur Anmeldung um. Das Session-Cookie ist `Secure`; Chrome und Firefox akzeptieren es auf `localhost` trotzdem über HTTP, andere Browser (z. B. Safari) unter Umständen nicht. Nach 5 Fehlversuchen von derselben IP ist die Anmeldung 15 Minuten gesperrt (im Speicher, ein Neustart hebt die Sperre auf).
+Die Admin-Oberfläche liegt unter <http://localhost:8080/admin/>. Ohne Session leitet sie zur Anmeldung um. Das Session-Cookie ist `Secure`; Chrome und Firefox akzeptieren es auf `localhost` trotzdem über HTTP, andere Browser (z. B. Safari) unter Umständen nicht. Nach 5 Fehlversuchen von derselben IPv4-Adresse bzw. aus demselben IPv6-/64-Netz ist die Anmeldung 15 Minuten gesperrt (im Speicher, ein Neustart hebt die Sperre auf). Höchstens zwei Passwortprüfungen laufen gleichzeitig; ein weiterer Versuch wird sofort mit `503` und der Meldung „Gerade laufen zu viele Anmeldeversuche. Bitte versuch es gleich noch einmal.“ abgelehnt, ohne als Fehlversuch zu zählen.
 
 ### Tests und Prüfungen
 
@@ -344,7 +344,9 @@ curl -i -H 'X-Forwarded-For: 203.0.113.7' https://<railway-domain>/healthz
 - Der rechte Eintrag ist ein Railway-Edge-Knoten und wechselt von Anfrage zu Anfrage.
 - `RemoteAddr` ist eine interne Railway-Adresse (`100.64.0.0/10`) und taugt nicht als Client-IP.
 
-Die Login-Sperre der Admin-Anmeldung nimmt deshalb den linken Eintrag von `X-Forwarded-For` und nur ohne Header `RemoteAddr` ohne Port.
+Die Login-Sperre der Admin-Anmeldung nimmt deshalb den linken Eintrag von `X-Forwarded-For` und nur ohne Header `RemoteAddr` ohne Port. Gezählt wird die IPv4-Adresse bzw. das IPv6-/64-Netz dieser IP; ein ungültiger Wert zählt unverändert.
+
+Der linke Eintrag stimmt nur, solange Railways Edge der einzige Proxy vor dem Dienst ist. Kommt ein weiterer Proxy davor (z. B. Cloudflare), steht dort dessen Adresse oder ein vom Client gefälschter Wert, und `clientIP` in `internal/adapter/admin/clientip.go` muss angepasst werden.
 
 ## Dokumentation
 
