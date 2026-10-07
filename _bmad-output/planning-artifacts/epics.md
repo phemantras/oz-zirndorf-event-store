@@ -106,7 +106,7 @@ KON-8: Listen werden in einer Hülle `{ "data": [ … ] }` ausgeliefert.
 
 Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Thema gruppiert. Die Punkte ohne Nummer sind Festlegungen aus Stack und Querschnitt des Spine.
 
-**Starter-Template:** Keines. Es ist ein Greenfield-Go-Projekt. Story 1.1 legt das Projektgerüst nach der Struktur im Spine an: `api/v1/`, `cmd/eventstore/`, `internal/core/`, `internal/adapter/{publicapi/v1,admin,postgres,cleanup}/`, `Dockerfile`, `railway.json`, `compose.yaml`, `.github/workflows/ci.yaml`.
+**Starter-Template:** Keines. Es ist ein Greenfield-Go-Projekt. Story 1.1 legt das Projektgerüst nach der Struktur im Spine an: `api/v1/`, `cmd/eventstore/`, `internal/core/`, `internal/adapter/{publicapi/v1,admin,postgres,cleanup}/`, `Dockerfile`, `compose.yaml`, `.github/workflows/ci.yaml`.
 
 **Struktur und Abhängigkeiten**
 - AD-1: Hexagonal light, genau eine Replika. `internal/core` importiert nur die Standardbibliothek, einzige Ausnahme ist `golang.org/x/text/unicode/norm` (NFC). Adapter importieren nur `core`, nie einander. Nur `cmd/eventstore` kennt alle. Der Kern definiert die Ports `EventRepo`, `LocationRepo`, `TxRunner` und `Clock`.
@@ -150,7 +150,7 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 
 **Betrieb und Deployment**
 - Railway: ein Projekt mit der Umgebung `production` und den Services App und PostgreSQL 18. Die Datenbank ist nur über das private Netz erreichbar.
-- Ein Multi-Stage-Dockerfile. In `railway.json` stehen `healthcheckPath: /healthz` und das Dockerfile. „Wait for CI“ ist aktiviert.
+- Ein Multi-Stage-Dockerfile. Health Check `/healthz`, genau eine Replika und die Draining-Zeit (`RAILWAY_DEPLOYMENT_DRAINING_SECONDS`) stehen in den Einstellungen des App-Service im Railway-Dashboard, als Checkliste in der README. „Wait for CI“ ist aktiviert.
 - `GET /healthz` prüft, ob die Datenbank erreichbar ist.
 - Lokal läuft PostgreSQL 18 per Docker Compose (Volume unter `/var/lib/postgresql`), mit denselben Migrationen und Umgebungsvariablen.
 - CI (GitHub Actions) prüft Tests, ob der generierte Code aktuell ist (oapi-codegen, sqlc), und den Enum-Abgleich.
@@ -306,7 +306,7 @@ damit jede weitere Story direkt in einem laufenden System landet.
 **Acceptance Criteria:**
 
 **Angenommen** grüne CI
-**Wenn** Railway deployt (Multi-Stage-Dockerfile, `railway.json` mit `healthcheckPath: /healthz`, „Wait for CI“ aktiv)
+**Wenn** Railway deployt (Multi-Stage-Dockerfile, Health Check `/healthz` in den Service-Einstellungen, „Wait for CI“ aktiv)
 **Dann** ist `/healthz` unter der Railway-Domain erreichbar
 **Und** der PostgreSQL-Service läuft ausdrücklich in Version 18 und ist nur über das private Netz erreichbar
 
