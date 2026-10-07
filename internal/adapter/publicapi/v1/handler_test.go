@@ -261,8 +261,22 @@ func TestHeadOnTheDocsPageAnswersWithoutBody(t *testing.T) {
 	assertAllowsAnyOrigin(t, resp.Header)
 }
 
+func TestDocsWithTrailingSlashRedirectsToTheDocsPage(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		rec := serve(newTestHandler(), method, "/v1/docs/")
+
+		if rec.Code != http.StatusMovedPermanently {
+			t.Errorf("%s /v1/docs/ status = %d, want %d", method, rec.Code, http.StatusMovedPermanently)
+		}
+		if got := rec.Header().Get("Location"); got != "/v1/docs" {
+			t.Errorf("%s /v1/docs/ Location = %q, want /v1/docs", method, got)
+		}
+		assertAllowsAnyOrigin(t, rec.Header())
+	}
+}
+
 func TestPreflightIsAnsweredOnEveryPath(t *testing.T) {
-	for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, docsScriptPath, unknownPath, "/v1/"} {
+	for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, "/v1/docs/", docsScriptPath, unknownPath, "/v1/"} {
 		req := httptest.NewRequest(http.MethodOptions, path, nil)
 		req.Header.Set("Origin", "https://karte.example")
 		req.Header.Set("Access-Control-Request-Method", http.MethodGet)
@@ -307,7 +321,7 @@ func TestPreflightWithoutRequestHeadersAllowsNoHeaders(t *testing.T) {
 
 func TestWriteMethodsAreRejectedOnEveryPath(t *testing.T) {
 	for _, method := range writeMethods {
-		for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, docsScriptPath, unknownPath} {
+		for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, "/v1/docs/", docsScriptPath, unknownPath} {
 			rec := serve(newTestHandler(), method, path)
 
 			detail := assertProblem(t, rec, http.StatusMethodNotAllowed)
@@ -322,7 +336,7 @@ func TestWriteMethodsAreRejectedOnEveryPath(t *testing.T) {
 }
 
 func TestUnknownPathsAreNotFound(t *testing.T) {
-	for _, path := range []string{unknownPath, "/v1/", "/v1/event-types/festival", "/v1/docs/nope", "/v1/docs/"} {
+	for _, path := range []string{unknownPath, "/v1/", "/v1/event-types/festival", "/v1/docs/nope", "/v1/docs/x"} {
 		rec := serve(newTestHandler(), http.MethodGet, path)
 
 		detail := assertProblem(t, rec, http.StatusNotFound)
@@ -391,7 +405,7 @@ func TestFailedWritesAreLogged(t *testing.T) {
 
 func TestEveryAnswerAllowsAnyOrigin(t *testing.T) {
 	for _, method := range slices.Concat([]string{http.MethodGet, http.MethodHead, http.MethodOptions}, writeMethods) {
-		for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, docsScriptPath, unknownPath} {
+		for _, path := range []string{eventTypesPath, specPath, importSchemaPath, docsPath, "/v1/docs/", docsScriptPath, unknownPath} {
 			rec := serve(newTestHandler(), method, path)
 			if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "*" {
 				t.Errorf("%s %s Access-Control-Allow-Origin = %q, want *", method, path, got)

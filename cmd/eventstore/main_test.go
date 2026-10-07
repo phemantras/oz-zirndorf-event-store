@@ -126,6 +126,66 @@ func TestRunMigratesThenServesHealthUntilCancelled(t *testing.T) {
 	running.stop(t)
 }
 
+// poolCloseApplicationName marks the connections of the run in
+// TestRunClosesTheDatabasePoolOnShutdown, so pg_stat_activity tells them
+// apart from those of the test itself.
+const poolCloseApplicationName = "eventstore-pool-close-test"
+
+// TestRunClosesTheDatabasePoolOnShutdown checks that no connection of the
+// run is left in PostgreSQL once run has returned.
+func TestRunClosesTheDatabasePoolOnShutdown(t *testing.T) {
+	databaseURL := testDatabaseURL(t)
+	runURL := withApplicationName(t, databaseURL, poolCloseApplicationName)
+	counter, err := postgres.Connect(context.Background(), databaseURL)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(counter.Close)
+	running := startRun(t, runURL, slog.New(slog.DiscardHandler))
+	assertStatus(t, running.baseURL+publicEventsPath, http.StatusOK)
+
+	if open := runConnectionCount(t, counter); open == 0 {
+		t.Fatal("run holds no connection before the shutdown, so the test proves nothing")
+	}
+	running.stop(t)
+
+	deadline := time.Now().Add(shutdownTimeout)
+	for open := runConnectionCount(t, counter); open > 0; open = runConnectionCount(t, counter) {
+		if time.Now().After(deadline) {
+			t.Fatalf("%d connections of the run are still open after the shutdown", open)
+		}
+		time.Sleep(healthPollInterval)
+	}
+}
+
+// withApplicationName returns databaseURL with the application_name
+// parameter set to name.
+func withApplicationName(t *testing.T, databaseURL, name string) string {
+	t.Helper()
+	parsed, err := url.Parse(databaseURL)
+	if err != nil {
+		t.Fatalf("parse %s: %v", testDatabaseURLVariable, err)
+	}
+	query := parsed.Query()
+	query.Set("application_name", name)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
+}
+
+// runConnectionCount returns how many connections of the run to the test
+// database pg_stat_activity shows.
+func runConnectionCount(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	var count int
+	err := pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM pg_stat_activity WHERE application_name = $1 AND datname = current_database()`,
+		poolCloseApplicationName).Scan(&count)
+	if err != nil {
+		t.Fatalf("count connections of the run: %v", err)
+	}
+	return count
+}
+
 // Name keys of the location TestRunRecomputesStaleNameKeysBeforeListening
 // stores: the stale one it inserts and the one the core derives from its
 // name. Leftovers of an aborted run are removed under both.
