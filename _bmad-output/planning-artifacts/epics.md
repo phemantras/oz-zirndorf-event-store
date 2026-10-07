@@ -12,7 +12,7 @@ inputDocuments:
 
 Dieses Dokument zerlegt die Anforderungen aus PRD und Architecture Spine des OZ Zirndorf Event Store in umsetzbare Epics und Stories.
 
-Das Requirements Inventory fasst PRD und Spine zusammen, damit jede Story ohne Umweg lesbar ist. Bei einer Abweichung gelten PRD und Spine. Die Festlegungen ENT-1 bis ENT-23 sind seit dem Spine-Update vom 2026-10-02 im Spine enthalten, ENT-24 seit dem 2026-10-05. Jede nennt die AD, in der sie steht.
+Das Requirements Inventory fasst PRD und Spine zusammen, damit jede Story ohne Umweg lesbar ist. Bei einer Abweichung gelten PRD und Spine. Die Festlegungen ENT-1 bis ENT-23 sind seit dem Spine-Update vom 2026-10-02 im Spine enthalten, ENT-24 seit dem 2026-10-05, ENT-25 seit dem 2026-10-07. Jede nennt die AD, in der sie steht.
 
 Abnehmer sind Apps, die die öffentliche API lesen, zuerst die Karten-App.
 
@@ -80,7 +80,7 @@ NFR-3: Vorlage-taugliche Dokumentation: Die öffentliche API ist vollständig mi
 
 NFR-4: Keine personenbezogenen Daten in Events und Orten (keine Kontaktpersonen, Telefonnummern oder Namen von Privatpersonen). Personenbezogen ist nur das Admin-Konto.
 
-NFR-5: Betrieb auf Hobby-Niveau: keine Zielwerte für Antwortzeit und Verfügbarkeit, Best Effort.
+NFR-5: Betrieb auf Hobby-Niveau: keine Zielwerte für Antwortzeit und Verfügbarkeit, Best Effort. Ein einzelner Client und eine langsame Datenbank dürfen den Dienst aber nicht mit wenig Aufwand zum Absturz bringen; gegen volumetrische Angriffe schützt das Hosting.
 
 NFR-6: Zeitzone: Alle Zeitangaben beziehen sich auf Europe/Berlin.
 
@@ -161,7 +161,7 @@ Die Punkte mit AD-Nummer sind Architekturentscheidungen aus dem Spine, nach Them
 
 ### Ergänzende Festlegungen (Review 2026-10-01)
 
-Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Seit dem Spine-Update vom 2026-10-02 stehen sie im Spine (Pfeil = AD), maßgeblich ist dort der Wortlaut. ENT-15 bis ENT-23 kamen aus dem Review dieses Updates hinzu, ENT-24 mit dem Sprint Change Proposal vom 2026-10-05.
+Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Seit dem Spine-Update vom 2026-10-02 stehen sie im Spine (Pfeil = AD), maßgeblich ist dort der Wortlaut. ENT-15 bis ENT-23 kamen aus dem Review dieses Updates hinzu, ENT-24 mit dem Sprint Change Proposal vom 2026-10-05, ENT-25 mit dem vom 2026-10-07.
 
 - ENT-1 (→ AD-4) Zeitraum prüfen: Ein Ende wird abgelehnt, wenn `effectiveEnd <= effectiveStart`. Verglichen werden immer die berechneten Werte, nie die Rohfelder. Ein eintägiges Event mit `endDate = startDate` (nur Datum) ist gültig.
 - ENT-2 (→ AD-3) Ganztägig: `allDay` gilt für Beginn und Ende gemeinsam. Gemischte Angaben (ein Teil ganztägig, der andere mit Uhrzeit) sind nicht darstellbar und werden abgelehnt. Die Spec dokumentiert das.
@@ -169,7 +169,7 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 - ENT-4 (→ AD-16) Filter-Standardwerte: In `GET /v1/events` gilt ohne `from` und `to` der heutige Tag (FR-8). Fehlt nur `from`, beginnt der Zeitraum mit dem heutigen Tag. Fehlt nur `to`, ist er offen. In `GET /v1/archive/events` ist ein fehlendes `from` offen und ein fehlendes `to` gleich `now`. Ein Zeitpunkt in `from`/`to` braucht einen Offset. Ein Zeitpunkt in `to` wird auf die Minute abgeschnitten und um eine Minute erhöht (`hi`), damit `to` inklusive ist.
 - ENT-5 (→ AD-16) Neuberechnung beim Start: Schlägt sie für ein Event fehl (Zeitangaben abgelehnt oder Ablaufplan außerhalb des neuen Zeitraums), behält es seine gespeicherten Werte. Der Fehler wird mit der Event-Kennung geloggt, das Programm startet trotzdem, und der Admin markiert das Event mit „prüfen“. Die Menge der betroffenen IDs hält der Kern nur im Speicher (Mutex). Nach erfolgreichem Commit von `SaveEvent`, `CommitImport` oder `DeleteEvent` wird die ID entfernt. Für Orte mit kollidierendem neuen `name_key` gilt dasselbe; die Markierung „prüfen“ erscheint in der Ortsliste und verschwindet nach `SaveLocation` oder `DeleteLocation`. Events mit „prüfen“ erscheinen in keiner öffentlichen Liste (Story 2.7).
 - ENT-6 (→ AD-12) Admin-Session: Signiertes Cookie mit `SESSION_SECRET`, ohne Zustand auf dem Server. Sie läuft nach 8 Stunden ohne Aktivität oder spätestens 7 Tage nach der Anmeldung ab. Abmelden löscht das Cookie im Browser. Ein kopiertes Cookie bleibt bis zum Ablauf gültig; das ist bewusst hingenommen. Ein neues `SESSION_SECRET` macht alle Sessions ungültig.
-- ENT-7 (→ AD-12) Anmeldeschutz: Nach 5 Fehlversuchen von einer Client-IP ist die Anmeldung von dieser IP für 15 Minuten gesperrt. Die Zähler liegen im Speicher; ein Neustart setzt sie zurück. Client-IP ist der Eintrag in `X-Forwarded-For`, den Railways Edge setzt (Prüfung nach ENT-21), ohne Header `RemoteAddr` ohne Port.
+- ENT-7 (→ AD-12) Anmeldeschutz: Nach 5 Fehlversuchen von einer Client-Adresse (IPv4-Adresse oder IPv6-/64-Netz) ist die Anmeldung von dort für 15 Minuten gesperrt. Die Zähler liegen im Speicher; ein Neustart setzt sie zurück. Client-IP ist der Eintrag in `X-Forwarded-For`, den Railways Edge setzt (Prüfung nach ENT-21), ohne Header `RemoteAddr` ohne Port.
 - ENT-8 (→ AD-7) Sortierung nach Name: Der Kern sortiert Orte ohne Unterschied von Groß- und Kleinschreibung, Umlaute wie ihren Grundbuchstaben (ä→a, ö→o, ü→u, ß→ss), bei Gleichstand nach `id`. Die Datenbank-Sortierung wird nicht genutzt.
 - ENT-9 (→ AD-1, AD-11) Texteingaben: Der Kern normalisiert alle Texte an einer Stelle beim Bau jedes Inputs auf Unicode NFC (`golang.org/x/text/unicode/norm` v0.42.0, einzige Ausnahme von AD-1), für Admin und Import gleich. `NormalizeKey` trimmt, fasst jeden Leerraum (auch geschützte Leerzeichen) zu einem Leerzeichen zusammen und wandelt in Kleinbuchstaben. Ein Pflichtfeld, das nur aus Leerraum besteht, fehlt.
 - ENT-10 (→ AD-14) Quelle: `source` ist in Lese- und Schreibform ein Objekt `{ "description": string, "url": string | null }`. `description` ist Pflicht, `url` muss eine http(s)-URL sein.
@@ -187,6 +187,7 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 - ENT-22 (→ AD-12) Session-Technik: HMAC-SHA256, das Cookie trägt Anmelde- und Aktivitätszeitpunkt und wird bei Aktivität neu ausgestellt. `SESSION_SECRET` hat mindestens 32 Byte, das prüft der Start. bcrypt mit Kosten ≥ 12.
 - ENT-23 (→ AD-8) Statische Pfade: `/v1/openapi.yaml`, `/v1/import-v1.schema.json` und `/v1/docs` sind statische Auslieferungen außerhalb der Spec, mit offenem CORS.
 - ENT-24 (→ AD-9, AD-11) Grenzen: Der Kern begrenzt Texte nach der NFC-Normalisierung in Zeichen (Unicode-Codepoints), für Admin und Import gleich: `title`, `location.name` und `street` höchstens 200; `city` höchstens 100; `source.description` und die Beschreibung eines Programmpunkts höchstens 500; `note` (Event, Ort) und `source.url` höchstens 2000; `importKey` höchstens 200; höchstens 100 Programmpunkte je Event. Die Grenzen stehen als `maxLength`/`maxItems` in `EventInput` und den eingebundenen Schemas von `openapi.yaml`; die Kern-Konstanten spiegeln sie, und der Test aus AD-9 prüft die Übereinstimmung.
+- ENT-25 (→ AD-18) Lastgrenzen: Jeder Request hat eine Deadline von 20 s; danach endet sein Kontext samt Datenbankabfrage, `/v1` antwortet mit `503` (Problem Details). Der Pool hat höchstens 10 Verbindungen. Höchstens zwei bcrypt-Vergleiche laufen gleichzeitig; ein weiterer Anmeldeversuch wird sofort abgelehnt und zählt nicht als Fehlversuch. `/v1` sendet `Cache-Control` (Listen und Event-Typen 60 s, Spec, Schema und Docs-Seite 300 s, Redoc-Skript 1 Tag, Fehler `no-store`) und liefert die statischen Dateien gzip-komprimiert aus.
 
 ### Success Metrics
 
@@ -200,7 +201,7 @@ Diese Festlegungen präzisieren den Spine und sind in den Stories umgesetzt. Sei
 
 ### Out of Scope v1
 
-Bewusst zurückgestellt, ohne Stories in v1: automatisches Backup, Lizenz (blockiert nur den öffentlichen Start), gleichzeitige Bearbeitung, eigene Domain, Staging, Rate Limiting und Caching der öffentlichen API, Monitoring über Logs hinaus, PostGIS, serverseitige Sessions.
+Bewusst zurückgestellt, ohne Stories in v1: automatisches Backup, Lizenz (blockiert nur den öffentlichen Start), gleichzeitige Bearbeitung, eigene Domain, Staging, Rate Limiting pro Client und serverseitiges Caching der öffentlichen API, Grenze für das Archiv, Monitoring über Logs hinaus, PostGIS, serverseitige Sessions.
 
 ### UX Design Requirements
 
@@ -228,7 +229,7 @@ FR-17: Epic 3 - Import-Vorschau
 FR-18: Epic 3 - Entscheidung bei Duplikatverdacht, Zusammenfassung
 NFR-1 bis NFR-3, KON-1 bis KON-8: Epic 2
 NFR-4: Epic 1 (Stories 1.4, 1.7) und Epic 3 (Story 3.2)
-NFR-5: alle Epics, ohne eigene Story (Best Effort)
+NFR-5: alle Epics (Best Effort), Lastgrenzen in Epic 4 (Stories 4.1 bis 4.3)
 NFR-6: Epic 1 (Story 1.6)
 SM-1: Epic 2 (Story 2.6, Fixture) und Epic 3 (Story 3.5, Produktion)
 SM-2: Epic 3 (Stories 3.4, 3.5)
@@ -245,6 +246,9 @@ SM-4: Epic 2 (Story 2.6, manuell)
 
 ### Epic 3: Andreas importiert Recherchen per JSON-Datei
 **FRs covered:** FR-16, FR-17, FR-18
+
+### Epic 4: Der Dienst hält Überlastung und Missbrauch stand
+**FRs covered:** keine neuen; NFR-5 (Lastgrenzen), FR-14 (Anmeldeschutz), AD-18
 
 ## Epic 1: Andreas pflegt Orte und Events im Admin
 
@@ -1291,3 +1295,121 @@ damit kein Import still meine Arbeit verwirft oder dauerhaft am falschen Event h
 - `api.gen.go` wird mit `go generate ./...` neu erzeugt, nicht von Hand geändert.
 - Keine Migration; `RemoveImportKey` schreibt über einen Repository-Port, der nur vom Kern aufgerufen wird (AD-6).
 - Nahtstellen: `isStale` und das Entscheidungsformular (3.3), Klassifizierung und `unchanged`-Vergleich (3.2), Abnahme der Testsammlung (3.5), Bearbeitungsseite und Löschrückfrage eines Events (1.7, 1.11), `SaveEvent` lässt `importKey` stehen (3.2).
+
+## Epic 4: Der Dienst hält Überlastung und Missbrauch stand
+
+Eine langsame Datenbank, eine Request-Flut oder Anmeldeversuche von vielen Adressen bringen den Dienst nicht mehr zum Absturz, und die öffentliche API verursacht keine unnötigen Egress-Kosten. Gegen volumetrische Angriffe schützt Railways Edge (AD-18).
+
+**Hinweis:** Sprint Change Proposal 2026-10-07 (Security-Bewertung). Die Stories sind voneinander unabhängig; empfohlen ist die Reihenfolge 4.1, 4.2, 4.3.
+
+### Story 4.1: Deadline für jeden Request und begrenzter Datenbank-Pool
+
+Als Betreiber,
+möchte ich, dass jeder Request nach einer festen Zeit endet und der Dienst nur eine begrenzte Zahl an Datenbankverbindungen nutzt,
+damit eine langsame Datenbank oder eine Request-Flut den Dienst verlangsamt, aber nicht durch Speichermangel abstürzen lässt.
+
+**Deckt ab:** NFR-5, AD-18, ENT-25, KON-3
+
+**Acceptance Criteria:**
+
+**Angenommen** eine Abfrage der öffentlichen API, deren Datenbankabfrage länger als die Deadline braucht
+**Wenn** die Deadline abläuft
+**Dann** endet der Kontext des Requests, die Abfrage wird abgebrochen
+**Und** der Client bekommt `503` als Problem Details mit englischem `detail` (KON-3), vor Ablauf von `WriteTimeout`
+**Und** das Log enthält eine Warnung, keinen Error
+
+**Angenommen** alle Pool-Verbindungen sind belegt
+**Wenn** weitere Requests eine Verbindung brauchen
+**Dann** warten sie höchstens bis zu ihrer Deadline und enden dann wie oben, statt sich ohne Grenze zu stauen
+
+**Angenommen** ein Admin-Request überschreitet die Deadline
+**Wenn** sie abläuft
+**Dann** zeigt der Admin die übliche deutsche Fehlerseite, und es ist nichts halb geschrieben (die Transaktion wird zurückgerollt)
+
+**Angenommen** der Pool wird erzeugt
+**Wenn** der Dienst startet
+**Dann** hat er höchstens 10 Verbindungen, unabhängig von der CPU-Zahl und von Parametern in `DATABASE_URL`
+
+**Angenommen** die Spec
+**Wenn** ich die Operationen unter `/v1` lese
+**Dann** ist `503` als gemeinsame Antwort mit Beispiel beschrieben
+
+**Außerdem gilt:**
+- `requestTimeout` (20 s) ist eine benannte Konstante in `cmd/eventstore` und liegt unter `writeTimeout` (30 s); ein Test prüft das Verhältnis.
+- Die Middleware umschließt den ganzen Router; `/healthz` behält seinen eigenen, kürzeren Ping-Timeout.
+- Kein `statement_timeout`: Migrationen und die Neuberechnung beim Start laufen über denselben Pool und dürfen nicht begrenzt werden.
+- `api.gen.go` wird mit `go generate ./...` neu erzeugt, nicht von Hand geändert.
+- Nahtstellen: Fehlerbehandlung der öffentlichen API (2.3, B1: `context.Canceled` wird nicht als Error geloggt), Server-Timeouts (A1), Fehlerseite und Transaktionen im Admin (1.7, ENT-15), Startreihenfolge mit Migration und Neuberechnung (2.5).
+
+### Story 4.2: Anmeldung gegen CPU-Last von vielen Adressen schützen
+
+Als Betreiber,
+möchte ich, dass Anmeldeversuche nur begrenzt CPU binden und eine IPv6-Adresse nicht beliebig viele Versuche erzeugt,
+damit Login-Bots weder die öffentliche API ausbremsen noch die Sperre umgehen.
+
+**Deckt ab:** FR-14, NFR-5, AD-12, AD-18, ENT-7, ENT-25
+
+**Acceptance Criteria:**
+
+**Angenommen** zwei Anmeldeversuche prüfen gerade ihr Passwort
+**Wenn** ein dritter Versuch eintrifft
+**Dann** wird er sofort mit `503` und einer deutschen Meldung („Gerade laufen zu viele Anmeldeversuche. Bitte versuch es gleich noch einmal.“) abgelehnt, ohne bcrypt
+**Und** er zählt nicht als Fehlversuch und legt keinen Eintrag in der Sperre an
+
+**Angenommen** 5 Fehlversuche von Adressen aus demselben IPv6-/64-Netz
+**Wenn** ein weiterer Versuch von einer anderen Adresse aus diesem Netz kommt
+**Dann** ist er für 15 Minuten gesperrt wie bei einer einzelnen Adresse (Story 1.3)
+**Und** eine Adresse aus einem anderen /64 ist davon nicht betroffen
+
+**Angenommen** IPv4-Adressen
+**Wenn** gezählt wird
+**Dann** zählt jede Adresse für sich, wie bisher
+
+**Angenommen** der Header oder `RemoteAddr` enthält keine gültige IP
+**Wenn** gezählt wird
+**Dann** zählt der Wert unverändert als Schlüssel, wie bisher
+
+**Außerdem gilt:**
+- Die Semaphore greift vor der Sperre, damit nur Versuche, die bcrypt erreichen, einen Eintrag anlegen; das hält die Sperr-Map klein, eine eigene Obergrenze ist nicht nötig.
+- Erfolgreiche Anmeldung, Sperre nach 5 Fehlversuchen und konstante Laufzeit bleiben wie in Story 1.3.
+- Die README nennt, dass die Client-IP aus dem linken Eintrag von `X-Forwarded-For` nur hinter Railways Edge stimmt und ein zusätzlicher Proxy (z. B. Cloudflare) eine Anpassung braucht.
+- Nahtstellen: `submitLogin`, `loginLockout` und `clientIP` (1.3, ENT-7, ENT-21).
+
+### Story 4.3: Cache-Header und komprimierte statische Dateien in der öffentlichen API
+
+Als Abnehmer der öffentlichen API,
+möchte ich wissen, wie lange ich eine Antwort zwischenspeichern darf, und die Dokumentation komprimiert laden,
+damit wiederholte Abrufe und die Docs-Seite weniger Traffic verursachen.
+
+**Deckt ab:** NFR-3, NFR-5, AD-18, ENT-14, ENT-23, ENT-25
+
+**Acceptance Criteria:**
+
+**Angenommen** eine erfolgreiche Antwort von `/v1/events`, `/v1/archive/events` oder `/v1/event-types`
+**Wenn** ich ihre Header lese
+**Dann** steht dort `Cache-Control: public, max-age=60`
+
+**Angenommen** `/v1/openapi.yaml`, `/v1/import-v1.schema.json` oder `/v1/docs`
+**Wenn** ich sie abrufe
+**Dann** steht dort `Cache-Control: public, max-age=300`
+**Und** für `/v1/docs/redoc.standalone.js` `Cache-Control: public, max-age=86400`
+
+**Angenommen** eine Fehlerantwort unter `/v1` (400, 404, 405, 500, 503)
+**Wenn** ich ihre Header lese
+**Dann** steht dort `Cache-Control: no-store`
+
+**Angenommen** ein Client sendet `Accept-Encoding: gzip`
+**Wenn** er das Redoc-Skript, die Spec oder das Import-Schema abruft
+**Dann** bekommt er sie mit `Content-Encoding: gzip` und `Vary: Accept-Encoding`, und das Redoc-Skript ist deutlich kleiner als 1,1 MB
+**Und** ohne `Accept-Encoding: gzip` bekommt er dieselbe Datei unkomprimiert
+
+**Angenommen** die Spec
+**Wenn** ich `info` lese
+**Dann** steht dort, dass Listen bis zu 60 Sekunden zwischengespeichert werden dürfen und ein Event deshalb bis zu einer Minute nach seinem Ende noch in `/v1/events` stehen kann; maßgeblich bleibt `effectiveEnd`
+
+**Außerdem gilt:**
+- Komprimiert wird einmal beim Start aus den eingebetteten Dateien, nicht pro Request; die Event-Listen werden nicht komprimiert.
+- Preflight-Antworten (`OPTIONS`) behalten `Access-Control-Max-Age` und bekommen kein `Cache-Control`.
+- CORS-Header bleiben auf jeder Antwort (NFR-1).
+- `api.gen.go` wird mit `go generate ./...` neu erzeugt, falls sich die Spec ändert.
+- Nahtstellen: `serveEmbedded`, `serveStaticFile`, `readOnlyCORS` und die Problem-Antworten (2.1, 2.3, 2.6, ENT-23).

@@ -7,7 +7,7 @@ paradigm: 'Hexagonal light (Ports & Adapters)'
 scope: 'Gesamtes Backend v1: öffentliche Lese-API, Admin-Oberfläche, JSON-Import, Archiv/Bereinigung, Betrieb auf Railway'
 status: final
 created: '2026-10-01'
-updated: '2026-10-06'
+updated: '2026-10-07'
 binds: [FR-1, FR-2, FR-3, FR-4, FR-5, FR-6, FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16, FR-17, FR-18, NFR-1, NFR-2, NFR-3, NFR-4, NFR-5, NFR-6, KON-1, KON-2, KON-3, KON-4, KON-5, KON-6, KON-7, KON-8]
 sources:
   - _bmad-output/planning-artifacts/prds/prd-oz-zirndorf-event-store-2026-10-01/prd.md
@@ -132,7 +132,7 @@ flowchart LR
 - **Prevents:** CORS oder fehlende Anmeldung leaken auf Admin-Funktionen; die öffentliche API bekommt Schreibpfade.
 - **Rule:** Die öffentliche API liegt ausschließlich unter `/v1/…`. Sie ist nur lesend (`GET`) und hat offenes CORS. Die Admin-Oberfläche liegt ausschließlich unter `/admin/…`. Sie hat kein CORS, verlangt eine Session (HttpOnly, Secure, SameSite=Strict) und ist mit `http.CrossOriginProtection` aus der Standardbibliothek gegen gefälschte Formular-Absendungen (CSRF) geschützt. Es gibt genau ein Admin-Konto: Benutzername und bcrypt-Hash liegen in Umgebungsvariablen, eine Registrierung gibt es nicht.
   - **Session:** ein mit `SESSION_SECRET` signiertes Cookie, ohne Zustand auf dem Server. Signiert wird per HMAC-SHA256, das Cookie trägt Anmelde- und Aktivitätszeitpunkt und wird bei Aktivität neu ausgestellt. Es läuft nach 8 Stunden ohne Aktivität ab, spätestens 7 Tage nach der Anmeldung. Abmelden löscht das Cookie im Browser. Ein kopiertes Cookie bleibt bis zum Ablauf gültig (hingenommen). `SESSION_SECRET` hat mindestens 32 Byte, das prüft der Start. Ein neues `SESSION_SECRET` macht alle Sessions ungültig.
-  - **Anmeldeschutz:** Nach 5 Fehlversuchen von einer Client-IP ist die Anmeldung von dieser IP für 15 Minuten gesperrt. Die Zähler liegen im Speicher, ein Neustart setzt sie zurück. Als Client-IP gilt der Eintrag in `X-Forwarded-For`, den Railways Edge setzt: der linke, wenn Railway einen vom Client geschickten Header verwirft, sonst der rechte. Welcher Fall gilt, prüft Story 1.2 nach dem ersten Deploy per `curl` mit gefälschtem Header. Ohne Header gilt `RemoteAddr` ohne Port. `X-Real-IP` wird nicht genutzt. Der eigentliche Schutz ist bcrypt mit Kosten ≥ 12 und einem langen Zufallspasswort.
+  - **Anmeldeschutz:** Nach 5 Fehlversuchen von einer Client-Adresse ist die Anmeldung von dieser Adresse für 15 Minuten gesperrt. Gezählt wird pro IPv4-Adresse bzw. pro IPv6-/64-Netz, weil ein einzelner Anschluss ein ganzes /64 nutzen kann. Die Zähler liegen im Speicher, ein Neustart setzt sie zurück. Als Client-IP gilt der Eintrag in `X-Forwarded-For`, den Railways Edge setzt: der linke, wenn Railway einen vom Client geschickten Header verwirft, sonst der rechte. Welcher Fall gilt, prüft Story 1.2 nach dem ersten Deploy per `curl` mit gefälschtem Header. Ohne Header gilt `RemoteAddr` ohne Port. `X-Real-IP` wird nicht genutzt. Steht ein weiterer Proxy (z. B. Cloudflare) vor Railway, ist der linke Eintrag nicht mehr der Client; dann muss die Ermittlung der Client-IP angepasst werden. Der eigentliche Schutz ist bcrypt mit Kosten ≥ 12 und einem langen Zufallspasswort. Wie viele Vergleiche gleichzeitig laufen, begrenzt AD-18.
 
 ### AD-13 — Bereinigungsjob im Programm, idempotent [ADOPTED]
 
@@ -170,6 +170,13 @@ flowchart LR
 - **Binds:** NFR-5, Betrieb
 - **Prevents:** Eine automatisch beim Deploy laufende Migration zerstört gepflegte Daten, für die es kein Backup gibt.
 - **Rule:** Migrationen sind nur vorwärts und **expand/contract**: Spalten oder Tabellen werden nie im selben Deploy entfernt oder umbenannt, in dem der Code aufhört, sie zu nutzen. Vor jedem Deploy, der eine neue Migration enthält, zieht der Admin einen `pg_dump` über die Railway-CLI. Angewendete Migrationen werden nie geändert.
+
+### AD-18 — Lastgrenzen [ADOPTED]
+
+- **Binds:** NFR-5, FR-14, NFR-1
+- **Prevents:** Eine Request-Flut oder eine langsame Datenbank staut Requests ohne Grenze bis zum Speicherabbruch; Anmeldeversuche von vielen Adressen binden die CPU des ganzen Dienstes; große statische Dateien treiben die Egress-Kosten.
+- **Rule:** Jeder Request hat eine Deadline (`requestTimeout`), die unter `WriteTimeout` liegt. Der Kontext jedes Requests endet spätestens dann, und mit ihm jede Datenbankabfrage und jedes Warten auf eine Pool-Verbindung. Die öffentliche API antwortet dann mit `503` als Problem Details (KON-3). Der Datenbank-Pool hat eine feste Obergrenze an Verbindungen (`MaxConns`), unabhängig von der CPU-Zahl des Hosts. Gleichzeitig laufen höchstens zwei bcrypt-Vergleiche. Ist kein Platz frei, wird ein Anmeldeversuch sofort abgelehnt, ohne als Fehlversuch zu zählen. Antworten unter `/v1/…` tragen `Cache-Control`. Die statischen Dateien liefert der Dienst gzip-komprimiert aus, wenn der Client es annimmt. Volumetrische Angriffe (Layer 3/4) wehrt Railways Edge ab, nicht die App. Railways „Under Attack Mode“ ist für `/v1` ungeeignet, weil er Clients ohne Browser aussperrt. Rate Limiting pro Client gibt es nicht (Deferred).
+  - **Werte:** `requestTimeout` 20 s (`WriteTimeout` 30 s), `MaxConns` 10, zwei gleichzeitige bcrypt-Vergleiche. Event-Listen und Event-Typen `public, max-age=60`. Spec, Import-Schema und Docs-Seite `public, max-age=300`. Redoc-Skript `public, max-age=86400`. Fehlerantworten `no-store`. Die Werte sind benannte Konstanten im jeweiligen Adapter bzw. in `cmd/eventstore`.
 
 ## Consistency Conventions
 
@@ -286,7 +293,7 @@ compose.yaml              # lokales PostgreSQL 18
 | FR-16–FR-18 JSON-Import | `adapter/admin` → `core` | AD-9, AD-10, AD-11, AD-14 |
 | NFR-1–NFR-3, KON-1–KON-8 API-Vertrag | `api/v1/` | AD-8, AD-9, AD-12, AD-14, Conventions |
 | NFR-4 keine personenbezogenen Daten | `core` (Datenmodell) | AD-6 |
-| NFR-5, NFR-6 Betrieb, Zeitzone | `cmd/eventstore`, Railway | AD-13, AD-16, AD-17, Structural Seed |
+| NFR-5, NFR-6 Betrieb, Lastgrenzen, Zeitzone | `cmd/eventstore`, `adapter/publicapi/v1`, `adapter/admin`, Railway | AD-13, AD-16, AD-17, AD-18, Structural Seed |
 
 ## Deferred
 
@@ -296,6 +303,8 @@ compose.yaml              # lokales PostgreSQL 18
 - **Domain und TLS:** Für den Anfang reicht die Railway-Standarddomain. Eine eigene Domain kommt mit dem öffentlichen Start.
 - **Staging-Umgebung:** Für einen Entwickler nicht nötig. Wiedervorlage bei weiteren Pflegern oder Abnehmern.
 - **Rate Limiting / Caching:** Bei Hobby-Last nicht nötig (NFR-5). Nachrüstbar als Middleware in `adapter/publicapi`, ohne den Kern zu berühren.
+- **Rate Limiting pro Client:** Mit den Grenzen aus AD-18 kann eine Request-Flut den Dienst verlangsamen, aber nicht zum Absturz bringen. Das genügt für NFR-5. Nachrüstbar als Middleware in `adapter/publicapi`, ohne den Kern zu berühren. Wiedervorlage, wenn eine Flut den Dienst für echte Abnehmer unbrauchbar macht, oder mit der eigenen Domain (dann auch Cloudflare als Proxy prüfen, siehe AD-12).
+- **Grenze für das Archiv:** `/v1/archive/events` ohne `from` liefert das ganze Archiv. Bei einigen hundert Events ist das unkritisch. Wiedervorlage, wenn das Archiv einige tausend Events hat (Standardzeitraum, Höchstspanne oder Paginierung, siehe `deferred-work.md`).
 - **Monitoring über Logs hinaus:** Railway-Logs reichen. Metriken erst bei Bedarf.
 - **Interne Kern-Struktur:** die Paketaufteilung in `core` und weitere **Lese**-Anwendungsfälle über die genannten hinaus. Neue Schreib-Anwendungsfälle brauchen ein Update von AD-6. Das legen die Stories fest, im Rahmen von AD-1 und AD-2.
 - **Admin-Gestaltung** (Layout, CSS): Story-Ebene, optional `bmad-ux`.

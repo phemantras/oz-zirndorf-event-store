@@ -258,7 +258,7 @@ Der Admin entscheidet für jeden Duplikatverdacht: überspringen, als neues Even
 - **NFR-2 Versionierung:** Die öffentliche API ist versioniert (Umsetzung: KON-1, KON-2). Inkompatible Änderungen, z. B. an der Event-Typen-Liste oder an Feldnamen, gibt es nur in einer neuen Version. Rückwärtskompatible Ergänzungen (neue optionale Felder) dürfen in der bestehenden Version erfolgen. Einmalige Ausnahme: Das Feld `archived` wurde aus v1 entfernt, bevor die API einen Abnehmer hatte (Sprint Change Proposal 2026-10-06 Teil B, Story 2.8).
 - **NFR-3 Vorlage-taugliche Dokumentation:** Die öffentliche API ist vollständig mit OpenAPI beschrieben, einschließlich Filter, Feldbedeutungen (insbesondere Zeit- und Ortsgenauigkeit), Fehlerformat und der Konventionen aus §6. Die Dokumentation ist öffentlich abrufbar.
 - **NFR-4 Keine personenbezogenen Daten:** Events und Orte enthalten keine Daten zu natürlichen Personen, also keine Kontaktpersonen, Telefonnummern oder Namen von Privatpersonen. Personenbezogen ist nur das Admin-Konto.
-- **NFR-5 Betrieb auf Hobby-Niveau:** Für Antwortzeit und Verfügbarkeit gibt es keine Zielwerte. Es gilt Best Effort.
+- **NFR-5 Betrieb auf Hobby-Niveau:** Für Antwortzeit und Verfügbarkeit gibt es keine Zielwerte. Es gilt Best Effort. Best Effort heißt nicht schutzlos: Ein einzelner Client darf den Dienst nicht mit wenig Aufwand zum Absturz bringen, weder über viele oder teure Anfragen noch über die Anmeldung. Eine langsame Datenbank darf ihn ebenfalls nicht zum Absturz bringen. Schutz gegen volumetrische Angriffe liefert das Hosting.
 - **NFR-6 Zeitzone:** Alle Zeitangaben beziehen sich auf Europe/Berlin. Das Format regelt KON-4.
 
 ## 6. API-Konventionen
