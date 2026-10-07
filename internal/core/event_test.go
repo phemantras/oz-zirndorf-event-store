@@ -50,6 +50,16 @@ func TestListEventTypesLabelsEveryCodeInGermanInOrder(t *testing.T) {
 	}
 }
 
+// The import reads the fields of source by sourceField and reports their
+// problems by EventFieldSource; both must name the same field.
+func TestSourceFieldNamesAreTheFieldsWithinSource(t *testing.T) {
+	for reported, read := range map[string]string{EventFieldSourceDescription: sourceFieldDescription, EventFieldSourceURL: sourceFieldURL} {
+		if reported != EventFieldSource+"."+read {
+			t.Errorf("%q reports the problems of %q within %q", reported, read, EventFieldSource)
+		}
+	}
+}
+
 func TestEventFieldNamesBesideTheTimeModel(t *testing.T) {
 	got := []string{EventFieldTitle, EventFieldType, EventFieldLocationID, EventFieldSourceDescription, EventFieldSourceURL, EventFieldNote}
 	want := []string{"title", "type", "locationId", "source.description", "source.url", "note"}

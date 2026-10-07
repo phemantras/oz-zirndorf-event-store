@@ -81,5 +81,10 @@
 - source_spec: none
   summary: Retro Epic 3, C2 (Test-PR „Import-Absicherung“): `sourceField*` in den AD-9-Vertragstest, Admin-Test Commit mit `MaxImportFileBytes` und 150 Entscheidungen ohne 413, Abnahmetest 3.5 mit `RecomputeDerived`/`RecomputeNameKeys` nach dem Import.
   evidence: Beim Build von C1 per Scope-Prüfung abgetrennt (2026-10-06): C1 und C2 sind laut Retro getrennte PRs und unabhängig auslieferbar; C1 zuerst, weil R1/R2 Daten verfälschen.
+  status: done
+  target: Retro Epic 3, C2 (eigener `bmad-build`-Lauf nach C1); umgesetzt in `spec-c2-import-absicherung.md`
+- source_spec: `_bmad-output/implementation-artifacts/spec-c2-import-absicherung.md`
+  summary: Commit einer großen Datei mit LF-Zeilenenden prüfen: Das Formular sendet den Inhalt als verstecktes Feld per `multipart/form-data`, Browser wandeln dabei jedes LF in CRLF; eine Datei knapp unter 2 MiB käme beim Commit größer an und würde als `tooLarge` abgelehnt, obwohl die Vorschau sie annahm.
+  evidence: Unverifiziert (maybe-false, wäre medium bei großen Dateien): `templates/import.html` Z. 40 sendet `<input type="hidden" value="{{$.Content}}">`; die HTML-Spezifikation normalisiert Zeilenumbrüche beim Multipart-Kodieren. Klären per Browserprüfung mit einer Datei nahe 2 MiB; die heutigen Dateien (~40 Events) liegen weit darunter. Der Test aus C2 polstert mit Leerzeichen und deckt das nicht ab.
   status: open
-  target: Retro Epic 3, C2 (eigener `bmad-build`-Lauf nach C1)
+  target: Backlog (nächste Retro ordnet zu)
