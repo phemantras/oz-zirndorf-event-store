@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-02-2026 08:16
-last_updated: 10-07-2026 21:00
+last_updated: 10-07-2026 14:15
 project: oz-zirndorf-event-store
 project_key: NOKEY
 tracking_system: file-system
@@ -75,7 +75,7 @@ development_status:
   4-1-deadline-für-jeden-request-und-begrenzter-datenbank-pool: done
   4-2-anmeldung-gegen-cpu-last-von-vielen-adressen-schützen: done
   4-3-cache-header-und-komprimierte-statische-dateien: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: done
 action_items:
   - id: "epic-1-retro-item-1-a1-fix-pr-epic-1-nahtstellen-errconflict"
     epic: 1
@@ -204,3 +204,12 @@ action_items:
     owner: "Andreas"
     status: done
     ref: "_bmad-output/implementation-artifacts/epic-3-retro-2026-10-06.md"
+  - id: "epic-4-retro-item-18-d1-fix-pr-epic-4-nahtstellen-shutdowntim"
+    epic: 4
+    action: "D1 Fix-PR Epic-4-Nahtstellen: shutdownTimeout über requestTimeout mit
+      Verhältnistest, Admin bei Deadline 503 mit deutscher Meldung statt englischem
+      500-Klartext, Admin loggt context.Canceled als Info, pgx-Cancel gegen Railway
+      messen und bei weiterlaufendem Backend CancelRequestContextWatcherHandler setzen"
+    owner: "Andreas / Dev-Agent"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-4-retro-2026-10-07.md"
