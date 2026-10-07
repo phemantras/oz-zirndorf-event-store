@@ -59,6 +59,12 @@ const (
 	msgTooManyLogins    = "Gerade laufen zu viele Anmeldeversuche. Bitte versuch es gleich noch einmal."
 )
 
+// German messages of the failure page.
+const (
+	msgRequestTimedOut = "Die Datenbank antwortet gerade zu langsam. Bitte versuch es gleich noch einmal."
+	msgRequestFailed   = "Etwas ist schiefgegangen. Bitte versuch es gleich noch einmal."
+)
+
 // maxConcurrentPasswordChecks bounds the bcrypt comparisons running at the
 // same time, so login attempts from many addresses cannot bind every CPU.
 const maxConcurrentPasswordChecks = 2
@@ -309,15 +315,65 @@ func (h *handler) showHome(w http.ResponseWriter, _ *http.Request) {
 	h.render(w, homeTemplate, http.StatusOK, homePage{})
 }
 
-// logRequestFailure logs err of a failed request under msg. A request that
+// requestFailure is how a failed request is answered and logged.
+type requestFailure struct {
+	status  int
+	level   slog.Level
+	message string
+}
+
+// timedOut reports whether the request ran out of its deadline.
+func (f requestFailure) timedOut() bool {
+	return f.status == http.StatusServiceUnavailable
+}
+
+// requestFailureOf classifies err of the failed request r. A request that
 // ran out of its deadline met a slow database or an exhausted pool, which
-// is no fault of the code, so it is logged as Warn; anything else as Error.
-func (h *handler) logRequestFailure(msg string, err error) {
-	if errors.Is(err, context.DeadlineExceeded) {
-		h.logger.Warn(msg, "error", err)
-		return
+// is no fault of the code: 503, logged as Warn. A request the client
+// cancelled is no fault of the server either: 500, logged as Info.
+// Anything else is 500, logged as Error. The request context counts as
+// well as err: a query the database server cancelled at the deadline fails
+// with an error that wraps no context error.
+func requestFailureOf(r *http.Request, err error) requestFailure {
+	switch {
+	case endedWith(r, err, context.DeadlineExceeded):
+		return requestFailure{status: http.StatusServiceUnavailable, level: slog.LevelWarn, message: msgRequestTimedOut}
+	case endedWith(r, err, context.Canceled):
+		return requestFailure{status: http.StatusInternalServerError, level: slog.LevelInfo, message: msgRequestFailed}
+	default:
+		return requestFailure{status: http.StatusInternalServerError, level: slog.LevelError, message: msgRequestFailed}
 	}
-	h.logger.Error(msg, "error", err)
+}
+
+// endedWith reports whether err or the context of r carries the context
+// error cause.
+func endedWith(r *http.Request, err, cause error) bool {
+	return errors.Is(err, cause) || errors.Is(r.Context().Err(), cause)
+}
+
+// failedArea names what part of the admin a request failed in: the log
+// message and the list the failure page links back to.
+type failedArea struct {
+	logMsg    string
+	backURL   string
+	backLabel string
+}
+
+// failRequest logs err of the failed request r and answers with the
+// German failure page, which links back to the list of area.
+func (h *handler) failRequest(w http.ResponseWriter, r *http.Request, err error, area failedArea) {
+	failure := h.logRequestFailure(r, area.logMsg, err)
+	h.render(w, failureTemplate, failure.status, failurePage{
+		Message: failure.message, BackURL: area.backURL, BackLabel: area.backLabel,
+	})
+}
+
+// logRequestFailure logs err of the failed request r under msg at the
+// level its kind deserves and returns that kind.
+func (h *handler) logRequestFailure(r *http.Request, msg string, err error) requestFailure {
+	failure := requestFailureOf(r, err)
+	h.logger.Log(r.Context(), failure.level, msg, "error", err)
+	return failure
 }
 
 // render executes page within the layout.

@@ -283,13 +283,25 @@ func TestSavingNewLocationAnswersFailuresWithServerErrorAndLog(t *testing.T) {
 
 			rec := ts.htmxPost(inlineLocationPath, hallForm())
 
-			assertStatusCode(t, rec, http.StatusInternalServerError)
-			assertBodyLacks(t, rec, locationChoiceID, newLocationAreaID)
+			assertFailurePage(t, rec, http.StatusInternalServerError, locationFailurePage(msgRequestFailed))
+			// The failure page is a whole page, which htmx does not swap in; it
+			// holds no fragment of the event form.
+			assertBodyLacks(t, rec, `id="`+locationChoiceID+`"`, `id="`+newLocationAreaID+`"`)
 			if !strings.Contains(ts.logs.String(), logMsgLocationsFailed) || !strings.Contains(ts.logs.String(), errStorageDown.Error()) {
 				t.Errorf("log %q does not record the failure", ts.logs.String())
 			}
 		})
 	}
+}
+
+func TestSavingNewLocationPastTheDeadlineAnswersServiceUnavailable(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.locations = failingLocations{err: errRequestTimedOut}
+
+	rec := ts.htmxPost(inlineLocationPath, hallForm())
+
+	assertFailurePage(t, rec, http.StatusServiceUnavailable, locationFailurePage(msgRequestTimedOut))
+	assertLoggedAsWarningOnly(t, ts, logMsgLocationsFailed)
 }
 
 func TestOversizedNewLocationIsRejected(t *testing.T) {

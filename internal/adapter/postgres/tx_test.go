@@ -252,3 +252,45 @@ func TestTxRunnerRollsBackWhenTheContextExpiresInsideTheTransaction(t *testing.T
 		t.Errorf("stored = %+v, %v, want no location", stored, err)
 	}
 }
+
+// TestTxRunnerRollsBackAQueryTheServerCancelsAtTheDeadline writes a
+// location and then reads the events table that another connection holds
+// locked, so the read is still running when the deadline runs out. The
+// server cancels it, InTx fails, the write is not stored, and the pool
+// still answers afterwards.
+func TestTxRunnerRollsBackAQueryTheServerCancelsAtTheDeadline(t *testing.T) {
+	const deadline = 200 * time.Millisecond
+	repo, pool := migratedLocationRepo(t)
+	ctx := context.Background()
+	locker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("Begin: %v", err)
+	}
+	defer func() { _ = locker.Rollback(ctx) }()
+	if _, err := locker.Exec(ctx, "LOCK TABLE events IN ACCESS EXCLUSIVE MODE"); err != nil {
+		t.Fatalf("lock events: %v", err)
+	}
+	txCtx, cancel := context.WithTimeout(ctx, deadline)
+	defer cancel()
+
+	err = postgres.NewTxRunner(pool).InTx(txCtx, func(repos core.Repos) error {
+		if _, err := repos.Locations.Create(txCtx, hallLocation()); err != nil {
+			t.Fatalf("Create before the deadline: %v", err)
+		}
+		_, err := repos.Events.List(txCtx)
+		return err
+	})
+	if rollbackErr := locker.Rollback(ctx); rollbackErr != nil {
+		t.Fatalf("release lock on events: %v", rollbackErr)
+	}
+
+	if err == nil {
+		t.Error("InTx returned no error for a query past its deadline")
+	}
+	if stored, err := repo.List(ctx); err != nil || len(stored) != 0 {
+		t.Errorf("stored = %+v, %v, want no location", stored, err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		t.Errorf("Ping after the cancelled transaction: %v", err)
+	}
+}

@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgconn/ctxwatch"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
@@ -23,23 +26,38 @@ const migrationsDir = "migrations"
 // requests wait for a connection instead of piling up connections (AD-18).
 const maxConns = 10
 
+// cancelSocketDelay is how long a connection whose context ended waits for
+// the database server to cancel the query before it closes the socket.
+// The cancel request takes milliseconds; the delay stays far below the
+// gap between the request deadline and the write timeout.
+const cancelSocketDelay = 2 * time.Second
+
 //go:embed migrations/*.sql
 var embeddedMigrations embed.FS
 
 // Connect creates a connection pool for databaseURL with at most maxConns
 // connections. The pool connects lazily, so an unreachable database
-// surfaces on first use.
+// surfaces on first use. A query whose context ends is cancelled on the
+// server at once, so it does not hold a backend beyond the deadline.
 func Connect(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse database url: %w", err)
 	}
 	config.MaxConns = maxConns
+	config.ConnConfig.BuildContextWatcherHandler = cancelQueryOnServer
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("create connection pool: %w", err)
 	}
 	return pool, nil
+}
+
+// cancelQueryOnServer has the database server cancel the query of conn as
+// soon as its context ends. pgx by default only closes the socket, and the
+// server may go on running the query until it next writes to the client.
+func cancelQueryOnServer(conn *pgconn.PgConn) ctxwatch.Handler {
+	return &pgconn.CancelRequestContextWatcherHandler{Conn: conn, DeadlineDelay: cancelSocketDelay}
 }
 
 // Migrate applies all pending embedded migrations and returns how many it

@@ -50,6 +50,13 @@ type notFoundPage struct {
 	BackLabel string
 }
 
+// failurePage is the data of the German page of a failed request.
+type failurePage struct {
+	Message   string
+	BackURL   string
+	BackLabel string
+}
+
 // fieldErrorMessages returns the German message per rejected field from the
 // messages of one form. Each form has its own messages, because the same
 // field name, such as note, means different things on different forms.

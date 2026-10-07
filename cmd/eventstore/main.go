@@ -29,8 +29,10 @@ import (
 const (
 	exitCodeFailure = 1
 	// shutdownTimeout bounds how long running requests may finish after
-	// SIGINT or SIGTERM.
-	shutdownTimeout = 10 * time.Second
+	// SIGINT or SIGTERM. It lies above requestTimeout, so a request that
+	// waits until its deadline still ends with an answer before the
+	// shutdown gives up.
+	shutdownTimeout = 25 * time.Second
 	// readHeaderTimeout protects the server against slow-header clients.
 	readHeaderTimeout = 5 * time.Second
 	// readTimeout bounds reading a whole request; the largest, an admin

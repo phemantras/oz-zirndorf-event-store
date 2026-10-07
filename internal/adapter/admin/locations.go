@@ -176,7 +176,7 @@ type locationConflict struct {
 func (h *handler) showLocations(w http.ResponseWriter, r *http.Request) {
 	entries, err := h.locations.ListLocationEntries(r.Context())
 	if err != nil {
-		h.failLocationRequest(w, err)
+		h.failLocationRequest(w, r, err)
 		return
 	}
 	rows := make([]locationRow, 0, len(entries))
@@ -207,7 +207,7 @@ func (h *handler) showLocation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		h.failLocationRequest(w, err)
+		h.failLocationRequest(w, r, err)
 		return
 	}
 	form := locationForm{id: location.ID, storedName: location.Name, values: inputFromLocation(location)}
@@ -253,7 +253,7 @@ func (h *handler) saveLocation(w http.ResponseWriter, r *http.Request, id string
 	case errors.Is(err, core.ErrNotFound):
 		h.renderLocationNotFound(w)
 	default:
-		h.failLocationRequest(w, err)
+		h.failLocationRequest(w, r, err)
 	}
 }
 
@@ -281,7 +281,7 @@ func (h *handler) deleteLocation(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, core.ErrNotFound):
 		h.renderLocationGone(w)
 	default:
-		h.failLocationRequest(w, err)
+		h.failLocationRequest(w, r, err)
 	}
 }
 
@@ -295,7 +295,7 @@ func (h *handler) renderLocationInUse(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	if err != nil {
-		h.failLocationRequest(w, fmt.Errorf("load location refused for deletion: %w", err))
+		h.failLocationRequest(w, r, fmt.Errorf("load location refused for deletion: %w", err))
 		return
 	}
 	form := locationForm{id: location.ID, storedName: location.Name, values: inputFromLocation(location)}
@@ -320,7 +320,7 @@ func (h *handler) locationFormPageAgain(w http.ResponseWriter, r *http.Request, 
 			return locationFormPage{}, false
 		}
 		if err != nil {
-			h.failLocationRequest(w, fmt.Errorf("load location refused for saving: %w", err))
+			h.failLocationRequest(w, r, fmt.Errorf("load location refused for saving: %w", err))
 			return locationFormPage{}, false
 		}
 		form.storedName = location.Name
@@ -348,9 +348,8 @@ func (h *handler) renderLocationNotFound(w http.ResponseWriter) {
 	})
 }
 
-func (h *handler) failLocationRequest(w http.ResponseWriter, err error) {
-	h.logRequestFailure(logMsgLocationsFailed, err)
-	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+func (h *handler) failLocationRequest(w http.ResponseWriter, r *http.Request, err error) {
+	h.failRequest(w, r, err, failedArea{logMsg: logMsgLocationsFailed, backURL: locationsPath, backLabel: backToLocationList})
 }
 
 // locationConflictOf names the location that already has the entered name.

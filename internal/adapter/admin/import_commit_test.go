@@ -74,6 +74,13 @@ func fingerprintOf(event core.Event) map[string]string {
 
 func (ts *testServer) postCommit(t *testing.T, content string, fields ...[]formField) *httptest.ResponseRecorder {
 	t.Helper()
+	return ts.do(ts.commitRequest(t, content, fields...))
+}
+
+// commitRequest returns the commit form with content and fields, sent with
+// a valid session.
+func (ts *testServer) commitRequest(t *testing.T, content string, fields ...[]formField) *http.Request {
+	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	all := append([]formField{{importContentField, content}}, joinFields(fields)...)
@@ -87,7 +94,7 @@ func (ts *testServer) postCommit(t *testing.T, content string, fields ...[]formF
 	}
 	req := httptest.NewRequest(http.MethodPost, importCommitPath, &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	return ts.do(withCookie(req, ts.validCookie()))
+	return withCookie(req, ts.validCookie())
 }
 
 func joinFields(groups [][]formField) []formField {
@@ -326,10 +333,37 @@ func TestImportCommitPastTheDeadlineSaysSoAndIsLoggedAsWarning(t *testing.T) {
 
 	rec := ts.postCommit(t, validImportFile, decisionFields(entryDecision{position: 1, class: core.ImportClassNew}))
 
+	assertStatusCode(t, rec, http.StatusServiceUnavailable)
+	assertBodyContains(t, rec, msgImportCommitTimedOut, "es wurde nichts übernommen", `type="file"`)
+	assertBodyLacks(t, rec, msgImportNothingSaved, msgImportCommitFailed)
+	assertLoggedAsWarningOnly(t, ts, logMsgImportCommitFailed)
+}
+
+// TestImportCommitOfAServerCancelledQueryAtTheDeadlineSaysSo fails the
+// commit with an error that wraps no context error, as pgx reports a query
+// the server cancelled, while the request deadline has passed.
+func TestImportCommitOfAServerCancelledQueryAtTheDeadlineSaysSo(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.imports = failingImports{err: errStatementCanceled}
+	req := ts.commitRequest(t, validImportFile, decisionFields(entryDecision{position: 1, class: core.ImportClassNew}))
+
+	rec := ts.do(withExpiredDeadline(t, req))
+
+	assertStatusCode(t, rec, http.StatusServiceUnavailable)
+	assertBodyContains(t, rec, msgImportCommitTimedOut, `type="file"`)
+	assertBodyLacks(t, rec, msgImportCommitFailed)
+	assertLoggedAsWarningOnly(t, ts, logMsgImportCommitFailed)
+}
+
+func TestImportCommitCancelledByTheClientIsLoggedAsInfo(t *testing.T) {
+	ts := newTestServer(t)
+	ts.handler.imports = failingImports{err: errRequestCancelled}
+
+	rec := ts.postCommit(t, validImportFile, decisionFields(entryDecision{position: 1, class: core.ImportClassNew}))
+
 	assertStatusCode(t, rec, http.StatusInternalServerError)
 	assertBodyContains(t, rec, msgImportCommitFailed, `type="file"`)
-	assertBodyLacks(t, rec, msgImportNothingSaved)
-	assertLoggedAsWarningOnly(t, ts, logMsgImportCommitFailed)
+	assertLoggedAsInfoOnly(t, ts, logMsgImportCommitFailed)
 }
 
 func TestImportCommitOfAnUnreadableFileShowsItsMessage(t *testing.T) {

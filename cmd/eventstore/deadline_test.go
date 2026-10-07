@@ -28,6 +28,19 @@ func TestRequestTimeoutEndsRequestsBeforeTheWriteTimeout(t *testing.T) {
 	}
 }
 
+// TestShutdownLetsARequestReachItsDeadline keeps the shutdown long enough
+// for a request that waits until its deadline, so SIGTERM during a slow
+// query still ends cleanly.
+func TestShutdownLetsARequestReachItsDeadline(t *testing.T) {
+	const wantShutdownTimeout = 25 * time.Second
+	if shutdownTimeout != wantShutdownTimeout {
+		t.Errorf("shutdownTimeout = %v, want %v", shutdownTimeout, wantShutdownTimeout)
+	}
+	if requestTimeout >= shutdownTimeout {
+		t.Errorf("requestTimeout %v must lie below shutdownTimeout %v, or a shutdown cuts off a request before its deadline", requestTimeout, shutdownTimeout)
+	}
+}
+
 // deadlineRecorder is a handler that records the deadline of the request
 // context it serves.
 type deadlineRecorder struct {

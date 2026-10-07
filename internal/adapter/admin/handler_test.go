@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io"
@@ -850,6 +851,42 @@ func TestNewHandlerServesLoginPage(t *testing.T) {
 // its deadline, as with a slow database or an exhausted pool.
 var errRequestTimedOut = fmt.Errorf("use case: %w", context.DeadlineExceeded)
 
+// errRequestCancelled is a failure of a use case whose request the client
+// cancelled.
+var errRequestCancelled = fmt.Errorf("use case: %w", context.Canceled)
+
+// errStatementCanceled is how pgx reports a query the database server
+// cancelled at the request deadline (SQLSTATE 57014). It wraps neither
+// context error, so only the ended request context tells what happened.
+var errStatementCanceled = errors.New("use case: ERROR: canceling statement due to user request (SQLSTATE 57014)")
+
+// withExpiredDeadline returns req with a request context whose deadline
+// has passed.
+func withExpiredDeadline(t *testing.T, req *http.Request) *http.Request {
+	t.Helper()
+	ctx, cancel := context.WithDeadline(req.Context(), time.Unix(0, 0))
+	t.Cleanup(cancel)
+	return req.WithContext(ctx)
+}
+
+// withCancelledContext returns req with a request context the client has
+// cancelled.
+func withCancelledContext(t *testing.T, req *http.Request) *http.Request {
+	t.Helper()
+	ctx, cancel := context.WithCancel(req.Context())
+	cancel()
+	return req.WithContext(ctx)
+}
+
+// assertFailurePage checks that rec is the German failure page with status
+// and want's message and link back, without the English status text.
+func assertFailurePage(t *testing.T, rec *httptest.ResponseRecorder, status int, want failurePage) {
+	t.Helper()
+	assertStatusCode(t, rec, status)
+	assertBodyContains(t, rec, "<h1>"+want.Message+"</h1>", `href="`+want.BackURL+`">`+want.BackLabel+`</a>`)
+	assertBodyLacks(t, rec, http.StatusText(http.StatusInternalServerError), http.StatusText(http.StatusServiceUnavailable))
+}
+
 // logLine is the level and message of a JSON log line.
 type logLine struct {
 	Level string `json:"level"`
@@ -882,10 +919,24 @@ func assertLoggedAt(t *testing.T, ts *testServer, level slog.Level, msg string) 
 // warning and hold no error.
 func assertLoggedAsWarningOnly(t *testing.T, ts *testServer, msg string) {
 	t.Helper()
-	assertLoggedAt(t, ts, slog.LevelWarn, msg)
+	assertLoggedWithoutError(t, ts, slog.LevelWarn, msg)
+}
+
+// assertLoggedAsInfoOnly checks that the logs of ts record msg as info and
+// hold no error.
+func assertLoggedAsInfoOnly(t *testing.T, ts *testServer, msg string) {
+	t.Helper()
+	assertLoggedWithoutError(t, ts, slog.LevelInfo, msg)
+}
+
+// assertLoggedWithoutError checks that the logs of ts record msg at level
+// and hold no error.
+func assertLoggedWithoutError(t *testing.T, ts *testServer, level slog.Level, msg string) {
+	t.Helper()
+	assertLoggedAt(t, ts, level, msg)
 	for _, line := range logLinesOf(t, ts) {
 		if line.Level == slog.LevelError.String() {
-			t.Errorf("log line %+v reports an expired deadline as an error", line)
+			t.Errorf("log line %+v reports a failure that is no fault of the code as an error", line)
 		}
 	}
 }

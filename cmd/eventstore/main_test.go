@@ -713,6 +713,79 @@ func TestServeAnswersUntilContextIsCancelled(t *testing.T) {
 	}
 }
 
+// TestServeLetsARunningRequestAnswerDuringShutdown cancels the context
+// while a request is still being handled: the request ends with its answer
+// and serve returns nil. Together with shutdownTimeout above requestTimeout
+// this holds for a request that waits until its deadline.
+func TestServeLetsARunningRequestAnswerDuringShutdown(t *testing.T) {
+	const (
+		// shutdownStartGrace gives serve time to return early if it would
+		// not wait for the running request.
+		shutdownStartGrace = 100 * time.Millisecond
+		// requestStartWait bounds the wait for the request to reach the
+		// handler.
+		requestStartWait = 5 * time.Second
+		// serveReturnWait bounds the wait for serve once the request has
+		// answered.
+		serveReturnWait = 5 * time.Second
+	)
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	started, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	releaseHandler := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(releaseHandler)
+	slow := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		close(started)
+		<-release
+		w.WriteHeader(http.StatusOK)
+	})
+	server := newServer(&fakePinger{}, slog.New(slog.DiscardHandler), routeHandlers{admin: slow, public: slow})
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, server, listener, slog.New(slog.DiscardHandler)) }()
+	answered := make(chan int, 1)
+	go func() {
+		resp, err := http.Get("http://" + listener.Addr().String() + publicEventsPath)
+		if err != nil {
+			answered <- 0
+			return
+		}
+		_ = resp.Body.Close()
+		answered <- resp.StatusCode
+	}()
+
+	select {
+	case <-started:
+	case status := <-answered:
+		t.Fatalf("request answered with status %d before reaching the handler", status)
+	case <-time.After(requestStartWait):
+		t.Fatalf("request did not reach the handler within %v", requestStartWait)
+	}
+	cancel()
+	select {
+	case err := <-done:
+		t.Fatalf("serve returned %v before the running request answered", err)
+	case <-time.After(shutdownStartGrace):
+	}
+	releaseHandler()
+
+	if status := <-answered; status != http.StatusOK {
+		t.Errorf("running request got status %d, want %d", status, http.StatusOK)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("serve returned %v, want nil after shutdown", err)
+		}
+	case <-time.After(serveReturnWait):
+		t.Fatalf("serve did not return within %v after the running request answered", serveReturnWait)
+	}
+}
+
 func TestServeReturnsErrorWhenListenerFails(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
