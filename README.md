@@ -146,7 +146,7 @@ Ein paar Entscheidungen, die auch für andere Backends interessant sein könnten
 - **Zeitrechnung an einer Stelle:** Eine einzige Funktion im Kern rechnet lokale Zeiten in Zeitpunkte um, einschließlich der Zeitumstellung. Filter, „heute“ und Archiv nutzen nur die vorberechneten Zeitpunkte.
 - **Zustandsloser Import:** JSON hochladen, Vorschau durcharbeiten (neu, Aktualisierung, Duplikatverdacht, Fehler), speichern. Beim Speichern wird erneut gegen den aktuellen Bestand geprüft, dann alles in einer Transaktion geschrieben.
 
-Alle 17 Entscheidungen mit Regeln stehen im [Architecture Spine](_bmad-output/planning-artifacts/architecture/architecture-oz-zirndorf-event-store-2026-10-01/ARCHITECTURE-SPINE.md).
+Alle 18 Entscheidungen mit Regeln stehen im [Architecture Spine](_bmad-output/planning-artifacts/architecture/architecture-oz-zirndorf-event-store-2026-10-01/ARCHITECTURE-SPINE.md).
 
 ## Technik
 
@@ -350,6 +350,7 @@ Die Login-Sperre der Admin-Anmeldung nimmt deshalb den linken Eintrag von `X-For
 
 - [PRD](_bmad-output/planning-artifacts/prds/prd-oz-zirndorf-event-store-2026-10-01/prd.md): was der Event Store können muss
 - [Architecture Spine](_bmad-output/planning-artifacts/architecture/architecture-oz-zirndorf-event-store-2026-10-01/ARCHITECTURE-SPINE.md): verbindliche Architekturentscheidungen
+- [Architekturdokumentation nach arc42](docs/architecture/arc42.md): Kontext, Bausteine, Laufzeit, Verteilung, Qualität und Risiken im Überblick
 - [Product Brief](_bmad-output/planning-artifacts/briefs/brief-oz-zirndorf-event-store-2026-10-01/brief.md): Problem und Idee
 
 ## Über OpenZirndorf
