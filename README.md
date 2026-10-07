@@ -286,7 +286,7 @@ Den erzeugten Code mit committen. Die CI erzeugt ihn erneut und scheitert bei ei
 
 ## Deployment auf Railway
 
-Die App läuft auf [Railway](https://railway.com) als ein Service aus diesem Repository, daneben ein PostgreSQL-18-Service, der nur im privaten Netz erreichbar ist. Gebaut wird das `Dockerfile` (Multi-Stage: statisches Go-Binary auf `gcr.io/distroless/static-debian13:nonroot`, ohne Shell, als Nicht-root). Die Deploy-Einstellungen stehen als Code in `railway.json`: Dockerfile-Builder, Health Check auf `/healthz`, genau eine Replika, Neustart bei Absturz.
+Die App läuft auf [Railway](https://railway.com) als ein Service aus diesem Repository, daneben ein PostgreSQL-18-Service, der nur im privaten Netz erreichbar ist. Gebaut wird das `Dockerfile` (Multi-Stage: statisches Go-Binary auf `gcr.io/distroless/static-debian13:nonroot`, ohne Shell, als Nicht-root). Die Deploy-Einstellungen stehen als Code in `railway.json`: Dockerfile-Builder, Health Check auf `/healthz`, genau eine Replika, Neustart bei Absturz, 30 Sekunden zwischen SIGTERM und SIGKILL (`drainingSeconds`; Railways Standard ist 0). Die App braucht beim Herunterfahren bis zu 25 Sekunden, damit ein Request, der bis zu seiner Deadline wartet, noch antwortet.
 
 ### Einmalige Einrichtung (Railway-Dashboard)
 

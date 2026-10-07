@@ -103,10 +103,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-d1-epic-4-nahtstellen.md`
   summary: Railway gibt einem alten Deployment standardmäßig 0 s zwischen SIGTERM und SIGKILL (`RAILWAY_DEPLOYMENT_DRAINING_SECONDS`); damit wirkt `shutdownTimeout` (25 s) in Produktion nicht. `deploy.drainingSeconds` in `railway.json` (bzw. die Service-Variable) auf mindestens 25 setzen.
   evidence: Railway-Doku „Deployment Teardown“ (https://docs.railway.com/deployments/deployment-teardown): Standard 0 s. `railway.json` setzt keinen Wert. D1 schließt Änderungen an Railway-Einstellungen aus (Frozen-Block), Review D1 (Edge-Case, Blind, Seam).
-  status: open
-  target: Backlog (eigener kleiner PR, Entscheidung Andreas)
+  status: done
+  target: PR „railway drainingSeconds“ (`railway.json` `deploy.drainingSeconds: 30`, `TestRailwayWaitsForTheShutdownBeforeKillingTheOldDeploy`)
 - source_spec: `_bmad-output/implementation-artifacts/spec-d1-epic-4-nahtstellen.md`
   summary: Scheitert das Anlegen eines Orts im Event-Formular (htmx, `/admin/events/new-location`) mit 500/503, sieht Andreas nichts: Die Fehlerseite wird wegen `responseHandling` (`[45]..` → `swap:false`) nicht eingesetzt.
   evidence: Vorbestehend (vorher englischer Klartext, ebenfalls nicht eingesetzt); D1 lässt `responseHandling` laut Frozen-Block unverändert. Lösung z. B. per `HX-Retarget`/`HX-Reswap` mit einem Fragment oder per htmx-Fehlerereignis.
   status: open
   target: Backlog (nächste Retro ordnet zu)
+- source_spec: none
+  summary: Deploy-Einstellungen von `railway.json` (Config as Code) nach Infrastructure as Code (`.railway/railway.ts`) überführen, inklusive `drainingSeconds`, `healthcheckPath`, `numReplicas`, `restartPolicyType` und der Prüfung in `cmd/eventstore/railway_test.go`.
+  evidence: Railway-Doku „Config as Code“ (https://docs.railway.com/config-as-code/reference): Config as Code ist abgekündigt, bestehende `railway.json` wirken nur bis 2026-12-01. Danach fiele u. a. `drainingSeconds` auf 0 zurück und die Single-Replika-Annahme der Login-Sperre wäre nicht mehr per Code gesichert.
+  status: open
+  target: vor 2026-12-01 (Entscheidung Andreas)
